@@ -1,0 +1,14 @@
+---
+description: Work only on the Antigravity frontend unless the user explicitly asks for backend.
+alwaysApply: true
+---
+
+# Frontend-only scope
+
+This project is **Antigravity**. Default work is the Next.js web app only.
+
+- **Do work in:** `antigravity/apps/web/` (pages, components, types, `lib/mock-data.ts`, `lib/api-client.ts`, styles)
+- **Do not** change FastAPI, Python services, DB, brokers, scrapers, or infra unless the user explicitly asks
+- Keep `USE_MOCK_DATA` as the frontend data source until the user asks to wire a live API
+- Match the existing dark design system in `globals.css` (no white backgrounds)
+- New UI should use mock data + `apiClient` so pages render without a backend
