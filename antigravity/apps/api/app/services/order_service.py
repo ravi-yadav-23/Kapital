@@ -1,12 +1,13 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime
+from datetime import datetime, timezone, date, timedelta
 import uuid
 
 from app.models.order import IpoOrder
 from app.models.account import FamilyAccount
 from app.models.ipo import Ipo
+from app.models.allotment import AsbaLock, Allotment
 from app.schemas.order import OrderCreate, OrderResponse
 from app.services.angel_service import angel_service
 
@@ -29,7 +30,7 @@ def _model_to_response(o: IpoOrder) -> OrderResponse:
         angel_order_id=o.angel_order_id,
         status=o.status or "CONFIRMED",
         reject_reason=o.reject_reason,
-        placed_at=o.placed_at.isoformat() if o.placed_at else datetime.utcnow().isoformat(),
+        placed_at=o.placed_at.isoformat() if o.placed_at else datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -107,7 +108,7 @@ class OrderService:
             status="CONFIRMED" if bid_res.get("success") else "REJECTED",
             reject_reason=None if bid_res.get("success") else bid_res.get("message"),
             mandate_status="AWAITING_APPROVAL",
-            placed_at=datetime.utcnow(),
+            placed_at=datetime.now(timezone.utc),
         )
         db.add(order_obj)
 
@@ -117,6 +118,30 @@ class OrderService:
             acc.locked_asba_balance = (acc.locked_asba_balance or 0.0) + amount
             if acc.available_liquid_balance:
                 acc.available_liquid_balance = max(0.0, acc.available_liquid_balance - amount)
+
+        # Create persistent ASBA lock record for timeline tracking
+        if bid_res.get("success"):
+            rel_dt = None
+            if ipo and ipo.listing_date:
+                try:
+                    rel_dt = datetime.strptime(str(ipo.listing_date)[:10], "%Y-%m-%d").date()
+                except Exception:
+                    pass
+            if not rel_dt:
+                rel_dt = date.today() + timedelta(days=4)
+
+            lock_obj = AsbaLock(
+                id=f"lock-{str(uuid.uuid4())[:8]}",
+                account_id=data.account_id,
+                ipo_id=data.ipo_id,
+                account_name=acc_name,
+                ipo_name=ipo_name,
+                amount=amount,
+                lock_date=date.today(),
+                release_date=rel_dt,
+                is_conflict=False,
+            )
+            db.add(lock_obj)
 
         await db.commit()
         await db.refresh(order_obj)
@@ -141,6 +166,15 @@ class OrderService:
             acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
             acc.available_liquid_balance = (acc.available_liquid_balance or 0.0) + order_obj.amount
 
+        # Remove corresponding ASBA lock record
+        stmt_lock = select(AsbaLock).where(
+            (AsbaLock.account_id == order_obj.account_id) & (AsbaLock.ipo_id == order_obj.ipo_id)
+        )
+        res_lock = await db.execute(stmt_lock)
+        existing_lock = res_lock.scalar_one_or_none()
+        if existing_lock:
+            await db.delete(existing_lock)
+
         order_obj.status = "CANCELLED"
         order_obj.reject_reason = "Cancelled by user"
         order_obj.mandate_status = "REVOKED"
@@ -164,6 +198,15 @@ class OrderService:
                 acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
                 acc.available_liquid_balance = (acc.available_liquid_balance or 0.0) + order_obj.amount
 
+        # Remove corresponding ASBA lock record
+        stmt_lock = select(AsbaLock).where(
+            (AsbaLock.account_id == order_obj.account_id) & (AsbaLock.ipo_id == order_obj.ipo_id)
+        )
+        res_lock = await db.execute(stmt_lock)
+        existing_lock = res_lock.scalar_one_or_none()
+        if existing_lock:
+            await db.delete(existing_lock)
+
         await db.delete(order_obj)
         await db.commit()
         return {"success": True, "deleted_order_id": order_id}
@@ -172,11 +215,9 @@ class OrderService:
     async def process_allotment_result(db: AsyncSession, order_id: str, result: str) -> Dict[str, Any]:
         """
         Processes allotment outcome:
-        - NOT_ALLOTTED: Releases ASBA locked funds back to liquid balance.
-        - ALLOTTED: Confirms demat allotment and creates Allotment record for 09:00 AM listing sell.
+        - NOT_ALLOTTED: Releases ASBA locked funds back to liquid balance and clears lock record.
+        - ALLOTTED: Confirms demat allotment, clears lock record, and stages Allotment for 09:00 AM listing sell.
         """
-        from app.models.allotment import Allotment
-
         stmt = select(IpoOrder).where(IpoOrder.id == order_id)
         res = await db.execute(stmt)
         order_obj = res.scalar_one_or_none()
@@ -188,6 +229,15 @@ class OrderService:
 
         ipo_res = await db.execute(select(Ipo).where(Ipo.id == order_obj.ipo_id))
         ipo = ipo_res.scalar_one_or_none()
+
+        # Remove ASBA lock record as funds are either debited or unblocked
+        stmt_lock = select(AsbaLock).where(
+            (AsbaLock.account_id == order_obj.account_id) & (AsbaLock.ipo_id == order_obj.ipo_id)
+        )
+        res_lock = await db.execute(stmt_lock)
+        existing_lock = res_lock.scalar_one_or_none()
+        if existing_lock:
+            await db.delete(existing_lock)
 
         if result.upper() == "NOT_ALLOTTED":
             if acc and order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED"]:
@@ -215,6 +265,7 @@ class OrderService:
                 account_id=order_obj.account_id,
                 ipo_id=order_obj.ipo_id,
                 account_name=order_obj.account_name,
+                angel_client_id=acc.angel_client_id if acc else None,
                 ipo_name=order_obj.ipo_name,
                 ipo_symbol=ipo.symbol if ipo else "IPO",
                 allotted_shares=order_obj.shares,

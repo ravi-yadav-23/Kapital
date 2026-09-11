@@ -30,27 +30,7 @@ def _parse_issue_size_cr(issue_size_str: str) -> float:
         return 0.0
 
 
-def _compute_score_and_recommendation(raw: Dict[str, Any]) -> tuple[int, str, float]:
-    """
-    Compute algorithmic preliminary rating and GMP proxy based on
-    strengths, risks count, issue size, and type.
-    """
-    strengths = raw.get("strengths", [])
-    risks = raw.get("risks", [])
-    score = 70 + (len(strengths) * 3) - (len(risks) * 2)
-    score = max(40, min(95, score))
-
-    if score >= 80:
-        rec = "STRONG_APPLY"
-        gmp = 35.0
-    elif score >= 65:
-        rec = "MODERATE_APPLY"
-        gmp = 18.0
-    else:
-        rec = "WATCH"
-        gmp = 5.0
-
-    return score, rec, gmp
+from app.utils.score_engine import IpoScoreEngine
 
 
 async def fetch_ipos_from_ipoalerts(status: str) -> List[Dict[str, Any]]:
@@ -83,7 +63,20 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
                 lot_sz = int(raw.get("minQty", 1))
                 min_inv = float(raw.get("minAmount") or (max_p * lot_sz))
                 issue_cr = _parse_issue_size_cr(raw.get("issueSize", "0"))
-                score, rec, gmp = _compute_score_and_recommendation(raw)
+                
+                # Extract real subscription metrics from feed if available
+                sub_dict = raw.get("subscription") or {}
+                sub_retail = float(raw.get("subscription_retail") or sub_dict.get("retail") or 0.0)
+                sub_shni = float(raw.get("subscription_shni") or sub_dict.get("shni") or sub_dict.get("snii") or 0.0)
+                sub_bhni = float(raw.get("subscription_bhni") or sub_dict.get("bhni") or sub_dict.get("bnii") or 0.0)
+                sub_qib = float(raw.get("subscription_qib") or sub_dict.get("qib") or 0.0)
+                sub_total = float(raw.get("subscription_total") or sub_dict.get("total") or 0.0)
+
+                raw["issue_size_cr"] = issue_cr
+                raw["subscription_qib"] = sub_qib
+                raw["subscription_total"] = sub_total
+                
+                score, rec, gmp = IpoScoreEngine.compute_score(raw)
 
                 # Extract schedule milestones
                 schedule_list = []
@@ -115,11 +108,11 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
                     "score": score,
                     "recommendation": rec,
                     "gmp_percent": gmp,
-                    "subscription_retail": 2.4,
-                    "subscription_shni": 1.8,
-                    "subscription_bhni": 3.1,
-                    "subscription_qib": 4.5,
-                    "subscription_total": 3.2,
+                    "subscription_retail": sub_retail,
+                    "subscription_shni": sub_shni,
+                    "subscription_bhni": sub_bhni,
+                    "subscription_qib": sub_qib,
+                    "subscription_total": sub_total,
                     "schedule": schedule_list,
                 }
 

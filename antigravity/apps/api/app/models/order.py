@@ -1,7 +1,10 @@
 from sqlalchemy import Column, String, Float, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.base import BaseModel
+
+def get_utc_now():
+    return datetime.now(timezone.utc)
 
 class IpoOrder(BaseModel):
     __tablename__ = "ipo_orders"
@@ -24,7 +27,7 @@ class IpoOrder(BaseModel):
     status = Column(String(30), default="PENDING")  # PENDING, SUBMITTED, CONFIRMED, REJECTED, CANCELLED
     reject_reason = Column(String(500), nullable=True)
     mandate_status = Column(String(50), default="AWAITING_APPROVAL")  # AWAITING_APPROVAL, APPROVED, REJECTED
-    placed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    placed_at = Column(DateTime, default=get_utc_now, nullable=False)
 
     # Relationships
     ipo = relationship("Ipo", back_populates="orders")

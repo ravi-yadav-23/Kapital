@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Integer, ForeignKey, Date
+from sqlalchemy import Column, String, Float, Integer, ForeignKey, Date, Boolean
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
@@ -9,6 +9,7 @@ class Allotment(BaseModel):
     ipo_id = Column(String(36), ForeignKey("ipos.id", ondelete="CASCADE"), nullable=False)
     
     account_name = Column(String(100), nullable=False)
+    angel_client_id = Column(String(50), nullable=True)
     ipo_name = Column(String(200), nullable=False)
     ipo_symbol = Column(String(50), nullable=False)
     
@@ -44,4 +45,4 @@ class AsbaLock(BaseModel):
     release_date = Column(Date, nullable=False)
     
     next_ipo_conflict = Column(String(200), nullable=True)
-    is_conflict = Column(String(10), default="false")
+    is_conflict = Column(Boolean, default=False)

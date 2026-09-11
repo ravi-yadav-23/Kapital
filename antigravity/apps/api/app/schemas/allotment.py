@@ -11,6 +11,7 @@ class AllotmentResponse(BaseModel):
     account_id: str
     ipo_id: str
     account_name: str
+    angel_client_id: Optional[str] = None
     ipo_name: str
     ipo_symbol: str
     allotted_shares: int

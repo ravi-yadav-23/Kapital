@@ -81,8 +81,17 @@ async def listing_day_premarket_execution():
         for alt in holdings:
             logger.info(f"Triggering 09:00 AM sell order for {alt.ipo_symbol}: {alt.allotted_shares} shares @ ₹{alt.staged_sell_limit_price}")
             try:
+                client_code = alt.angel_client_id
+                if not client_code:
+                    from app.models.account import FamilyAccount
+                    acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == alt.account_id))
+                    acc = acc_res.scalar_one_or_none()
+                    if acc and acc.angel_client_id:
+                        client_code = acc.angel_client_id
+                        alt.angel_client_id = client_code
+
                 order_res = await angel_service.stage_listing_sell_order(
-                    client_id=alt.account_name,
+                    client_id=client_code or alt.account_name,
                     symbol=alt.ipo_symbol,
                     shares=alt.allotted_shares,
                     limit_price=alt.staged_sell_limit_price,
@@ -110,6 +119,29 @@ async def daily_ipo_scraper_sync():
             logger.info(f"Evening IPO sync complete: {count} issues synchronized.")
         except Exception as e:
             logger.error(f"Evening IPO sync failed: {e}")
+
+
+async def daily_asba_and_reports_maintenance():
+    """
+    Runs at 22:00:00 IST every day.
+    1. Sweeps and releases expired ASBA locks.
+    2. Runs batch multi-agent due diligence dossiers for newly added IPOs.
+    """
+    logger.info("=== [10:00 PM IST] Running Daily ASBA Sweep & Batch AI Reports ===")
+    from app.db.database import AsyncSessionLocal
+    from app.tasks.order_tasks import sync_expired_asba_locks
+    from app.tasks.report_tasks import generate_nightly_ipo_dossiers
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await sync_expired_asba_locks(db)
+        except Exception as e:
+            logger.error(f"Expired ASBA lock sweep error: {e}")
+
+        try:
+            await generate_nightly_ipo_dossiers(db)
+        except Exception as e:
+            logger.error(f"Nightly report generation error: {e}")
 
 
 def start_scheduler():
@@ -141,8 +173,16 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Job 4: 10:00 PM IST Daily (Nightly ASBA lock sweep & Multi-Agent dossiers)
+    scheduler.add_job(
+        daily_asba_and_reports_maintenance,
+        trigger=CronTrigger(hour=22, minute=0, timezone="Asia/Kolkata"),
+        id="daily_asba_and_reports_maintenance",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Antigravity background scheduler started (08:30 AM Login | 09:00 AM Sell | 05:00 PM Scrape)")
+    logger.info("Antigravity background scheduler started (08:30 AM Login | 09:00 AM Sell | 05:00 PM Scrape | 10:00 PM Maintenance)")
 
 
 def stop_scheduler():

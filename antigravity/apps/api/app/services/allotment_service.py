@@ -21,6 +21,7 @@ def _model_to_allotment_response(a: Allotment) -> AllotmentResponse:
         account_id=a.account_id,
         ipo_id=a.ipo_id,
         account_name=a.account_name,
+        angel_client_id=getattr(a, "angel_client_id", None),
         ipo_name=a.ipo_name,
         ipo_symbol=a.ipo_symbol,
         allotted_shares=a.allotted_shares,
@@ -49,7 +50,7 @@ def _model_to_lock_response(lock: AsbaLock) -> AsbaLockResponse:
         lock_date=_format_date(lock.lock_date) or "",
         release_date=_format_date(lock.release_date) or "",
         next_ipo_conflict=lock.next_ipo_conflict,
-        is_conflict=str(lock.is_conflict).lower() in ["true", "1", "yes"],
+        is_conflict=bool(lock.is_conflict),
     )
 
 
@@ -75,6 +76,8 @@ class AllotmentService:
 
     @staticmethod
     async def stage_sell_order(db: AsyncSession, allotment_id: str, data: StageSellRequest) -> Dict[str, Any]:
+        from app.models.account import FamilyAccount
+
         stmt = select(Allotment).where(Allotment.id == allotment_id)
         res = await db.execute(stmt)
         alt = res.scalar_one_or_none()
@@ -84,9 +87,18 @@ class AllotmentService:
         alt.staged_sell_limit_price = data.limit_price
         alt.status = "ACTIVE"
 
-        # Trigger order staging via SmartAPI
+        # Resolve real Angel One client_id code (e.g., R1234567)
+        client_code = alt.angel_client_id
+        if not client_code:
+            acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == alt.account_id))
+            acc = acc_res.scalar_one_or_none()
+            if acc and acc.angel_client_id:
+                client_code = acc.angel_client_id
+                alt.angel_client_id = client_code
+
+        # Trigger order staging via SmartAPI using real client_id code
         api_res = await angel_service.stage_listing_sell_order(
-            client_id=alt.account_name,
+            client_id=client_code or alt.account_name,
             symbol=alt.ipo_symbol,
             shares=alt.allotted_shares,
             limit_price=data.limit_price,

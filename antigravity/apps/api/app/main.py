@@ -6,7 +6,7 @@ import uuid
 
 from app.config import settings
 from app.db.database import init_db
-from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router
+from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, accounts
 
 logger = logging.getLogger("startup")
 
@@ -100,4 +100,5 @@ app.include_router(orders.router, prefix="/api", tags=["orders"])
 app.include_router(allotments.router, prefix="/api", tags=["allotments"])
 app.include_router(reports.router, prefix="/api", tags=["reports"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(websocket.router, tags=["websocket"])

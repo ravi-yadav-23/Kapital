@@ -2,10 +2,18 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 
 class RedFlagSchema(BaseModel):
-    title: str
-    severity: str  # HIGH, MEDIUM, LOW
-    description: str
+    title: Optional[str] = None
+    type: Optional[str] = None
+    severity: str = "MEDIUM"  # HIGH, MEDIUM, LOW
+    description: str = ""
     penalty_points: int = 0
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        if not self.title and self.type:
+            self.title = self.type
+        elif not self.title:
+            self.title = "Risk Flag"
 
 class ScoreBreakdownSchema(BaseModel):
     financial_quality: int = 0

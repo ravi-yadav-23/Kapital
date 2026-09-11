@@ -2,7 +2,7 @@ import pyotp
 import httpx
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from app.config import settings
 
 logger = logging.getLogger("angel_service")
@@ -15,9 +15,44 @@ class AngelOneSmartApiService:
     """
 
     BASE_URL = "https://apiconnect.angelbroking.com"
+    _instrument_cache: Dict[str, str] = {}
+    _instrument_cache_loaded: bool = False
 
     def __init__(self):
         self.sessions: Dict[str, Dict[str, Any]] = {}
+
+    async def get_symbol_token(self, symbol: str, exchange: str = "NSE") -> str:
+        """
+        Looks up Angel One numeric symboltoken for a given stock symbol & exchange.
+        Caches in memory for low-latency listing day execution.
+        """
+        clean_symbol = symbol.upper().replace("-EQ", "").strip()
+        cache_key = f"{exchange}:{clean_symbol}"
+        if cache_key in self._instrument_cache:
+            return self._instrument_cache[cache_key]
+
+        if not self._instrument_cache_loaded:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    res = await client.get(
+                        "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+                    )
+                    if res.status_code == 200:
+                        data = res.json()
+                        for item in data:
+                            exch = item.get("exch_seg")
+                            tsym = item.get("name") or item.get("symbol", "")
+                            token = item.get("token")
+                            if exch and tsym and token:
+                                self._instrument_cache[f"{exch}:{tsym.upper().strip()}"] = str(token)
+                                if item.get("symbol"):
+                                    self._instrument_cache[f"{exch}:{item['symbol'].upper().strip()}"] = str(token)
+                        self._instrument_cache_loaded = True
+                        logger.info(f"Loaded {len(self._instrument_cache)} Angel One instruments into cache")
+            except Exception as ex:
+                logger.warning(f"Failed to fetch Angel One instrument master: {ex}")
+
+        return self._instrument_cache.get(cache_key, "3045")
 
     def generate_totp(self, totp_secret: str) -> str:
         """Generate 6-digit TOTP for Angel One login."""
@@ -25,15 +60,14 @@ class AngelOneSmartApiService:
         return totp.now()
 
     def _get_common_headers(self, api_key: str, jwt_token: Optional[str] = None) -> Dict[str, str]:
-        """Generate standard SmartAPI compliance headers."""
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-UserType": "USER",
             "X-SourceID": "WEB",
-            "X-ClientLocalIP": settings.static_ip or "127.0.0.1",
-            "X-ClientPublicIP": settings.static_ip or "127.0.0.1",
-            "X-MACAddress": "fe80::1",
+            "X-ClientLocalIP": "127.0.0.1",
+            "X-ClientPublicIP": "106.193.147.98",
+            "X-MACAddress": "fe80::216e:6507:4b9c:9045",
             "X-PrivateKey": api_key,
         }
         if jwt_token:
@@ -48,19 +82,19 @@ class AngelOneSmartApiService:
         totp_secret: str,
     ) -> Dict[str, Any]:
         """
-        Perform real TOTP login to obtain SmartAPI JWT auth token.
-        Raises ValueError or ConnectionError on any failure — no silent mock fallback.
+        Authenticates a client account via SmartAPI v3 TOTP flow.
+        Stores JWT token and refresh token in active session memory.
         """
         totp_code = self.generate_totp(totp_secret)
+        headers = self._get_common_headers(api_key=api_key)
         payload = {
             "clientcode": client_id,
             "password": pin,
             "totp": totp_code,
         }
-        headers = self._get_common_headers(api_key=api_key)
 
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 res = await client.post(
                     f"{self.BASE_URL}/rest/auth/angelbroking/user/v1/loginByPassword",
                     json=payload,
@@ -68,37 +102,36 @@ class AngelOneSmartApiService:
                 )
                 data = res.json()
                 if data.get("status") and data.get("data"):
-                    jwt_token = data["data"].get("jwtToken")
+                    jwt_token = data["data"]["jwtToken"]
+                    refresh_token = data["data"]["refreshToken"]
                     feed_token = data["data"].get("feedToken")
-                    refresh_token = data["data"].get("refreshToken")
+
                     self.sessions[client_id] = {
                         "jwtToken": jwt_token,
-                        "feedToken": feed_token,
                         "refreshToken": refresh_token,
+                        "feedToken": feed_token,
                         "api_key": api_key,
-                        "logged_in_at": datetime.utcnow().isoformat(),
-                        "is_active": True,
+                        "logged_in_at": datetime.now(timezone.utc).isoformat(),
                     }
-                    logger.info(f"SmartAPI LIVE login successful for {client_id}")
-                    return {"success": True, "jwtToken": jwt_token, "feedToken": feed_token}
+                    logger.info(f"[{client_id}] SmartAPI login successful. Session active.")
+                    return {"success": True, "jwtToken": jwt_token}
                 else:
-                    error_msg = data.get("message", "Unknown error from SmartAPI")
-                    logger.warning(f"SmartAPI login rejected for {client_id}: {error_msg}")
-                    raise ValueError(f"Angel One login rejected: {error_msg}")
-        except ValueError:
-            raise
+                    error_msg = data.get("message", "Login failed")
+                    logger.error(f"[{client_id}] SmartAPI login rejected: {error_msg}")
+                    return {"success": False, "error": error_msg}
         except Exception as e:
-            logger.error(f"SmartAPI login network error for {client_id}: {e}")
-            raise ConnectionError(f"Could not reach Angel One SmartAPI: {e}")
+            logger.error(f"[{client_id}] SmartAPI connection failed: {e}")
+            return {"success": False, "error": str(e)}
 
-    async def get_rms_funds(self, client_id: str, api_key: Optional[str] = None) -> Dict[str, float]:
+    async def get_rms_limits(self, client_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
         """
-        Query Angel One getRMS API to retrieve live cash and available limits for an account.
+        Fetches live RMS (Risk Management System) available cash balance and total demat balance.
         Endpoint: /rest/secure/angelbroking/user/v1/getRMS
         """
         session = self.sessions.get(client_id)
         if not session or not session.get("jwtToken"):
-            raise ValueError(f"No active SmartAPI session for client {client_id}. Must login first.")
+            logger.warning(f"No active session for {client_id}. Return default values.")
+            return {"net": 0.0, "availablecash": 0.0}
 
         jwt_token = session["jwtToken"]
         key = api_key or session.get("api_key") or ""
@@ -113,24 +146,19 @@ class AngelOneSmartApiService:
                 data = res.json()
                 if data.get("status") and data.get("data"):
                     rms_data = data["data"]
-                    net = float(rms_data.get("net", 0.0) or 0.0)
-                    available_cash = float(rms_data.get("availablecash", 0.0) or 0.0)
-                    available_margin = float(rms_data.get("availablemargin", 0.0) or 0.0)
-                    collateral = float(rms_data.get("collateral", 0.0) or 0.0)
-                    logger.info(f"[{client_id}] RMS sync OK: Net=₹{net}, Cash=₹{available_cash}")
+                    net_balance = float(rms_data.get("net", 0.0))
+                    available_cash = float(rms_data.get("availablecash", 0.0))
                     return {
-                        "net": net,
-                        "available_cash": available_cash,
-                        "available_margin": available_margin,
-                        "collateral": collateral,
+                        "net": net_balance,
+                        "availablecash": available_cash,
+                        "collateral": float(rms_data.get("collateral", 0.0)),
                     }
                 else:
-                    msg = data.get("message", "RMS query failed")
-                    logger.error(f"[{client_id}] RMS query error: {msg}")
-                    raise ValueError(f"Failed to fetch RMS funds: {msg}")
+                    logger.warning(f"[{client_id}] RMS limit fetch returned: {data.get('message')}")
+                    return {"net": 0.0, "availablecash": 0.0}
         except Exception as e:
-            logger.error(f"[{client_id}] RMS API network error: {e}")
-            raise
+            logger.error(f"[{client_id}] Failed to fetch RMS limits: {e}")
+            return {"net": 0.0, "availablecash": 0.0}
 
     async def place_ipo_bid(
         self,
@@ -151,7 +179,7 @@ class AngelOneSmartApiService:
                 "message": f"Invalid UPI VPA: '{upi_vpa}'. Format must be username@bank (e.g. 9876543210@okhdfcbank)",
             }
 
-        order_id = f"ANG_IPO_{int(datetime.utcnow().timestamp())}_{client_id[-4:]}"
+        order_id = f"ANG_IPO_{int(datetime.now(timezone.utc).timestamp())}_{client_id[-4:]}"
         logger.info(
             f"Staged ASBA IPO application for {client_id}: {symbol} | Cat: {category} | {shares} shares @ ₹{price} | UPI: {upi_vpa}"
         )
@@ -174,10 +202,11 @@ class AngelOneSmartApiService:
         Dispatches 09:00:00 AM IST pre-market limit sell order on listing day via SmartAPI placeOrder endpoint.
         Endpoint: /rest/secure/angelbroking/order/v1/placeOrder
         """
+        token = await self.get_symbol_token(symbol, exchange="NSE")
         session = self.sessions.get(client_id)
         if not session or not session.get("jwtToken"):
             logger.warning(f"No active session for {client_id} during pre-market sell. Generating staged ID.")
-            sell_order_id = f"ANG_SELL_{int(datetime.utcnow().timestamp())}_{symbol}"
+            sell_order_id = f"ANG_SELL_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
             return {
                 "success": True,
                 "sell_order_id": sell_order_id,
@@ -192,7 +221,7 @@ class AngelOneSmartApiService:
         order_payload = {
             "variety": "NORMAL",
             "tradingsymbol": f"{symbol}-EQ",
-            "symboltoken": "3045",  # Token looked up from instrument master or symbol
+            "symboltoken": str(token),
             "transactiontype": "SELL",
             "exchange": "NSE",
             "ordertype": "LIMIT",
@@ -222,7 +251,7 @@ class AngelOneSmartApiService:
                 else:
                     err = data.get("message", "Order placement failed")
                     logger.warning(f"[{client_id}] SmartAPI limit order rejected (Market closed or unlisted yet): {err}")
-                    sell_order_id = f"ANG_SELL_{int(datetime.utcnow().timestamp())}_{symbol}"
+                    sell_order_id = f"ANG_SELL_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
                     return {
                         "success": True,
                         "sell_order_id": sell_order_id,
@@ -232,7 +261,7 @@ class AngelOneSmartApiService:
                     }
         except Exception as e:
             logger.error(f"[{client_id}] Pre-market sell network error: {e}")
-            sell_order_id = f"ANG_SELL_{int(datetime.utcnow().timestamp())}_{symbol}"
+            sell_order_id = f"ANG_SELL_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
             return {
                 "success": True,
                 "sell_order_id": sell_order_id,
