@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from app.models.base import BaseModel
 
 def get_utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 class IpoOrder(BaseModel):
     __tablename__ = "ipo_orders"

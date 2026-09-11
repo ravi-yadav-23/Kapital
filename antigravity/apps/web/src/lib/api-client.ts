@@ -54,6 +54,13 @@ export const apiClient = {
     return handleResponse(res, null as any)
   },
 
+  async syncIpos(): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${API_BASE_URL}/ipos/sync`, {
+      method: 'POST',
+    })
+    return handleResponse(res, { success: true, message: 'Sync complete' })
+  },
+
   // ── Accounts ──────────────────────────────────────────────────────────────
   async getAccounts(): Promise<FamilyAccount[]> {
     if (USE_MOCK_DATA) {
@@ -238,6 +245,13 @@ export const apiClient = {
     }
     const res = await fetch(`${API_BASE_URL}/reports/${id}`)
     if (res.status === 404) return null
+    return handleResponse(res, null as any)
+  },
+
+  async generateReport(id: string): Promise<AiReport> {
+    const res = await fetch(`${API_BASE_URL}/reports/${id}/generate`, {
+      method: 'POST',
+    })
     return handleResponse(res, null as any)
   },
 

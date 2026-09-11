@@ -64,7 +64,7 @@ class AiDueDiligenceService:
         prefs = row.value if row else {}
 
         provider = prefs.get("ai_provider") or settings.default_ai_provider or "groq"
-        model = prefs.get("ai_model") or settings.default_ai_model or "llama-3.3-70b-versatile"
+        model = prefs.get("ai_model") or settings.default_ai_model or "openai/gpt-oss-120b"
 
         # Determine active API key
         if provider == "groq":
@@ -140,6 +140,35 @@ class AiDueDiligenceService:
             logger.error(f"Error calling {provider} ({model}): {e}")
             return None
 
+    def format_report_response(self, existing: AiReport, ipo: Optional[Ipo] = None) -> AiReportResponse:
+        """Helper to format an AiReport ORM model and associated Ipo into an AiReportResponse schema."""
+        red_flags = [RedFlagSchema(**rf) if isinstance(rf, dict) else rf for rf in (existing.red_flags or [])]
+        ipo_name = ipo.name if ipo else "IPO Issue"
+        ipo_symbol = ipo.symbol if ipo else "IPO"
+        return AiReportResponse(
+            id=existing.id,
+            ipo_id=existing.ipo_id,
+            ipo_name=ipo_name,
+            ipo_symbol=ipo_symbol,
+            overall_score=existing.overall_score,
+            recommendation=existing.recommendation,
+            score_breakdown=ScoreBreakdownSchema(
+                financial_quality=existing.score_financial_quality,
+                industry_tailwinds=existing.score_industry_tailwinds,
+                subscription_momentum=existing.score_subscription_momentum,
+                valuation_safety=existing.score_valuation_safety,
+                gmp_strength=existing.score_gmp_strength,
+                promoter_integrity=existing.score_promoter_integrity,
+            ),
+            executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo_name}.",
+            strengths=existing.strengths or (ipo.strengths if ipo else []) or [],
+            risks=existing.risks or (ipo.risks if ipo else []) or [],
+            red_flags=red_flags,
+            gmp_percent=existing.gmp_percent or (ipo.gmp_percent if ipo else 0.0),
+            estimated_listing_price=existing.estimated_listing_price,
+            scored_at=existing.scored_at or datetime.now(timezone.utc).strftime("%d %b %Y"),
+        )
+
     async def get_or_generate_report(self, db: AsyncSession, ipo: Ipo, force_refresh: bool = False) -> AiReportResponse:
         """Fetch existing report from DB or generate a fresh analysis via the configured AI model."""
         if not force_refresh:
@@ -148,30 +177,7 @@ class AiDueDiligenceService:
             existing = res.scalar_one_or_none()
 
             if existing:
-                red_flags = [RedFlagSchema(**rf) for rf in (existing.red_flags or [])]
-                return AiReportResponse(
-                    id=existing.id,
-                    ipo_id=existing.ipo_id,
-                    ipo_name=ipo.name,
-                    ipo_symbol=ipo.symbol,
-                    overall_score=existing.overall_score,
-                    recommendation=existing.recommendation,
-                    score_breakdown=ScoreBreakdownSchema(
-                        financial_quality=existing.score_financial_quality,
-                        industry_tailwinds=existing.score_industry_tailwinds,
-                        subscription_momentum=existing.score_subscription_momentum,
-                        valuation_safety=existing.score_valuation_safety,
-                        gmp_strength=existing.score_gmp_strength,
-                        promoter_integrity=existing.score_promoter_integrity,
-                    ),
-                    executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo.name}.",
-                    strengths=existing.strengths or ipo.strengths or [],
-                    risks=existing.risks or ipo.risks or [],
-                    red_flags=red_flags,
-                    gmp_percent=existing.gmp_percent or ipo.gmp_percent,
-                    estimated_listing_price=existing.estimated_listing_price,
-                    scored_at=existing.scored_at or datetime.now(timezone.utc).strftime("%d %b %Y"),
-                )
+                return self.format_report_response(existing, ipo)
 
         # Delegate to autonomous multi-agent orchestrator (Analysis, News, Allocation agents)
         from app.agents.orchestrator import orchestrator

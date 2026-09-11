@@ -51,3 +51,18 @@ async def test_accounts_route(client: AsyncClient, seed_data):
     data = res.json()
     assert len(data) >= 1
     assert data[0]["name"] == "Ravi Kumar"
+
+
+@pytest.mark.asyncio
+async def test_auth_login_route(client: AsyncClient):
+    # 1. Valid login with PIN
+    res = await client.post("/api/auth/login", json={"pin": "7090"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+    assert data["user"]["username"] == "admin"
+
+    # 2. Invalid login rejected
+    res_bad = await client.post("/api/auth/login", json={"pin": "0000"})
+    assert res_bad.status_code == 401

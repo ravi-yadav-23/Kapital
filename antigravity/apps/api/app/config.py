@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     groq_api_key: str = ""
     default_ai_provider: str = "groq"
-    default_ai_model: str = "llama-3.3-70b-versatile"
+    default_ai_model: str = "openai/gpt-oss-120b"
 
     # NSE compliance
     static_ip: str = ""

@@ -10,8 +10,7 @@ from app.models.ipo import Ipo
 from app.models.allotment import AsbaLock, Allotment
 from app.schemas.order import OrderCreate, OrderResponse
 from app.services.angel_service import angel_service
-
-MOCK_ORDERS_STORE: List[Dict[str, Any]] = []
+from app.routers.websocket import broadcast_event
 
 
 def _model_to_response(o: IpoOrder) -> OrderResponse:
@@ -108,7 +107,7 @@ class OrderService:
             status="CONFIRMED" if bid_res.get("success") else "REJECTED",
             reject_reason=None if bid_res.get("success") else bid_res.get("message"),
             mandate_status="AWAITING_APPROVAL",
-            placed_at=datetime.now(timezone.utc),
+            placed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         db.add(order_obj)
 
@@ -145,6 +144,18 @@ class OrderService:
 
         await db.commit()
         await db.refresh(order_obj)
+
+        try:
+            await broadcast_event("ORDER_PLACED", {
+                "order_id": order_obj.id,
+                "account_name": acc_name,
+                "ipo_name": ipo_name,
+                "amount": amount,
+                "status": order_obj.status,
+            })
+        except Exception:
+            pass
+
         return _model_to_response(order_obj)
 
     @staticmethod
@@ -179,6 +190,17 @@ class OrderService:
         order_obj.reject_reason = "Cancelled by user"
         order_obj.mandate_status = "REVOKED"
         await db.commit()
+
+        try:
+            await broadcast_event("ORDER_CANCELLED", {
+                "order_id": order_id,
+                "status": "CANCELLED",
+                "account_name": order_obj.account_name,
+                "ipo_name": order_obj.ipo_name,
+            })
+        except Exception:
+            pass
+
         return _model_to_response(order_obj)
 
     @staticmethod
@@ -282,6 +304,15 @@ class OrderService:
                 acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
 
             await db.commit()
+            try:
+                await broadcast_event("ALLOTMENT_RESULT", {
+                    "order_id": order_id,
+                    "status": "ALLOTTED",
+                    "allotment_id": alt.id,
+                    "ipo_name": order_obj.ipo_name,
+                })
+            except Exception:
+                pass
             return {"success": True, "status": "ALLOTTED", "allotment_id": alt.id, "message": "Allotment confirmed and staged for listing-day sell."}
 
         else:

@@ -33,6 +33,10 @@ async def test_order_creation_and_asba_lock(db_session: AsyncSession, seed_data)
 
     # 3. Cancel order and verify ASBA lock is released
     await order_service.cancel_order(db_session, order_res.id)
-    res_after = await db_session.execute(stmt)
+    db_session.expire_all()
+    fresh_stmt = select(AsbaLock).where(
+        (AsbaLock.account_id == "acc-test-1") & (AsbaLock.ipo_id == "ipo-test-1")
+    )
+    res_after = await db_session.execute(fresh_stmt)
     lock_after = res_after.scalar_one_or_none()
     assert lock_after is None

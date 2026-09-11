@@ -6,7 +6,9 @@ import uuid
 
 from app.config import settings
 from app.db.database import init_db
-from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, accounts
+from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, accounts, auth
+from app.middleware.logging import RequestLoggingMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger("startup")
 
@@ -92,8 +94,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Request logging and rate limiting middleware
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
 # Register API Routers
 app.include_router(health.router, prefix="/health", tags=["health"])
+app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(ipos.router, prefix="/api", tags=["ipos"])
 app.include_router(funds.router, prefix="/api", tags=["funds"])
 app.include_router(orders.router, prefix="/api", tags=["orders"])

@@ -48,3 +48,18 @@ def decrypt_credential(value: Optional[str]) -> Optional[str]:
     except Exception as e:
         logger.error(f"Decryption failed: {e}")
         return value
+
+
+def mask_secret(value: Optional[str]) -> str:
+    """
+    Masks sensitive secrets for safe API response transmission.
+    Example: 'gsk_sample_secret_key_1234' -> 'gsk_...1234'
+    """
+    if not value or not isinstance(value, str):
+        return ""
+    decrypted = decrypt_credential(value)
+    if not decrypted:
+        return ""
+    if len(decrypted) <= 8:
+        return "********"
+    return f"{decrypted[:4]}...{decrypted[-4:]}"

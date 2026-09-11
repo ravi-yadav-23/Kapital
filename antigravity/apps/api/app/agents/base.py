@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.models.setting import SystemSetting
+from app.utils.security import decrypt_credential
 
 logger = logging.getLogger("agent.base")
 
@@ -32,16 +33,18 @@ class BaseAgent:
         prefs = row.value if row else {}
 
         provider = prefs.get("ai_provider") or settings.default_ai_provider or "groq"
-        model = prefs.get("ai_model") or settings.default_ai_model or "llama-3.3-70b-versatile"
+        model = prefs.get("ai_model") or settings.default_ai_model or "openai/gpt-oss-120b"
 
         if provider == "groq":
-            api_key = prefs.get("groq_api_key") or settings.groq_api_key or ""
+            raw_key = prefs.get("groq_api_key") or settings.groq_api_key or ""
         elif provider == "gemini":
-            api_key = prefs.get("gemini_api_key") or settings.gemini_api_key or ""
+            raw_key = prefs.get("gemini_api_key") or settings.gemini_api_key or ""
         elif provider == "anthropic":
-            api_key = prefs.get("anthropic_api_key") or settings.anthropic_api_key or ""
+            raw_key = prefs.get("anthropic_api_key") or settings.anthropic_api_key or ""
         else:
-            api_key = ""
+            raw_key = ""
+
+        api_key = decrypt_credential(raw_key) if raw_key else ""
 
         return {
             "provider": provider.lower(),
@@ -57,7 +60,7 @@ class BaseAgent:
     ) -> Optional[Dict[str, Any]]:
         """Invokes the configured LLM with system instructions and user prompt expecting JSON."""
         provider = ai_cfg.get("provider", "groq")
-        model = ai_cfg.get("model", "llama-3.3-70b-versatile")
+        model = ai_cfg.get("model", "openai/gpt-oss-120b")
         api_key = ai_cfg.get("api_key", "")
 
         if not api_key:
@@ -71,7 +74,7 @@ class BaseAgent:
                 from groq import AsyncGroq
                 client = AsyncGroq(api_key=api_key)
                 response = await client.chat.completions.create(
-                    model=model or "llama-3.3-70b-versatile",
+                    model=model or "openai/gpt-oss-120b",
                     messages=[
                         {"role": "system", "content": full_system},
                         {"role": "user", "content": user_prompt},

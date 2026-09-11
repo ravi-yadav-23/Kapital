@@ -11,16 +11,24 @@ from app.services.report_service import report_service
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
+from app.models.report import AiReport
+
 @router.get("", response_model=List[AiReportResponse])
 async def list_ai_reports(db: AsyncSession = Depends(get_db)):
-    """List all analyzed AI Due Diligence reports with 6-dimension scores from PostgreSQL."""
-    stmt = select(Ipo)
+    """
+    List all generated AI Due Diligence reports with 6-dimension scores.
+    Single SQL JOIN query that never blocks on synchronous LLM calls.
+    """
+    stmt = (
+        select(AiReport, Ipo)
+        .join(Ipo, AiReport.ipo_id == Ipo.id)
+        .order_by(AiReport.created_at.desc())
+    )
     res = await db.execute(stmt)
-    ipos = res.scalars().all()
+    rows = res.all()
     reports = []
-    for ipo in ipos:
-        rep = await report_service.get_or_generate_report(db, ipo)
-        reports.append(rep)
+    for report_row, ipo_row in rows:
+        reports.append(report_service.format_report_response(report_row, ipo_row))
     return reports
 
 

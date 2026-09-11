@@ -42,4 +42,11 @@ async def run_listing_day_sell_staging(db: AsyncSession) -> int:
 
     await db.commit()
     logger.info(f"Listing sell staging complete. Dispatched {staged_count} pre-market orders.")
+
+    try:
+        from app.routers.websocket import broadcast_event
+        await broadcast_event("LISTING_SELLS_DISPATCHED", {"count": staged_count})
+    except Exception:
+        pass
+
     return staged_count

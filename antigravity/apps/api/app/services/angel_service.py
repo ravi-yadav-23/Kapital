@@ -21,10 +21,10 @@ class AngelOneSmartApiService:
     def __init__(self):
         self.sessions: Dict[str, Dict[str, Any]] = {}
 
-    async def get_symbol_token(self, symbol: str, exchange: str = "NSE") -> str:
+    async def get_symbol_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
         """
-        Looks up Angel One numeric symboltoken for a given stock symbol & exchange.
-        Caches in memory for low-latency listing day execution.
+        Retrieves the exact Angel One scrip token from OpenAPI Scrip Master.
+        Returns None if not found, eliminating silent hardcoded fallbacks.
         """
         clean_symbol = symbol.upper().replace("-EQ", "").strip()
         cache_key = f"{exchange}:{clean_symbol}"
@@ -52,7 +52,16 @@ class AngelOneSmartApiService:
             except Exception as ex:
                 logger.warning(f"Failed to fetch Angel One instrument master: {ex}")
 
-        return self._instrument_cache.get(cache_key, "3045")
+        # Check cache or fallback match with -EQ
+        token = self._instrument_cache.get(cache_key)
+        if not token:
+            token = self._instrument_cache.get(f"{exchange}:{clean_symbol}-EQ")
+
+        if not token:
+            logger.error(f"Instrument token NOT found for {cache_key} in Angel One master scrip list.")
+            return None
+
+        return token
 
     def generate_totp(self, totp_secret: str) -> str:
         """Generate 6-digit TOTP for Angel One login."""
@@ -203,6 +212,13 @@ class AngelOneSmartApiService:
         Endpoint: /rest/secure/angelbroking/order/v1/placeOrder
         """
         token = await self.get_symbol_token(symbol, exchange="NSE")
+        if not token:
+            logger.error(f"Cannot stage pre-market sell: symbol token for '{symbol}' not found in Angel One instrument master.")
+            return {
+                "success": False,
+                "message": f"Instrument token for '{symbol}' not found in Angel One master scrip file. Listing may not be active on NSE yet.",
+            }
+
         session = self.sessions.get(client_id)
         if not session or not session.get("jwtToken"):
             logger.warning(f"No active session for {client_id} during pre-market sell. Generating staged ID.")

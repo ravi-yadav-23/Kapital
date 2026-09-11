@@ -5,22 +5,44 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import { Ipo, FamilyAccount } from '@/types'
 import { IpoBoard } from '@/components/ipo/IpoBoard'
-import { TrendingUp, Layers, Flame, Sparkles } from 'lucide-react'
+import { TrendingUp, Layers, Flame, Sparkles, RefreshCw } from 'lucide-react'
 
 export default function IposPage() {
   const [ipos, setIpos] = useState<Ipo[]>([])
   const [accounts, setAccounts] = useState<FamilyAccount[]>([])
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+
+  const fetchData = async () => {
+    try {
+      const [iposData, accountsData] = await Promise.all([
+        apiClient.getIpos(),
+        apiClient.getAccounts(),
+      ])
+      setIpos(iposData)
+      setAccounts(accountsData)
+    } catch (err) {
+      console.error('Failed to load IPOs:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    Promise.all([apiClient.getIpos(), apiClient.getAccounts()]).then(
-      ([iposData, accountsData]) => {
-        setIpos(iposData)
-        setAccounts(accountsData)
-        setLoading(false)
-      }
-    )
+    fetchData()
   }, [])
+
+  const handleSyncMarket = async () => {
+    setSyncing(true)
+    try {
+      await apiClient.syncIpos()
+      await fetchData()
+    } catch (err) {
+      console.error('Failed to sync market IPOs:', err)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const openCount = ipos.filter((i) => i.status === 'open').length
   const closingCount = ipos.filter((i) => i.status === 'closing_today').length
@@ -40,18 +62,29 @@ export default function IposPage() {
             </p>
           </div>
 
-          {/* Mini pipeline status chips */}
-          <div className="hidden sm:flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-status-open text-status-open-fg border border-accent-green/20 text-xs font-mono font-bold">
-              <span className="dot-pulse" />
-              <span>{openCount} Open</span>
-            </div>
-            {closingCount > 0 && (
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-status-closing text-status-closing-fg border border-accent-amber/20 text-xs font-mono font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-amber animate-ping" />
-                <span>{closingCount} Closing Today</span>
+          {/* Actions & Mini pipeline status chips */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSyncMarket}
+              disabled={syncing}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-elevated text-xs font-semibold text-text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-brand-from ${syncing ? 'animate-spin' : ''}`} />
+              <span>{syncing ? 'Syncing...' : 'Sync Market Feed'}</span>
+            </button>
+
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-status-open text-status-open-fg border border-accent-green/20 text-xs font-mono font-bold">
+                <span className="dot-pulse" />
+                <span>{openCount} Open</span>
               </div>
-            )}
+              {closingCount > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-status-closing text-status-closing-fg border border-accent-amber/20 text-xs font-mono font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-amber animate-ping" />
+                  <span>{closingCount} Closing Today</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

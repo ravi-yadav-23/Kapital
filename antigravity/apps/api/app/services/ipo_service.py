@@ -81,7 +81,14 @@ class IpoService:
         if max_investment is not None:
             stmt = stmt.where(Ipo.min_investment <= max_investment)
 
-        stmt = stmt.order_by(Ipo.issue_close_date.asc())
+        from sqlalchemy import case
+        status_order = case(
+            (Ipo.status == "open", 1),
+            (Ipo.status == "closing_today", 2),
+            (Ipo.status == "upcoming", 3),
+            else_=4,
+        )
+        stmt = stmt.order_by(status_order.asc(), Ipo.score.desc().nullslast(), Ipo.issue_close_date.asc().nullslast())
         result = await db.execute(stmt)
         ipos = result.scalars().all()
 

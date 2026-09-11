@@ -24,7 +24,19 @@ class ConnectionManager:
             except Exception:
                 pass
 
+from datetime import datetime, timezone
+
 manager = ConnectionManager()
+
+
+async def broadcast_event(event_type: str, payload: dict):
+    """Broadcast structured real-time market or order event to all connected UI clients."""
+    message = {
+        "type": event_type,
+        "payload": payload,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast(message)
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
