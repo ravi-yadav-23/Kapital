@@ -30,18 +30,21 @@ def _parse_issue_size_cr(issue_size_str: str) -> float:
         return 0.0
 
 
+from app.config import settings
 from app.utils.score_engine import IpoScoreEngine
-
 
 import asyncio
 
 async def fetch_ipos_from_ipoalerts(status: str) -> List[Dict[str, Any]]:
-    """Fetch raw IPOs for a given status from ipoalerts.in API with standard browser headers."""
+    """Fetch raw IPOs for a given status from ipoalerts.in API with standard browser headers and API key if available."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": "https://ipoalerts.in/",
         "Accept": "application/json, text/plain, */*",
     }
+    if settings.ipoalerts_api_key:
+        headers["Authorization"] = f"Bearer {settings.ipoalerts_api_key}"
+        headers["X-API-KEY"] = settings.ipoalerts_api_key
     try:
         async with httpx.AsyncClient(headers=headers, timeout=15.0) as client:
             res = await client.get(f"{BASE_IPOALERTS_URL}?status={status}")
@@ -97,7 +100,7 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
             
             soup = BeautifulSoup(res.text, 'html.parser')
             tables = soup.find_all('table')
-            today = datetime.date(2026, 9, 12)
+            today = datetime.date.today()
             
             for t_idx, ipo_type in [(0, 'EQ'), (1, 'SME')]:
                 if t_idx >= len(tables):
@@ -186,24 +189,16 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
 
 async def sync_ipos_pipeline(db: AsyncSession) -> int:
     """
-    Fetch open and upcoming IPOs from live market feeds (ipowatch & ipoalerts) and upsert into PostgreSQL.
+    Fetch open and upcoming IPOs from live market feeds (ipoalerts primary, ipowatch secondary) and upsert into PostgreSQL.
     """
     synced_count = 0
 
-    # 1. Primary Live Feed: ipowatch.in (Mainboard & SME with live GMP)
-    live_ipos = await fetch_ipos_from_ipowatch()
-    for ipo_dict in live_ipos:
-        try:
-            await ipo_service.upsert_ipo(db, ipo_dict)
-            synced_count += 1
-        except Exception as ex:
-            logger.error(f"Failed to upsert live IPO {ipo_dict.get('symbol')}: {ex}")
-
-    # 2. Auxiliary Feed: ipoalerts.in
+    # 1. Primary Feed: ipoalerts.in (Structured API with details, subscription, schedule)
     statuses = ["open", "upcoming", "closed"]
     for status in statuses:
         raw_ipos = await fetch_ipos_from_ipoalerts(status)
-        await asyncio.sleep(1.2)  # Throttle to respect ipoalerts rate limits
+        if raw_ipos:
+            await asyncio.sleep(0.5)  # Throttle to respect ipoalerts rate limits
         for raw in raw_ipos:
             try:
                 min_p, max_p = _parse_price_range(raw.get("priceRange", "100-100"))
@@ -265,6 +260,15 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
                 synced_count += 1
             except Exception as ex:
                 logger.error(f"Failed to ingest IPO {raw.get('symbol')}: {ex}")
+
+    # 2. Secondary / Live GMP Feed: ipowatch.in (Mainboard & SME with live GMP)
+    live_ipos = await fetch_ipos_from_ipowatch()
+    for ipo_dict in live_ipos:
+        try:
+            await ipo_service.upsert_ipo(db, ipo_dict)
+            synced_count += 1
+        except Exception as ex:
+            logger.error(f"Failed to upsert live IPO {ipo_dict.get('symbol')}: {ex}")
 
     await db.commit()
     logger.info(f"IPO sync complete. Total {synced_count} IPOs upserted into PostgreSQL.")

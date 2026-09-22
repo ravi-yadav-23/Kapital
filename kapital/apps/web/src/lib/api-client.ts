@@ -123,20 +123,47 @@ export const apiClient = {
     return handleResponse(res, MOCK_FUND_SUMMARY)
   },
 
-  async getAllocationPlan(): Promise<AllocationPlan> {
+  async getAllocationPlan(forceRefresh = false): Promise<AllocationPlan> {
     if (USE_MOCK_DATA) {
       return MOCK_ALLOCATION_PLAN
     }
+    const CACHE_KEY = 'kapitl_alloc_plan'
+    const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+    if (!forceRefresh && typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem(CACHE_KEY)
+        if (cached) {
+          const { data, timestamp } = JSON.parse(cached)
+          if (Date.now() - timestamp < CACHE_TTL) {
+            return data
+          }
+        }
+      } catch {
+        // Ignore cache parsing errors
+      }
+    }
+
     const res = await fetch(`${API_BASE_URL}/funds/optimize`, {
       method: 'POST',
     })
     const data = await handleResponse(res, MOCK_ALLOCATION_PLAN)
-    return {
+    const result = {
       ...data,
       entries: data.entries || [],
       skipped_ipos: data.skipped_ipos || [],
       warnings: data.warnings || [],
     }
+
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: result, timestamp: Date.now() }))
+      } catch {
+        // Ignore cache storage errors
+      }
+    }
+
+    return result
   },
 
   async getAsbaLocks(): Promise<any[]> {
@@ -221,6 +248,13 @@ export const apiClient = {
       method: 'DELETE',
     })
     return handleResponse(res, { success: true })
+  },
+
+  async markOrderApplied(orderId: string): Promise<IpoOrder> {
+    const res = await fetch(`${API_BASE_URL}/orders/${orderId}/mark-applied`, {
+      method: 'POST',
+    })
+    return handleResponse(res, null as any)
   },
 
   async setOrderAllotmentResult(orderId: string, result: 'ALLOTTED' | 'NOT_ALLOTTED'): Promise<any> {

@@ -31,6 +31,14 @@ async def submit_ipo_bid(order_data: OrderCreate, db: AsyncSession = Depends(get
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.post("/{order_id}/mark-applied", response_model=OrderResponse)
+async def mark_staged_order_applied(order_id: str, db: AsyncSession = Depends(get_db)):
+    """Mark an IPO application intent as successfully submitted in the broker app."""
+    try:
+        return await order_service.mark_applied(db=db, order_id=order_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 @router.post("/{order_id}/cancel", response_model=OrderResponse)
 async def cancel_staged_order(order_id: str, db: AsyncSession = Depends(get_db)):
     """Cancel a staged application and release the locked ASBA balance back to available funds."""

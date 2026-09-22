@@ -47,6 +47,12 @@ SECTOR BENCHMARKS: {json.dumps(benchmarks)}
 
         res = await self.call_llm(ANALYSIS_AGENT_SYSTEM, user_prompt, ai_cfg)
         if res:
+            for k in ["financial_quality_score", "valuation_safety_score"]:
+                if k in res:
+                    try:
+                        res[k] = int(res[k])
+                    except Exception:
+                        pass
             return res
 
         # Algorithmic fallback when no LLM API key is present

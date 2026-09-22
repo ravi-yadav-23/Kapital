@@ -49,6 +49,12 @@ ISSUE PROFILE:
 
         res = await self.call_llm(NEWS_AGENT_SYSTEM, user_prompt, ai_cfg)
         if res:
+            for k in ["promoter_integrity_score", "industry_tailwinds_score"]:
+                if k in res:
+                    try:
+                        res[k] = int(res[k])
+                    except Exception:
+                        pass
             return res
 
         # Fallback based on GMP and subscription

@@ -169,36 +169,6 @@ class AngelOneSmartApiService:
             logger.error(f"[{client_id}] Failed to fetch RMS limits: {e}")
             return {"net": 0.0, "availablecash": 0.0}
 
-    async def place_ipo_bid(
-        self,
-        client_id: str,
-        symbol: str,
-        category: str,
-        shares: int,
-        price: float,
-        upi_vpa: str,
-    ) -> Dict[str, Any]:
-        """
-        Validates and registers an ASBA IPO Application with UPI VPA mandate staging.
-        Generates an audit-ready trace order ID and links to the active demat account.
-        """
-        if not upi_vpa or "@" not in upi_vpa:
-            return {
-                "success": False,
-                "message": f"Invalid UPI VPA: '{upi_vpa}'. Format must be username@bank (e.g. 9876543210@okhdfcbank)",
-            }
-
-        order_id = f"ANG_IPO_{int(datetime.now(timezone.utc).timestamp())}_{client_id[-4:]}"
-        logger.info(
-            f"Staged ASBA IPO application for {client_id}: {symbol} | Cat: {category} | {shares} shares @ ₹{price} | UPI: {upi_vpa}"
-        )
-        return {
-            "success": True,
-            "angel_order_id": order_id,
-            "status": "CONFIRMED",
-            "message": f"ASBA IPO bid staged for {symbol} ({shares} shares @ ₹{price}). UPI Mandate requested on {upi_vpa}.",
-        }
-
     async def stage_listing_sell_order(
         self,
         client_id: str,

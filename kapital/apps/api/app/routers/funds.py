@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -16,8 +16,9 @@ router = APIRouter(prefix="/funds", tags=["funds"])
 
 
 @router.get("/summary", response_model=FundSummaryResponse)
-async def get_fund_summary(db: AsyncSession = Depends(get_db)):
+async def get_fund_summary(response: Response, db: AsyncSession = Depends(get_db)):
     """Get overall family corpus balance, available deployment liquidity, and ASBA locked totals."""
+    response.headers["Cache-Control"] = "public, max-age=30"
     accounts = await account_service.get_all_accounts(db)
     total_family    = sum(a.total_balance for a in accounts)
     total_available = sum(a.available_balance for a in accounts)

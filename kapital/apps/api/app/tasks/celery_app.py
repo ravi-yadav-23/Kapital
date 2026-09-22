@@ -25,34 +25,9 @@ celery.conf.update(
     task_time_limit=600,  # 10 minutes max per task
 )
 
-# Configure Celery Beat Periodic Tasks
-celery.conf.beat_schedule = {
-    # 1. 09:00:00 AM IST: Pre-market listing-day sell execution
-    "dispatch-listing-sells-0900-ist": {
-        "task": "app.tasks.celery_app.dispatch_listing_sells_celery",
-        "schedule": crontab(hour=9, minute=0, day_of_week="1-5"),
-    },
-    # 2. 05:00:00 PM IST: Daily IPO subscription & GMP sync
-    "sync-ipos-daily-1700-ist": {
-        "task": "app.tasks.celery_app.sync_ipos_celery",
-        "schedule": crontab(hour=17, minute=0, day_of_week="1-5"),
-    },
-    # 3. 10:00:00 PM IST: Expired ASBA fund lock cleanup
-    "asba-nightly-sweep-2200-ist": {
-        "task": "app.tasks.celery_app.asba_sweep_celery",
-        "schedule": crontab(hour=22, minute=0),
-    },
-    # 4. 10:30:00 PM IST: Fund corpus reconciliation & utilization snapshot
-    "reconcile-funds-nightly-2230-ist": {
-        "task": "app.tasks.celery_app.reconcile_funds_celery",
-        "schedule": crontab(hour=22, minute=30),
-    },
-    # 5. 11:00:00 PM IST: Nightly batch AI due diligence report generation
-    "nightly-ai-reports-2300-ist": {
-        "task": "app.tasks.celery_app.nightly_reports_celery",
-        "schedule": crontab(hour=23, minute=0),
-    },
-}
+# Note: Periodic scheduling is managed natively in-process by APScheduler (app.tasks.scheduler)
+# to avoid requiring external Redis/Celery beat services for routine execution.
+celery.conf.beat_schedule = {}
 
 
 # ── Celery Task Definitions ───────────────────────────────────────────────────

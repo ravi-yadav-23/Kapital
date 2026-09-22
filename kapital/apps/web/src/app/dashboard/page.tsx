@@ -16,24 +16,43 @@ export default function DashboardPage() {
   const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(null)
   const [plan, setPlan] = useState<AllocationPlan | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingPlan, setLoadingPlan] = useState(false)
+
+  const handleCalculatePlan = async (force = false) => {
+    setLoadingPlan(true)
+    try {
+      const planData = await apiClient.getAllocationPlan(force)
+      setPlan(planData)
+    } catch (err) {
+      console.error('Error calculating allocation plan:', err)
+    } finally {
+      setLoadingPlan(false)
+    }
+  }
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [iposData, fundsData, pnlData, planData] = await Promise.all([
+        const [iposData, fundsData, pnlData] = await Promise.all([
           apiClient.getIpos(),
           apiClient.getFundSummary(),
           apiClient.getPnlSummary(),
-          apiClient.getAllocationPlan(),
         ])
         setIpos(iposData)
         setFundSummary(fundsData)
         setPnlSummary(pnlData)
-        setPlan(planData)
       } catch (err) {
         console.error('Error loading dashboard data:', err)
       } finally {
         setLoading(false)
+      }
+
+      // Check for cached plan or fetch without blocking page render
+      try {
+        const planData = await apiClient.getAllocationPlan(false)
+        setPlan(planData)
+      } catch (err) {
+        console.warn('Deferred allocation plan load:', err)
       }
     }
     loadDashboardData()
@@ -211,14 +230,33 @@ export default function DashboardPage() {
             <AllocationSummary plan={plan} />
           ) : (
             <div className="card p-8 text-center">
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-surface-elevated flex items-center justify-center">
                   <DollarSign className="w-6 h-6 text-text-muted/40" />
                 </div>
-                <p className="text-sm font-medium text-text-primary">No Allocation Plan</p>
-                <p className="text-2xs text-text-muted">
-                  Run the allocation solver to see recommended distributions
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-text-primary">Family Allocation Plan</p>
+                  <p className="text-2xs text-text-muted mt-1">
+                    Calculate mathematically optimal family bids across all active IPOs
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleCalculatePlan(true)}
+                  disabled={loadingPlan}
+                  className="btn-primary text-xs px-4 py-2 flex items-center gap-2"
+                >
+                  {loadingPlan ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Optimizing with PuLP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Calculate Allocation</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           )}

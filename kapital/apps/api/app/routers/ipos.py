@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException, Depends
+from fastapi import APIRouter, Query, HTTPException, Depends, Response
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ router = APIRouter(prefix="/ipos", tags=["ipos"])
 
 @router.get("", response_model=List[IpoResponse])
 async def list_ipos(
+    response: Response,
     status: Optional[str] = Query(None, description="Filter by status: open, upcoming, closing_today, closed, all"),
     type: Optional[str] = Query(None, description="Filter by type: EQ, SME, REIT, ALL"),
     min_score: Optional[int] = Query(None, description="Filter by minimum AI score"),
@@ -18,6 +19,7 @@ async def list_ipos(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch active, closing today, upcoming, and closed IPO issues with AI scores & subscription rates from PostgreSQL."""
+    response.headers["Cache-Control"] = "public, max-age=60"
     return await ipo_service.get_all_ipos(
         db=db,
         status=status,

@@ -22,8 +22,9 @@ import {
 
 const STATUS_OPTIONS: Array<{ value: 'ALL' | OrderStatus; label: string }> = [
   { value: 'ALL', label: 'All statuses' },
+  { value: 'PENDING', label: 'Pending (Intent Recorded)' },
+  { value: 'APPLIED', label: 'Applied in Broker' },
   { value: 'CONFIRMED', label: 'Confirmed (Staged)' },
-  { value: 'PENDING', label: 'Pending' },
   { value: 'SUBMITTED', label: 'Submitted' },
   { value: 'ALLOTTED', label: 'Allotted' },
   { value: 'NOT_ALLOTTED', label: 'Not Allotted (Refunded)' },
@@ -33,12 +34,16 @@ const STATUS_OPTIONS: Array<{ value: 'ALL' | OrderStatus; label: string }> = [
 
 function OrderStatusBadge({ status }: { status: OrderStatus }) {
   const map: Record<
-    OrderStatus,
+    string,
     { className: string; icon: React.ReactNode }
   > = {
     PENDING: {
       className: 'text-accent-amber bg-accent-amber/10 border border-accent-amber/30',
       icon: <Clock className="w-3 h-3" />,
+    },
+    APPLIED: {
+      className: 'text-accent-blue bg-accent-blue/10 border border-accent-blue/30',
+      icon: <Send className="w-3 h-3" />,
     },
     SUBMITTED: {
       className: 'text-accent-blue bg-accent-blue/10 border border-accent-blue/30',
@@ -102,6 +107,16 @@ export default function OrdersPage() {
       setOrders(data)
     } catch (err: any) {
       alert(err.message || 'Failed to cancel order')
+    }
+  }
+
+  const handleMarkApplied = async (orderId: string) => {
+    try {
+      await apiClient.markOrderApplied(orderId)
+      const data = await apiClient.getOrders()
+      setOrders(data)
+    } catch (err: any) {
+      alert(err.message || 'Failed to mark order as applied')
     }
   }
 
@@ -192,10 +207,10 @@ export default function OrdersPage() {
           <div>
             <h1 className="page-title flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-brand-from" />
-              <span>Order Placement History</span>
+              <span>Order & Application Tracker</span>
             </h1>
             <p className="page-subtitle">
-              Audit log of all IPO applications submitted through Angel One SmartAPI
+              Track ASBA capital allocation, manual broker submissions, and allotment outcomes
             </p>
           </div>
 
@@ -371,7 +386,17 @@ export default function OrdersPage() {
                       </td>
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {['CONFIRMED', 'PENDING', 'SUBMITTED'].includes(ord.status) && (
+                          {ord.status === 'PENDING' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkApplied(ord.id)}
+                              title="Confirm you have submitted this bid in your broker app (Angel One, Zerodha, etc.)"
+                              className="px-2 py-1 text-[10px] font-bold rounded-lg bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 border border-accent-blue/30 transition-all"
+                            >
+                              Mark Applied
+                            </button>
+                          )}
+                          {['CONFIRMED', 'PENDING', 'SUBMITTED', 'APPLIED'].includes(ord.status) && (
                             <>
                               <button
                                 type="button"

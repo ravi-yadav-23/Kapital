@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { Allotment } from '@/types'
 import { AmountDisplay } from '../shared/AmountDisplay'
 import { PnlDisplay } from '../shared/PnlDisplay'
+import { apiClient } from '@/lib/api-client'
 import { formatINR, formatDate } from '@/lib/formatters'
 import { X, DollarSign, Clock, ShieldCheck, CheckCircle2, AlertTriangle, Send } from 'lucide-react'
 
@@ -31,12 +32,16 @@ export function SellModal({ allotment, isOpen, onClose }: SellModalProps) {
   const estimatedPnl = totalSellValue - investedForShares - dpCharge
   const estimatedRoi = (estimatedPnl / investedForShares) * 100
 
-  const handleStageOrder = () => {
+  const handleStageOrder = async () => {
     setIsStaging(true)
-    setTimeout(() => {
-      setIsStaging(false)
+    try {
+      await apiClient.stageSellOrder(allotment.id, limitPrice)
       setIsSuccess(true)
-    }, 1200)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to stage listing sell order')
+    } finally {
+      setIsStaging(false)
+    }
   }
 
   const handleClose = () => {

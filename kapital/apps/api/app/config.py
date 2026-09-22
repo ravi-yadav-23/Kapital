@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     default_ai_provider: str = "groq"
     default_ai_model: str = "openai/gpt-oss-120b"
 
+    # IPO Data Sources
+    ipoalerts_api_key: str = ""  # Free key from ipoalerts.in — sign up at https://ipoalerts.in
+
     # NSE compliance
     static_ip: str = ""
 

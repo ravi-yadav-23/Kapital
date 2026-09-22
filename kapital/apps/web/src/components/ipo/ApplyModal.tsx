@@ -364,7 +364,7 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                 }`}
               >
                 {isSubmitting ? (
-                  <span className="animate-pulse">Submitting via SmartAPI...</span>
+                  <span className="animate-pulse">Recording ASBA Lock...</span>
                 ) : isUpcoming ? (
                   <>
                     <Clock className="w-3.5 h-3.5" />
@@ -375,7 +375,7 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                 ) : (
                   <>
                     <Send className="w-3.5 h-3.5" />
-                    <span>Confirm & Apply</span>
+                    <span>Record & Lock ASBA Funds</span>
                   </>
                 )}
               </button>

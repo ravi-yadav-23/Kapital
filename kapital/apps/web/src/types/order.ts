@@ -1,4 +1,4 @@
-export type OrderStatus = 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'NOT_ALLOTTED' | 'ALLOTTED'
+export type OrderStatus = 'PENDING' | 'APPLIED' | 'SUBMITTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'NOT_ALLOTTED' | 'ALLOTTED'
 export type OrderCategory = 'RETAIL' | 'SHNI' | 'BHNI'
 
 export interface IpoOrder {

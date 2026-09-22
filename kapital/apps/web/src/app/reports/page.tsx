@@ -434,6 +434,25 @@ export default function ReportsPage() {
                 </div>
               </div>
 
+              {/* Multi-Agent Live Audit Status Banner */}
+              {analyzing && (
+                <div className="p-4 rounded-xl bg-brand-from/10 border border-brand-from/30 space-y-2 animate-fade-in">
+                  <div className="flex items-center justify-between text-xs font-semibold text-brand-from">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3.5 h-3.5 border-2 border-brand-from border-t-transparent rounded-full animate-spin" />
+                      <span>Running Multi-Agent Due Diligence Workflow...</span>
+                    </div>
+                    <span className="text-2xs font-mono">3 Agents Parallel</span>
+                  </div>
+                  <p className="text-2xs text-text-secondary leading-relaxed">
+                    Executing Lead Equity Research & Valuation Analyst, Market Sentiment & Governance Investigator, and Family Capital Allocation Strategist.
+                  </p>
+                  <div className="w-full bg-surface-elevated rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-gradient-to-r from-brand-from to-brand-to h-full w-2/3 animate-pulse rounded-full" />
+                  </div>
+                </div>
+              )}
+
               {/* Visual Score Radar & Dimension Bars */}
               {currentReport?.score_breakdown ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

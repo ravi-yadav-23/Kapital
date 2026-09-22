@@ -44,7 +44,7 @@ class IpoDueDiligenceOrchestrator:
             + (subscription_momentum * 0.10)
             - penalties
         )
-        return max(0, min(100, int(round(raw_score))))
+        return max(1, min(100, int(round(raw_score))))
 
     @staticmethod
     def get_recommendation(score: int) -> str:

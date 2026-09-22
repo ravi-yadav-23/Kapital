@@ -81,16 +81,7 @@ class OrderService:
         shares = data.lots * lot_sz
         amount = shares * data.bid_price
 
-        # Submit via Angel One SmartAPI service
-        bid_res = await angel_service.place_ipo_bid(
-            client_id=acc.angel_client_id if acc else "ANG_DEFAULT",
-            symbol=ipo.symbol if ipo else "IPO",
-            category=data.category,
-            shares=shares,
-            price=data.bid_price,
-            upi_vpa=data.upi_vpa,
-        )
-
+        # Record manual IPO application intent & reserve ASBA capital
         order_obj = IpoOrder(
             id=f"ord-{str(uuid.uuid4())[:8]}",
             account_id=data.account_id,
@@ -103,10 +94,10 @@ class OrderService:
             bid_price=data.bid_price,
             amount=amount,
             upi_vpa=data.upi_vpa,
-            angel_order_id=bid_res.get("angel_order_id"),
-            status="CONFIRMED" if bid_res.get("success") else "REJECTED",
-            reject_reason=None if bid_res.get("success") else bid_res.get("message"),
-            mandate_status="AWAITING_APPROVAL",
+            angel_order_id=None,
+            status="PENDING",
+            reject_reason=None,
+            mandate_status="PENDING_SUBMISSION",
             placed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         db.add(order_obj)
@@ -119,28 +110,27 @@ class OrderService:
                 acc.available_liquid_balance = max(0.0, acc.available_liquid_balance - amount)
 
         # Create persistent ASBA lock record for timeline tracking
-        if bid_res.get("success"):
-            rel_dt = None
-            if ipo and ipo.listing_date:
-                try:
-                    rel_dt = datetime.strptime(str(ipo.listing_date)[:10], "%Y-%m-%d").date()
-                except Exception:
-                    pass
-            if not rel_dt:
-                rel_dt = date.today() + timedelta(days=4)
+        rel_dt = None
+        if ipo and ipo.listing_date:
+            try:
+                rel_dt = datetime.strptime(str(ipo.listing_date)[:10], "%Y-%m-%d").date()
+            except Exception:
+                pass
+        if not rel_dt:
+            rel_dt = date.today() + timedelta(days=4)
 
-            lock_obj = AsbaLock(
-                id=f"lock-{str(uuid.uuid4())[:8]}",
-                account_id=data.account_id,
-                ipo_id=data.ipo_id,
-                account_name=acc_name,
-                ipo_name=ipo_name,
-                amount=amount,
-                lock_date=date.today(),
-                release_date=rel_dt,
-                is_conflict=False,
-            )
-            db.add(lock_obj)
+        lock_obj = AsbaLock(
+            id=f"lock-{str(uuid.uuid4())[:8]}",
+            account_id=data.account_id,
+            ipo_id=data.ipo_id,
+            account_name=acc_name,
+            ipo_name=ipo_name,
+            amount=amount,
+            lock_date=date.today(),
+            release_date=rel_dt,
+            is_conflict=False,
+        )
+        db.add(lock_obj)
 
         await db.commit()
         await db.refresh(order_obj)
@@ -152,6 +142,31 @@ class OrderService:
                 "ipo_name": ipo_name,
                 "amount": amount,
                 "status": order_obj.status,
+            })
+        except Exception:
+            pass
+
+        return _model_to_response(order_obj)
+
+    @staticmethod
+    async def mark_applied(db: AsyncSession, order_id: str) -> OrderResponse:
+        """Marks an order intent as applied manually in broker app."""
+        stmt = select(IpoOrder).where(IpoOrder.id == order_id)
+        res = await db.execute(stmt)
+        order_obj = res.scalar_one_or_none()
+        if not order_obj:
+            raise ValueError("Order not found")
+
+        order_obj.status = "APPLIED"
+        order_obj.mandate_status = "SUBMITTED"
+        await db.commit()
+
+        try:
+            await broadcast_event("ORDER_UPDATED", {
+                "order_id": order_id,
+                "status": "APPLIED",
+                "account_name": order_obj.account_name,
+                "ipo_name": order_obj.ipo_name,
             })
         except Exception:
             pass
