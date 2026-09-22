@@ -7,11 +7,6 @@ from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Default admin password / pin in local environments
-DEFAULT_ADMIN_PIN = "7090"
-DEFAULT_ADMIN_HASH = hash_password(DEFAULT_ADMIN_PIN)
-
-
 class LoginRequest(BaseModel):
     username: Optional[str] = "admin"
     password: Optional[str] = None
@@ -39,10 +34,13 @@ async def login(req: LoginRequest):
     credential = req.password or req.pin or ""
     valid = False
 
-    # Check against master secret or default pin
-    if credential in [DEFAULT_ADMIN_PIN, settings.secret_key]:
+    admin_pin = getattr(settings, "admin_pin", "7090")
+    admin_hash = hash_password(admin_pin)
+
+    # Check against master secret or configured admin pin
+    if credential in [admin_pin, settings.secret_key]:
         valid = True
-    elif verify_password(credential, DEFAULT_ADMIN_HASH):
+    elif verify_password(credential, admin_hash):
         valid = True
 
     if not valid:

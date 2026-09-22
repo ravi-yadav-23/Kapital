@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
-import { Ipo, FundSummary, PnlSummary, AllocationPlan } from '@/types'
+import { Ipo, FundSummary, PnlSummary, AllocationPlan, FamilyAccount } from '@/types'
 import { StatCard } from '@/components/shared/StatCard'
 import { AmountDisplay } from '@/components/shared/AmountDisplay'
 import { IpoBoard } from '@/components/ipo/IpoBoard'
@@ -12,6 +12,7 @@ import { Wallet, CheckCircle2, TrendingUp, Sparkles, Layers, Zap, Clock, DollarS
 
 export default function DashboardPage() {
   const [ipos, setIpos] = useState<Ipo[]>([])
+  const [accounts, setAccounts] = useState<FamilyAccount[]>([])
   const [fundSummary, setFundSummary] = useState<FundSummary | null>(null)
   const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(null)
   const [plan, setPlan] = useState<AllocationPlan | null>(null)
@@ -33,14 +34,16 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const [iposData, fundsData, pnlData] = await Promise.all([
+        const [iposData, fundsData, pnlData, accountsData] = await Promise.all([
           apiClient.getIpos(),
           apiClient.getFundSummary(),
           apiClient.getPnlSummary(),
+          apiClient.getAccounts(),
         ])
         setIpos(iposData)
         setFundSummary(fundsData)
         setPnlSummary(pnlData)
+        setAccounts(accountsData || [])
       } catch (err) {
         console.error('Error loading dashboard data:', err)
       } finally {
@@ -220,7 +223,7 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <IpoBoard ipos={ipos} maxItemsPerTab={3} showViewAll={false} />
+        <IpoBoard ipos={ipos} accounts={accounts} maxItemsPerTab={3} showViewAll={false} />
       </section>
 
       {/* ── 3. Two-Column Lower Grid ───────────────────────────────── */}

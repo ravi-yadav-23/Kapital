@@ -135,16 +135,20 @@ class IpoService:
             existing.price_band_max = float(ipo_dict.get("price_band_max", existing.price_band_max))
             existing.lot_size = int(ipo_dict.get("lot_size", existing.lot_size))
             existing.min_investment = float(ipo_dict.get("min_investment", existing.min_investment))
-            existing.issue_size = ipo_dict.get("issue_size", existing.issue_size)
-            existing.issue_size_cr = ipo_dict.get("issue_size_cr", existing.issue_size_cr)
+            new_issue_cr = ipo_dict.get("issue_size_cr")
+            if new_issue_cr is not None and float(new_issue_cr) > 0:
+                existing.issue_size_cr = float(new_issue_cr)
+            elif not existing.issue_size_cr and ipo_dict.get("issue_size"):
+                existing.issue_size = ipo_dict.get("issue_size")
+
             existing.score = ipo_dict.get("score", existing.score)
             existing.recommendation = ipo_dict.get("recommendation", existing.recommendation)
             existing.gmp_percent = ipo_dict.get("gmp_percent", existing.gmp_percent)
-            existing.subscription_retail = float(ipo_dict.get("subscription_retail", existing.subscription_retail or 0))
-            existing.subscription_shni = float(ipo_dict.get("subscription_shni", existing.subscription_shni or 0))
-            existing.subscription_bhni = float(ipo_dict.get("subscription_bhni", existing.subscription_bhni or 0))
-            existing.subscription_qib = float(ipo_dict.get("subscription_qib", existing.subscription_qib or 0))
-            existing.subscription_total = float(ipo_dict.get("subscription_total", existing.subscription_total or 0))
+
+            for field in ["subscription_retail", "subscription_shni", "subscription_bhni", "subscription_qib", "subscription_total"]:
+                val = ipo_dict.get(field)
+                if val is not None and float(val) > 0:
+                    setattr(existing, field, float(val))
             await db.flush()
             return existing
 

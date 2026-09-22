@@ -65,7 +65,9 @@ import datetime
 from bs4 import BeautifulSoup
 
 
-def _parse_ipowatch_dates(d_str: str, year: int = 2026) -> tuple[Optional[str], Optional[str]]:
+def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optional[str], Optional[str]]:
+    if year is None:
+        year = datetime.date.today().year
     months = {
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
         'jul': 7, 'aug': 8, 'sep': 9, 'sept': 9, 'oct': 10, 'nov': 11, 'dec': 12
@@ -152,9 +154,9 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                         
                         score, rec, _ = IpoScoreEngine.compute_score({
                             'gmp_percent': gmp_pct,
-                            'subscription_qib': 12.0 if gmp_pct > 15 else 2.0,
-                            'subscription_total': 20.0 if gmp_pct > 15 else 3.0,
-                            'issue_size_cr': 850.0 if ipo_type == 'EQ' else 65.0,
+                            'subscription_qib': 0.0,
+                            'subscription_total': 0.0,
+                            'issue_size_cr': 0.0,
                         })
                         
                         ipos.append({
@@ -167,20 +169,20 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                             'price_band_max': max_p,
                             'lot_size': lot_size,
                             'min_investment': min_inv,
-                            'issue_size_cr': 850.0 if ipo_type == 'EQ' else 65.0,
+                            'issue_size_cr': 0.0,
                             'issue_open_date': open_d_str,
                             'issue_close_date': close_d_str,
                             'about': f"{name} ({ipo_type}) issue on Indian exchanges with price band Rs {min_p}-{max_p} and active GMP of {gmp_pct}%.",
-                            'strengths': ['Strong market demand', f'Indicative GMP: {gmp_pct}%', 'Verified exchange disclosures'],
+                            'strengths': ['Strong market demand' if gmp_pct > 0 else 'Exchange-tracked IPO', f'Indicative GMP: {gmp_pct}%'],
                             'risks': ['General market risk', 'Working capital requirements'],
                             'score': score,
                             'recommendation': rec,
                             'gmp_percent': gmp_pct,
-                            'subscription_retail': 5.0,
-                            'subscription_shni': 4.0,
-                            'subscription_bhni': 8.0,
-                            'subscription_qib': 12.0 if gmp_pct > 15 else 2.0,
-                            'subscription_total': 20.0 if gmp_pct > 15 else 3.0,
+                            'subscription_retail': 0.0,
+                            'subscription_shni': 0.0,
+                            'subscription_bhni': 0.0,
+                            'subscription_qib': 0.0,
+                            'subscription_total': 0.0,
                         })
     except Exception as e:
         logger.error(f"Error scraping live IPOs from ipowatch: {e}")

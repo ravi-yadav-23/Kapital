@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Ipo, FamilyAccount, AccountCategory } from '@/types'
 import { AmountDisplay } from '../shared/AmountDisplay'
 import { formatINR, formatDate } from '@/lib/formatters'
@@ -18,9 +18,20 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
   const [category, setCategory] = useState<AccountCategory>('RETAIL')
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([accounts[0]?.id || ''])
   const [lots, setLots] = useState<number>(1)
+  const [upiVpa, setUpiVpa] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      apiClient.getSettings().then((st: any) => {
+        if (st?.default_upi_vpa) {
+          setUpiVpa(st.default_upi_vpa)
+        }
+      }).catch(() => {})
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -61,6 +72,12 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
       return
     }
 
+    const finalUpi = upiVpa.trim()
+    if (!finalUpi) {
+      setErrorMessage('Please provide a UPI VPA (e.g. mobile@upi or username@bank) for the ASBA mandate.')
+      return
+    }
+
     setIsSubmitting(true)
     setErrorMessage(null)
 
@@ -72,7 +89,7 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
           category: category,
           lots: lots,
           bid_price: cutoffPrice,
-          upi_vpa: 'user@okhdfcbank',
+          upi_vpa: finalUpi,
         })
       }
       setIsSuccess(true)
@@ -342,6 +359,23 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                   {formatINR(totalAmount)}
                 </span>
               </div>
+            </div>
+
+            {/* UPI ID for ASBA Mandate */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <label className="text-2xs font-semibold uppercase tracking-wider text-text-muted">
+                  UPI VPA for ASBA Mandate
+                </label>
+                <span className="text-[10px] text-text-muted">Mandate request sent to this handle</span>
+              </div>
+              <input
+                type="text"
+                value={upiVpa}
+                onChange={(e) => setUpiVpa(e.target.value)}
+                placeholder="e.g. mobile@upi or username@okhdfcbank"
+                className="input w-full font-mono text-xs py-2 bg-surface-card border-border-subtle focus:border-brand-from"
+              />
             </div>
 
             {/* Action Buttons */}

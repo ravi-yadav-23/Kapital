@@ -7,6 +7,7 @@ import uuid
 from app.db.database import get_db
 from app.models.setting import SystemSetting
 from app.utils.security import encrypt_credential, decrypt_credential, mask_secret
+from app.config import settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -16,11 +17,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "auto_apply_min_score": 80,
     "watch_min_score": 60,
     "avoid_below_score": 45,
-    "default_upi_vpa": "ravi@okhdfcbank",
+    "default_upi_vpa": "",
     "max_allocation_pct": 80,
     "limit_buffer_pct": 5.0,
-    "ai_provider": "groq",  # groq, gemini, anthropic
-    "ai_model": "llama-3.3-70b-versatile",
+    "ai_provider": settings.default_ai_provider,
+    "ai_model": settings.default_ai_model,
     "groq_api_key": "",
     "gemini_api_key": "",
     "anthropic_api_key": "",

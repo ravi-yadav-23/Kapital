@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 
 export default function SettingsPage() {
-  const [defaultUpi, setDefaultUpi] = useState('ravi@okhdfcbank')
+  const [defaultUpi, setDefaultUpi] = useState('')
   const [maxAllocationPct, setMaxAllocationPct] = useState(80)
   const [limitBufferPct, setLimitBufferPct] = useState(5)
   const [telegramAlerts, setTelegramAlerts] = useState(true)

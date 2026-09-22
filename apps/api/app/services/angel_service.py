@@ -75,7 +75,7 @@ class AngelOneSmartApiService:
             "X-UserType": "USER",
             "X-SourceID": "WEB",
             "X-ClientLocalIP": "127.0.0.1",
-            "X-ClientPublicIP": "106.193.147.98",
+            "X-ClientPublicIP": settings.static_ip or "127.0.0.1",
             "X-MACAddress": "fe80::216e:6507:4b9c:9045",
             "X-PrivateKey": api_key,
         }

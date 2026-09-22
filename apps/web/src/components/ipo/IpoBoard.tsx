@@ -5,7 +5,6 @@ import { Ipo, FamilyAccount, IpoType } from '@/types'
 import { IpoCard } from './IpoCard'
 import { ApplyModal } from './ApplyModal'
 import { TrendingUp, Clock, Calendar, Archive, Layers, Search, Filter, RotateCcw, Sparkles } from 'lucide-react'
-import { MOCK_ACCOUNTS } from '@/lib/mock-data'
 
 interface IpoBoardProps {
   ipos: Ipo[]
@@ -19,7 +18,7 @@ type TabType = 'open' | 'closing_today' | 'upcoming' | 'closed' | 'all'
 
 export function IpoBoard({
   ipos,
-  accounts = MOCK_ACCOUNTS,
+  accounts = [],
   maxItemsPerTab,
   showViewAll = false,
   showFilters = true,
