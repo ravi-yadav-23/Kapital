@@ -1,17 +1,17 @@
-# IPO-Invest-Ai (Antigravity 🚀)
-> Autonomous Multi-Account Indian IPO Trading & Investment Platform
+# Kapitl 🚀
+> Autonomous Multi-Account Indian IPO Trading & Intelligence Platform
 
-The entire application code is located in the `antigravity/` directory.
+The entire application code is located in the `kapital/` directory.
 
 ---
 
 ## Quick Start (Windows PowerShell)
 
-Open PowerShell in this folder (`C:\MY Coding\IPO-Invest-Ai`):
+Open PowerShell in this folder:
 
 ### Terminal 1: Start Backend (FastAPI on Port 8000)
 ```powershell
-cd antigravity\apps\api
+cd kapital\apps\api
 pip install -r requirements.txt
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
@@ -22,7 +22,7 @@ uvicorn app.main:app --reload --port 8000
 
 ### Terminal 2: Start Frontend (Next.js on Port 3000)
 ```powershell
-cd antigravity\apps\web
+cd kapital\apps\web
 pnpm install
 pnpm dev
 ```
@@ -31,4 +31,4 @@ pnpm dev
 ---
 
 For detailed documentation, architecture, and environment configuration, see:
-👉 **[antigravity/README.md](antigravity/README.md)**
+👉 **[kapital/README.md](kapital/README.md)**
