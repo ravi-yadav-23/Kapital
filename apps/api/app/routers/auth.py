@@ -311,7 +311,7 @@ async def pin_login(req: LoginRequest):
     credential = req.password or req.pin or ""
     valid = False
 
-    admin_pin = getattr(settings, "admin_pin", "7090")
+    admin_pin = (getattr(settings, "admin_pin", None) or "").strip() or "7090"
     admin_hash = hash_password(admin_pin)
 
     if credential in [admin_pin, settings.secret_key]:
