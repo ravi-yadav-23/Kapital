@@ -64,11 +64,13 @@ async def listing_day_premarket_execution():
     """
     Runs at 09:00:00 AM IST on market days (Mon-Fri).
     Checks if any active IPO holdings list today and dispatches pre-market limit sell orders.
+    On success, records realized P&L to the realized_pnl ledger table.
     """
     logger.info("=== [09:00 AM IST] Checking Listing Day Pre-Market Sell Orders ===")
     from app.db.database import AsyncSessionLocal
     from app.models.allotment import Allotment
     from app.services.angel_service import angel_service
+    from app.services.pnl_service import pnl_service
     from sqlalchemy import select
 
     today = date.today()
@@ -107,6 +109,13 @@ async def listing_day_premarket_execution():
                     alt.sell_order_id = order_res.get("sell_order_id")
                     await db.flush()
                     logger.info(f"[{alt.ipo_symbol}] Sell order placed successfully: {alt.sell_order_id}")
+
+                    # Record realized P&L — use staged limit price as exit price
+                    # (actual fill price may differ; can be corrected by broker sync)
+                    exit_px = float(alt.staged_sell_limit_price or 0.0)
+                    if exit_px > 0:
+                        await pnl_service.record_sell(db, alt, exit_px, exit_type="PRE_MARKET_LISTING")
+                        logger.info(f"[{alt.ipo_symbol}] P&L recorded at exit price ₹{exit_px}")
                 else:
                     err_msg = order_res.get("message") or order_res.get("error", "Unknown error")
                     logger.error(f"[{alt.ipo_symbol}] Listing sell order FAILED at broker: {err_msg}")
@@ -162,6 +171,75 @@ async def daily_asba_and_reports_maintenance():
             logger.error(f"Nightly report generation error: {e}")
 
 
+async def intraday_subscription_sync():
+    """
+    Runs every 30 minutes from 10:00 AM to 4:30 PM IST on market days.
+    Fetches live subscription multipliers (QIB, sHNI, bHNI, Retail, Total)
+    for all currently OPEN IPOs and persists updated values to PostgreSQL.
+    This ensures the score engine and optimizer use current subscription data,
+    not stale 0.0 values from the previous day's sync.
+    """
+    logger.info("=== [Intraday] Live Subscription Sync for Open IPOs ===")
+    from app.db.database import AsyncSessionLocal
+    from app.tasks.ipo_tasks import sync_open_ipo_subscriptions
+
+    try:
+        async with AsyncSessionLocal() as db:
+            count = await sync_open_ipo_subscriptions(db)
+            if count:
+                logger.info(f"[Intraday Sub-Sync] Updated subscription metrics for {count} open IPO(s).")
+    except Exception as e:
+        logger.error(f"[Intraday Sub-Sync] Failed: {e}")
+
+
+async def periodic_allotment_detection():
+    """
+    Runs every 30 minutes from 6:00 AM to 8:00 PM IST on market days.
+    Polls Angel One demat holdings for all family accounts whose IPO allotment
+    date falls within the T+3 to T+7 window, auto-marking allotted/not-allotted.
+    This replaces the previous once-per-night detection with proper 30-min polling
+    so the pre-listing sell scheduler at 09:00 AM sees correct ACTIVE allotments.
+    """
+    logger.info("=== [30m Poll] Periodic Allotment Auto-Detection ===")
+    from app.db.database import AsyncSessionLocal
+    from app.services.allotment_service import allotment_service
+    from app.models.order import Order
+    from app.models.ipo import Ipo
+    from sqlalchemy import select
+    from datetime import timedelta
+
+    try:
+        async with AsyncSessionLocal() as db:
+            today = date.today()
+            # Only scan orders in the T+3 to T+7 window
+            stmt = (
+                select(Order)
+                .join(Ipo, Order.ipo_id == Ipo.id)
+                .where(
+                    Order.status.in_(["SUBMITTED", "CONFIRMED", "APPLIED"]),
+                    Ipo.allotment_date.isnot(None),
+                    Ipo.allotment_date <= today,
+                    Ipo.allotment_date >= (today - timedelta(days=7)),
+                )
+            )
+            res = await db.execute(stmt)
+            pending_orders = res.scalars().all()
+
+            if not pending_orders:
+                logger.info("[Allotment Poll] No orders in detection window.")
+                return
+
+            logger.info(f"[Allotment Poll] Checking {len(pending_orders)} order(s) for allotment status...")
+            result = await allotment_service.auto_detect_allotments(db)
+            logger.info(
+                f"[Allotment Poll] Allotted: {result['allotted']} | "
+                f"Not Allotted: {result['not_allotted']} | "
+                f"Pending: {result['pending']}"
+            )
+    except Exception as e:
+        logger.error(f"[Allotment Poll] Failed: {e}")
+
+
 def start_scheduler():
     """Initialize and start the background cron scheduler."""
     if scheduler.running:
@@ -199,8 +277,30 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Job 5: Every 30 mins 10:00 AM–5:00 PM IST Mon-Fri (Live subscription metrics for open IPOs)
+    scheduler.add_job(
+        intraday_subscription_sync,
+        trigger=CronTrigger(hour="10-16", minute="*/30", day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="intraday_subscription_sync",
+        replace_existing=True,
+    )
+
+    # Job 6: Every 30 mins 6:00 AM–8:00 PM IST Mon-Fri (Auto-detect allotments T+3 to T+7)
+    scheduler.add_job(
+        periodic_allotment_detection,
+        trigger=CronTrigger(hour="6-20", minute="*/30", day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="periodic_allotment_detection",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Kapitl background scheduler started (08:30 AM Login | 09:00 AM Sell | 05:00 PM Scrape | 10:00 PM Maintenance)")
+    logger.info(
+        "Kapitl background scheduler started: "
+        "08:30 AM Login | 09:00 AM Sell | "
+        "10 AM–5 PM Sub-Sync (30m) | "
+        "6 AM–8 PM Allotment-Detect (30m) | "
+        "05:00 PM Scrape | 10:00 PM Maintenance"
+    )
 
 
 def stop_scheduler():

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -7,6 +7,8 @@ from app.db.database import get_db
 from app.models.ipo import Ipo
 from app.schemas.report import AiReportResponse
 from app.services.report_service import report_service
+from app.services.pnl_service import pnl_service
+from app.middleware.auth import get_current_user_optional
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -58,3 +60,23 @@ async def trigger_ai_analysis(
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
     return await report_service.get_or_generate_report(db, ipo, force_refresh=True)
+
+
+@router.get("/pnl/summary")
+async def get_pnl_summary(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user_optional),
+) -> Dict[str, Any]:
+    """
+    Realized P&L ledger summary:
+    total invested, total realized, net P&L, ROI %, win/loss counts,
+    and per-IPO sell breakdown sorted by most recent exit date.
+    Guest users receive an empty summary.
+    """
+    if user and user.get("is_guest"):
+        return {
+            "total_invested": 0, "total_realized": 0, "total_net_pnl": 0,
+            "overall_roi_percent": 0, "total_trades": 0,
+            "wins": 0, "losses": 0, "win_rate_percent": 0, "breakdown": [],
+        }
+    return await pnl_service.get_summary(db)

@@ -1,19 +1,66 @@
 'use client'
 
-import React, { ReactNode, useEffect } from 'react'
+import React, { ReactNode, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { useAuth } from '@/lib/auth-context'
-import { Eye, ShieldAlert, Loader2 } from 'lucide-react'
+import { useWebSocket, WebSocketMessage } from '@/lib/hooks/useWebSocket'
+import { Eye, Loader2 } from 'lucide-react'
 
 interface DashboardLayoutProps {
   children: ReactNode
 }
 
+/** Toast-style in-app notification for real-time WS events. */
+function LiveEventToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4500)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+
+  return (
+    <div
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 shadow-2xl text-sm text-slate-100 animate-fade-in"
+      style={{ maxWidth: 340 }}
+    >
+      <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse" />
+      <span>{message}</span>
+      <button onClick={onDismiss} className="ml-auto text-slate-500 hover:text-slate-300 text-xs">✕</button>
+    </div>
+  )
+}
+
+const WS_EVENT_LABELS: Record<string, string> = {
+  ALLOTMENT_DETECTED: '🎯 Allotment confirmed!',
+  IPOS_SYNCED: '🔄 IPO data refreshed',
+  ORDER_PLACED: '📝 Order placed',
+  ORDER_FILLED: '✅ Order filled',
+  ORDER_FAILED: '❌ Order failed',
+  SELL_EXECUTED: '💰 Pre-listing sell executed',
+  HEARTBEAT: '',
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const { isAuthenticated, isGuest, isLoading } = useAuth()
+
+  const [toast, setToast] = React.useState<string | null>(null)
+
+  const handleWsMessage = useCallback((msg: WebSocketMessage) => {
+    // Suppress heartbeats; surface all other events
+    const label = WS_EVENT_LABELS[msg.type]
+    if (label === undefined) {
+      // Unknown event — show raw type
+      setToast(msg.message || msg.type)
+    } else if (label !== '') {
+      const detail = msg.message ? ` ${msg.message}` : ''
+      setToast(`${label}${detail}`)
+    }
+    // If label === '' (heartbeat) — silently ignore
+  }, [])
+
+  const { isConnected } = useWebSocket(isAuthenticated && !isGuest ? handleWsMessage : undefined)
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -59,6 +106,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Topbar />
         <main className="page-content animate-fade-in flex-1">{children}</main>
       </div>
+
+      {/* Real-time event toast — only shown when a meaningful WS event arrives */}
+      {toast && (
+        <LiveEventToast message={toast} onDismiss={() => setToast(null)} />
+      )}
+
+      {/* Subtle WS connection indicator (dot in bottom-left, only when disconnected) */}
+      {!isConnected && isAuthenticated && !isGuest && (
+        <div
+          title="WebSocket disconnected — live updates paused"
+          className="fixed bottom-4 left-4 z-40 flex items-center gap-1.5 bg-slate-900/80 border border-slate-700 rounded-full px-2.5 py-1 text-[10px] text-slate-400"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          Offline
+        </div>
+      )}
     </div>
   )
 }

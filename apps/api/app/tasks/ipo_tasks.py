@@ -309,3 +309,68 @@ async def sync_ipos_task() -> int:
     from app.db.database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
         return await sync_ipos_pipeline(db)
+
+
+async def sync_open_ipo_subscriptions(db: AsyncSession) -> int:
+    """
+    Intraday job: Refresh subscription metrics ONLY for currently OPEN IPOs.
+    Fetches live QIB / sHNI / bHNI / Retail / Total subscription multiples
+    from ipoalerts.in and persists to PostgreSQL.
+    Returns the number of IPOs whose subscription data was updated.
+    """
+    from app.models.ipo import Ipo
+    from sqlalchemy import select
+    from datetime import date
+
+    today = date.today()
+    stmt = select(Ipo).where(
+        Ipo.open_date <= today,
+        Ipo.close_date >= today,
+    )
+    res = await db.execute(stmt)
+    open_ipos: list[Ipo] = res.scalars().all()
+
+    if not open_ipos:
+        logger.info("[Sub-Sync] No open IPOs today — skipping intraday subscription refresh.")
+        return 0
+
+    logger.info(f"[Sub-Sync] Refreshing subscriptions for {len(open_ipos)} open IPO(s)...")
+    updated = 0
+
+    # Fetch live data from the OPEN status endpoint
+    live_data = await fetch_ipos_from_ipoalerts("open")
+    live_map: Dict[str, Dict[str, Any]] = {}
+    for raw in live_data:
+        sym = (raw.get("symbol") or raw.get("name") or "").upper().strip()
+        if sym:
+            live_map[sym] = raw
+
+    for ipo in open_ipos:
+        clean_sym = (ipo.symbol or "").upper().replace("-EQ", "").strip()
+        raw = live_map.get(clean_sym)
+        if not raw:
+            continue
+
+        sub_dict = raw.get("subscription", {}) or {}
+        sub_retail = float(raw.get("subscription_retail") or sub_dict.get("retail") or 0.0)
+        sub_shni = float(raw.get("subscription_shni") or sub_dict.get("shni") or 0.0)
+        sub_bhni = float(raw.get("subscription_bhni") or sub_dict.get("bhni") or 0.0)
+        sub_qib = float(raw.get("subscription_qib") or sub_dict.get("qib") or 0.0)
+        sub_total = float(raw.get("subscription_total") or sub_dict.get("total") or 0.0)
+
+        ipo.subscription_retail = sub_retail
+        ipo.subscription_shni = sub_shni
+        ipo.subscription_bhni = sub_bhni
+        ipo.subscription_qib = sub_qib
+        ipo.subscription_total = sub_total
+        updated += 1
+        logger.info(
+            f"[Sub-Sync] {ipo.symbol}: QIB={sub_qib}x sHNI={sub_shni}x bHNI={sub_bhni}x "
+            f"Retail={sub_retail}x Total={sub_total}x"
+        )
+
+    if updated:
+        await db.commit()
+
+    logger.info(f"[Sub-Sync] Refreshed {updated}/{len(open_ipos)} open IPO subscription metrics.")
+    return updated
