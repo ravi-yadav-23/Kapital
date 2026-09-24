@@ -145,6 +145,13 @@ async def daily_asba_and_reports_maintenance():
 
     async with AsyncSessionLocal() as db:
         try:
+            from app.services.allotment_service import allotment_service
+            allot_res = await allotment_service.auto_detect_allotments(db)
+            logger.info(f"Nightly allotment broker scan result: {allot_res}")
+        except Exception as e:
+            logger.error(f"Nightly allotment detection error: {e}")
+
+        try:
             await sync_expired_asba_locks(db)
         except Exception as e:
             logger.error(f"Expired ASBA lock sweep error: {e}")

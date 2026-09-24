@@ -34,3 +34,16 @@ async def stage_pre_listing_sell(
         raise HTTPException(status_code=404, detail=res.get("message"))
     return res
 
+
+@router.post("/sync-broker-allotments")
+async def trigger_broker_allotment_sync(
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    """
+    Automated registrar / depository sync:
+    Scans Angel One demat holdings for all family accounts to automatically detect credited IPO shares.
+    Stages won allotments and releases ASBA locked capital for non-allotted bids.
+    """
+    return await allotment_service.auto_detect_allotments(db)
+

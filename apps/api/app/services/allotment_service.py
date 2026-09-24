@@ -113,5 +113,73 @@ class AllotmentService:
             "allotment": _model_to_allotment_response(alt),
         }
 
+    @staticmethod
+    async def auto_detect_allotments(db: AsyncSession) -> Dict[str, Any]:
+        """
+        Scans all pending/confirmed IPO orders against broker demat holdings.
+        If shares are credited in demat, marks order as ALLOTTED and stages holdings for listing day.
+        If listing date has passed by > 1 day and no shares credited, automatically marks NOT_ALLOTTED and releases ASBA locked funds.
+        """
+        from app.models.order import Order
+        from app.models.ipo import Ipo
+        from app.models.account import FamilyAccount
+        from app.services.order_service import order_service
+        from datetime import date, timedelta
+
+        today = date.today()
+        stmt = select(Order).where(Order.status.in_(["SUBMITTED", "CONFIRMED", "APPLIED"]))
+        res = await db.execute(stmt)
+        orders = res.scalars().all()
+
+        results = {"allotted": 0, "not_allotted": 0, "pending": 0, "details": []}
+        holdings_by_client: Dict[str, List[Dict[str, Any]]] = {}
+
+        for ord in orders:
+            ipo_res = await db.execute(select(Ipo).where(Ipo.id == ord.ipo_id))
+            ipo = ipo_res.scalar_one_or_none()
+            if not ipo:
+                continue
+
+            allot_date = ipo.allotment_date
+            listing_date = ipo.listing_date
+
+            if allot_date and today < allot_date:
+                results["pending"] += 1
+                continue
+
+            client_id = ""
+            acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == ord.account_id))
+            acc = acc_res.scalar_one_or_none()
+            if acc and acc.angel_client_id:
+                client_id = acc.angel_client_id
+
+            if not client_id:
+                continue
+
+            if client_id not in holdings_by_client:
+                holdings_by_client[client_id] = await angel_service.get_all_holdings(client_id)
+
+            holdings = holdings_by_client[client_id]
+            clean_sym = (ipo.symbol or "").upper().replace("-EQ", "").strip()
+
+            matched_holding = next(
+                (h for h in holdings if clean_sym in (h.get("tradingsymbol") or "").upper() or clean_sym in (h.get("symbolname") or "").upper()),
+                None
+            )
+
+            if matched_holding and int(matched_holding.get("totalqty", 0)) > 0:
+                await order_service.process_allotment_result(db, ord.id, result="ALLOTTED")
+                results["allotted"] += 1
+                results["details"].append(f"[{ord.account_name}] Allotted {matched_holding.get('totalqty')} shares of {ipo.name}")
+            elif listing_date and today > (listing_date + timedelta(days=1)):
+                await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
+                results["not_allotted"] += 1
+                results["details"].append(f"[{ord.account_name}] Not allotted for {ipo.name} (Funds released)")
+            else:
+                results["pending"] += 1
+
+        await db.commit()
+        return results
+
 
 allotment_service = AllotmentService()

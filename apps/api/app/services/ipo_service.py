@@ -130,11 +130,23 @@ class IpoService:
 
         if existing:
             existing.name = ipo_dict.get("name", existing.name)
-            existing.status = ipo_dict.get("status", existing.status)
-            existing.price_band_min = float(ipo_dict.get("price_band_min", existing.price_band_min))
-            existing.price_band_max = float(ipo_dict.get("price_band_max", existing.price_band_max))
-            existing.lot_size = int(ipo_dict.get("lot_size", existing.lot_size))
-            existing.min_investment = float(ipo_dict.get("min_investment", existing.min_investment))
+            if ipo_dict.get("status"):
+                existing.status = ipo_dict.get("status")
+            if ipo_dict.get("price_band_min") and float(ipo_dict.get("price_band_min")) > 0:
+                existing.price_band_min = float(ipo_dict.get("price_band_min"))
+            if ipo_dict.get("price_band_max") and float(ipo_dict.get("price_band_max")) > 0:
+                existing.price_band_max = float(ipo_dict.get("price_band_max"))
+
+            # Protect authentic lot size from heuristic/secondary feed overwrite
+            incoming_lot = int(ipo_dict.get("lot_size", 0))
+            is_secondary = ipo_dict.get("is_secondary_feed", False)
+            if incoming_lot > 0:
+                if existing.lot_size and existing.lot_size > 1 and is_secondary:
+                    pass  # Preserve authentic exchange lot size
+                else:
+                    existing.lot_size = incoming_lot
+                    existing.min_investment = float(ipo_dict.get("min_investment") or (existing.price_band_max * incoming_lot))
+
             new_issue_cr = ipo_dict.get("issue_size_cr")
             if new_issue_cr is not None and float(new_issue_cr) > 0:
                 existing.issue_size_cr = float(new_issue_cr)

@@ -71,7 +71,7 @@ async def get_app_settings(
     user: Optional[dict] = Depends(get_current_user_optional),
 ) -> Dict[str, Any]:
     """Retrieve current platform settings with API keys masked. Returns defaults for guest mode."""
-    if user and user.get("is_guest"):
+    if isinstance(user, dict) and user.get("is_guest"):
         return _mask_settings(DEFAULT_SETTINGS)
 
     stmt = select(SystemSetting).where(SystemSetting.key == "app_preferences")

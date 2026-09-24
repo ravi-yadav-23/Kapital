@@ -104,17 +104,36 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
             tables = soup.find_all('table')
             today = datetime.date.today()
             
-            for t_idx, ipo_type in [(0, 'EQ'), (1, 'SME')]:
-                if t_idx >= len(tables):
+            for t_idx, table in enumerate(tables):
+                rows = table.find_all('tr')
+                if not rows:
                     continue
-                table = tables[t_idx]
-                for row in table.find_all('tr')[1:]:
+
+                # Dynamically locate columns from table header
+                header_row = rows[0]
+                header_cols = [th.get_text(strip=True).lower() for th in header_row.find_all(['td', 'th'])]
+                if not header_cols:
+                    continue
+
+                name_idx = next((i for i, h in enumerate(header_cols) if any(k in h for k in ['ipo', 'company', 'name'])), 0)
+                gmp_idx = next((i for i, h in enumerate(header_cols) if 'gmp' in h or 'premium' in h), 1)
+                price_idx = next((i for i, h in enumerate(header_cols) if 'price' in h), 3)
+                date_idx = next((i for i, h in enumerate(header_cols) if any(k in h for k in ['date', 'open', 'close'])), 5)
+
+                table_parent_text = str(table.parent).lower() if table.parent else ""
+                is_sme_table = "sme" in table_parent_text or t_idx == 1
+
+                for row in rows[1:]:
                     cols = [td.get_text(strip=True).replace('\u20b9', '').replace(',', '').strip() for td in row.find_all(['td', 'th'])]
-                    if len(cols) >= 6:
-                        name = cols[0]
-                        gmp_str = cols[1]
-                        price_str = cols[3]
-                        dates = cols[5]
+                    if len(cols) > max(name_idx, gmp_idx):
+                        name = cols[name_idx]
+                        if not name or len(name) < 2 or "ipo name" in name.lower():
+                            continue
+
+                        gmp_str = cols[gmp_idx] if gmp_idx < len(cols) else "0"
+                        price_str = cols[price_idx] if price_idx < len(cols) else "100"
+                        dates = cols[date_idx] if date_idx < len(cols) else ""
+                        ipo_type = 'SME' if is_sme_table or 'sme' in name.lower() else 'EQ'
                         
                         try:
                             gmp_val = float(re.findall(r'[-+]?\d*\.\d+|\d+', gmp_str)[0]) if re.findall(r'[-+]?\d*\.\d+|\d+', gmp_str) else 0.0
@@ -183,6 +202,7 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                             'subscription_bhni': 0.0,
                             'subscription_qib': 0.0,
                             'subscription_total': 0.0,
+                            'is_secondary_feed': True,
                         })
     except Exception as e:
         logger.error(f"Error scraping live IPOs from ipowatch: {e}")

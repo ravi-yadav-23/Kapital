@@ -147,11 +147,17 @@ class AngelOneSmartApiService:
         Authenticates a client account via SmartAPI v3 TOTP flow.
         Stores JWT token and refresh token in active session memory.
         """
-        totp_code = self.generate_totp(totp_secret)
-        headers = self._get_common_headers(api_key=api_key)
+        from app.utils.security import decrypt_credential
+
+        clean_key = decrypt_credential(api_key) or api_key
+        clean_pin = decrypt_credential(pin) or pin
+        clean_totp = decrypt_credential(totp_secret) or totp_secret
+
+        totp_code = self.generate_totp(clean_totp)
+        headers = self._get_common_headers(api_key=clean_key)
         payload = {
             "clientcode": client_id,
-            "password": pin,
+            "password": clean_pin,
             "totp": totp_code,
         }
 
@@ -226,6 +232,64 @@ class AngelOneSmartApiService:
             logger.error(f"[{client_id}] Failed to fetch RMS limits: {e}")
             return {"net": 0.0, "availablecash": 0.0}
 
+    async def get_all_holdings(self, client_id: str, api_key: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches active demat portfolio holdings for a client.
+        Endpoint: /rest/secure/angelbroking/portfolio/v1/getAllHolding
+        Used for automated IPO allotment detection on allotment/listing day.
+        """
+        session = self.sessions.get(client_id)
+        if not session or not session.get("jwtToken"):
+            matching_acc = next((a for a in settings.angel_accounts if a.get("client_id") == client_id), None)
+            if not matching_acc:
+                try:
+                    from app.db.database import AsyncSessionLocal
+                    from app.models.account import FamilyAccount
+                    from sqlalchemy import select
+                    async with AsyncSessionLocal() as db:
+                        res = await db.execute(select(FamilyAccount).where(FamilyAccount.angel_client_id == client_id))
+                        db_acc = res.scalar_one_or_none()
+                        if db_acc:
+                            matching_acc = {
+                                "client_id": db_acc.angel_client_id,
+                                "api_key": db_acc.angel_api_key or "",
+                                "pin": db_acc.pin or "",
+                                "totp_secret": db_acc.totp_secret or "",
+                            }
+                except Exception:
+                    pass
+
+            if matching_acc:
+                await self.login_account(
+                    client_id=client_id,
+                    api_key=matching_acc.get("api_key", ""),
+                    pin=matching_acc.get("pin", ""),
+                    totp_secret=matching_acc.get("totp_secret", ""),
+                )
+                session = self.sessions.get(client_id)
+
+        if not session or not session.get("jwtToken"):
+            logger.warning(f"No active session for {client_id}. Cannot fetch holdings.")
+            return []
+
+        jwt_token = session["jwtToken"]
+        key = api_key or session.get("api_key") or ""
+        headers = self._get_common_headers(api_key=key, jwt_token=jwt_token)
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.get(
+                    f"{self.BASE_URL}/rest/secure/angelbroking/portfolio/v1/getAllHolding",
+                    headers=headers,
+                )
+                data = res.json()
+                if data.get("status") and data.get("data"):
+                    return data["data"]
+                return []
+        except Exception as e:
+            logger.error(f"[{client_id}] Failed to fetch demat holdings: {e}")
+            return []
+
     async def stage_listing_sell_order(
         self,
         client_id: str,
@@ -251,6 +315,24 @@ class AngelOneSmartApiService:
         if not session or not session.get("jwtToken"):
             logger.info(f"Session not in memory for {client_id}. Attempting auto-login from configured credentials...")
             matching_acc = next((a for a in settings.angel_accounts if a.get("client_id") == client_id), None)
+            if not matching_acc:
+                try:
+                    from app.db.database import AsyncSessionLocal
+                    from app.models.account import FamilyAccount
+                    from sqlalchemy import select
+                    async with AsyncSessionLocal() as db:
+                        res = await db.execute(select(FamilyAccount).where(FamilyAccount.angel_client_id == client_id))
+                        db_acc = res.scalar_one_or_none()
+                        if db_acc:
+                            matching_acc = {
+                                "client_id": db_acc.angel_client_id,
+                                "api_key": db_acc.angel_api_key or "",
+                                "pin": db_acc.pin or "",
+                                "totp_secret": db_acc.totp_secret or "",
+                            }
+                except Exception as ex:
+                    logger.warning(f"Could not load account {client_id} from DB: {ex}")
+
             if matching_acc:
                 login_res = await self.login_account(
                     client_id=client_id,
