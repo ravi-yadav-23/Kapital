@@ -16,6 +16,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.client_records: Dict[str, List[float]] = {}
+        self._last_prune = time.time()
+
+    def _prune_expired_records(self, now: float):
+        """Evicts IP records with no activity within the current window to prevent memory leaks."""
+        expired_ips = [
+            ip for ip, timestamps in self.client_records.items()
+            if not timestamps or (now - timestamps[-1] >= self.window_seconds)
+        ]
+        for ip in expired_ips:
+            self.client_records.pop(ip, None)
+        self._last_prune = now
 
     async def dispatch(self, request: Request, call_next) -> Response:
         # Exclude internal health checks, docs, websocket
@@ -29,6 +40,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client_ip = request.client.host if request.client else "127.0.0.1"
         now = time.time()
+
+        # Periodic cleanup of inactive IPs every 60s
+        if now - self._last_prune > 60 or len(self.client_records) > 500:
+            self._prune_expired_records(now)
 
         # Clean timestamps older than window
         timestamps = self.client_records.get(client_ip, [])

@@ -12,19 +12,29 @@ export interface IpoScheduleEvent {
 }
 
 export interface RedFlag {
-  flag:     string
-  severity: 'HIGH' | 'MEDIUM' | 'LOW'
-  penalty:  number   // score points deducted
+  flag?: string
+  title?: string
+  description?: string
+  detail?: string
+  type?: string
+  severity: 'HIGH' | 'MEDIUM' | 'LOW' | string
+  penalty?: number
+  penalty_points?: number
 }
 
 export interface ScoreBreakdown {
-  financial_quality:    number   // 0–25
-  gmp_signal:           number   // 0–20
-  subscription_hype:    number   // 0–20
-  allotment_probability: number  // 0–15
-  industry_trend:       number   // 0–10
-  lock_in_conflict:     number   // 0–10  (penalty — negative reduces total)
-  total:                number   // 0–100
+  financial_quality: number
+  valuation_safety?: number
+  gmp_strength?: number
+  gmp_signal?: number
+  subscription_momentum?: number
+  subscription_hype?: number
+  industry_tailwinds?: number
+  industry_trend?: number
+  promoter_integrity?: number
+  allotment_probability?: number
+  lock_in_conflict?: number
+  total?: number
 }
 
 // ── Core IPO model (matches DB + API response combined) ──────────────────────

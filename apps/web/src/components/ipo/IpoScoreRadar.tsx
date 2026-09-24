@@ -26,42 +26,49 @@ export function IpoScoreRadar({ breakdown, score }: IpoScoreRadarProps) {
     )
   }
 
-  // Normalize each dimension to a 0-100 scale for visual balance on the radar chart
+  const finScore = Math.max(0, Math.min(100, Math.round(breakdown.financial_quality ?? 0)))
+  const valScore = Math.max(0, Math.min(100, Math.round(breakdown.valuation_safety ?? breakdown.allotment_probability ?? 50)))
+  const gmpScore = Math.max(0, Math.min(100, Math.round(breakdown.gmp_strength ?? breakdown.gmp_signal ?? 0)))
+  const govScore = Math.max(0, Math.min(100, Math.round(breakdown.promoter_integrity ?? breakdown.lock_in_conflict ?? 60)))
+  const indScore = Math.max(0, Math.min(100, Math.round(breakdown.industry_tailwinds ?? breakdown.industry_trend ?? 65)))
+  const subScore = Math.max(0, Math.min(100, Math.round(breakdown.subscription_momentum ?? breakdown.subscription_hype ?? 50)))
+
+  // 6 dimensions normalized to 0-100 scale for visual balance on radar chart
   const data = [
     {
       subject: 'Financials (25%)',
-      score: Math.round((breakdown.financial_quality / 25) * 100),
-      raw: `${breakdown.financial_quality}/25`,
+      score: finScore,
+      raw: `${Math.round((finScore * 25) / 100)}/25`,
+      fullMark: 100,
+    },
+    {
+      subject: 'Valuation (20%)',
+      score: valScore,
+      raw: `${Math.round((valScore * 20) / 100)}/20`,
       fullMark: 100,
     },
     {
       subject: 'GMP Signal (20%)',
-      score: Math.round((breakdown.gmp_signal / 20) * 100),
-      raw: `${breakdown.gmp_signal}/20`,
+      score: gmpScore,
+      raw: `${Math.round((gmpScore * 20) / 100)}/20`,
       fullMark: 100,
     },
     {
-      subject: 'Hype & Media (20%)',
-      score: Math.round((breakdown.subscription_hype / 20) * 100),
-      raw: `${breakdown.subscription_hype}/20`,
+      subject: 'Governance (15%)',
+      score: govScore,
+      raw: `${Math.round((govScore * 15) / 100)}/15`,
       fullMark: 100,
     },
     {
-      subject: 'Allotment Prob (15%)',
-      score: Math.round((breakdown.allotment_probability / 15) * 100),
-      raw: `${breakdown.allotment_probability}/15`,
+      subject: 'Industry (10%)',
+      score: indScore,
+      raw: `${Math.round((indScore * 10) / 100)}/10`,
       fullMark: 100,
     },
     {
-      subject: 'Industry Trend (10%)',
-      score: Math.round((breakdown.industry_trend / 10) * 100),
-      raw: `${breakdown.industry_trend}/10`,
-      fullMark: 100,
-    },
-    {
-      subject: 'Lock-in Fit (10%)',
-      score: Math.round((breakdown.lock_in_conflict / 10) * 100),
-      raw: `${breakdown.lock_in_conflict}/10`,
+      subject: 'Sentiment (10%)',
+      score: subScore,
+      raw: `${Math.round((subScore * 10) / 100)}/10`,
       fullMark: 100,
     },
   ]
@@ -73,7 +80,7 @@ export function IpoScoreRadar({ breakdown, score }: IpoScoreRadarProps) {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
             Multi-Factor AI Radar
           </h3>
-          <p className="text-2xs text-text-secondary">6-factor scoring normalized to 100%</p>
+          <p className="text-2xs text-text-secondary">6-factor scoring breakdown</p>
         </div>
         {score !== undefined && (
           <div className="text-right">
@@ -107,7 +114,7 @@ export function IpoScoreRadar({ breakdown, score }: IpoScoreRadarProps) {
                       <span className="font-semibold text-text-primary block">{item.subject}</span>
                       <div className="flex justify-between gap-3 text-text-secondary font-mono">
                         <span>Score:</span>
-                        <span className="text-brand-from font-bold">{item.score}% ({item.raw})</span>
+                        <span className="text-brand-from font-bold">{item.raw} pts</span>
                       </div>
                     </div>
                   )

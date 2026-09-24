@@ -22,6 +22,13 @@ async def morning_angel_one_login():
     from app.services.account_service import account_service
     from app.db.database import AsyncSessionLocal
 
+    # Refresh OpenAPI Scrip Master to guarantee today's newly listed IPO tokens are loaded
+    try:
+        scrip_count = await angel_service.refresh_scrip_master(force=True)
+        logger.info(f"[08:30 AM IST] Pre-market Angel One scrip master refreshed: {scrip_count} instruments ready")
+    except Exception as scrip_err:
+        logger.warning(f"Could not refresh scrip master at 08:30 AM: {scrip_err}")
+
     env_accounts = settings.angel_accounts
     if not env_accounts:
         logger.warning("No accounts found in ANGEL_ACCOUNTS_JSON for morning login.")
@@ -96,11 +103,15 @@ async def listing_day_premarket_execution():
                     shares=alt.allotted_shares,
                     limit_price=alt.staged_sell_limit_price,
                 )
-                alt.sell_order_id = order_res.get("sell_order_id")
-                await db.flush()
-                logger.info(f"[{alt.ipo_symbol}] Sell order placed: {alt.sell_order_id}")
+                if order_res.get("success"):
+                    alt.sell_order_id = order_res.get("sell_order_id")
+                    await db.flush()
+                    logger.info(f"[{alt.ipo_symbol}] Sell order placed successfully: {alt.sell_order_id}")
+                else:
+                    err_msg = order_res.get("message") or order_res.get("error", "Unknown error")
+                    logger.error(f"[{alt.ipo_symbol}] Listing sell order FAILED at broker: {err_msg}")
             except Exception as e:
-                logger.error(f"[{alt.ipo_symbol}] Failed to dispatch listing sell order: {e}")
+                logger.error(f"[{alt.ipo_symbol}] Exception while dispatching listing sell order: {e}")
         await db.commit()
 
 

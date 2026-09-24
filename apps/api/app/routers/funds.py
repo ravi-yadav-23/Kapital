@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Response
-from typing import List
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -12,17 +12,33 @@ from app.services.ipo_service import ipo_service
 from app.services.allotment_service import allotment_service
 from app.services.optimizer_service import AllocationOptimizer
 
+from app.middleware.auth import get_current_user_optional, require_admin
+
 router = APIRouter(prefix="/funds", tags=["funds"])
 
 
 @router.get("/summary", response_model=FundSummaryResponse)
-async def get_fund_summary(response: Response, db: AsyncSession = Depends(get_db)):
+async def get_fund_summary(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[dict] = Depends(get_current_user_optional),
+):
     """Get overall family corpus balance, available deployment liquidity, and ASBA locked totals."""
     response.headers["Cache-Control"] = "public, max-age=30"
+    if user and user.get("is_guest"):
+        return FundSummaryResponse(
+            total_family_balance=0.0,
+            total_available=0.0,
+            total_locked_asba=0.0,
+            utilization_percent=0.0,
+            accounts_active=0,
+            accounts_total=0,
+        )
+
     accounts = await account_service.get_all_accounts(db)
-    total_family    = sum(a.total_balance for a in accounts)
-    total_available = sum(a.available_balance for a in accounts)
-    total_locked    = sum(a.locked_balance for a in accounts)
+    total_family    = sum(a.total_balance or 0.0 for a in accounts)
+    total_available = sum(a.available_balance or 0.0 for a in accounts)
+    total_locked    = sum(a.locked_balance or 0.0 for a in accounts)
     utilization     = (total_locked / total_family * 100.0) if total_family > 0 else 0.0
     active_count    = sum(1 for a in accounts if a.is_active)
 
@@ -36,20 +52,33 @@ async def get_fund_summary(response: Response, db: AsyncSession = Depends(get_db
     )
 
 
+
 @router.get("/pnl-summary", response_model=PnlSummaryResponse)
-async def get_pnl_summary(db: AsyncSession = Depends(get_db)):
+async def get_pnl_summary(
+    db: AsyncSession = Depends(get_db),
+    user: Optional[dict] = Depends(get_current_user_optional),
+):
     """Get family historical realized P&L, overall ROI, active lots, and lottery hit rates."""
+    if user and user.get("is_guest"):
+        return PnlSummaryResponse(
+            total_realized_pnl=0.0,
+            overall_roi_percent=0.0,
+            total_allotments=0,
+            total_holding=0,
+            allotment_rate_percent=0.0,
+        )
+
     allotments = await allotment_service.get_allotments(db)
     accounts   = await account_service.get_all_accounts(db)
 
     total_pnl      = sum(alt.realized_pnl or 0.0 for alt in allotments if alt.status == "SOLD")
-    total_invested = sum(alt.invested_amount for alt in allotments if alt.status == "SOLD")
+    total_invested = sum(alt.invested_amount or 0.0 for alt in allotments if alt.status == "SOLD")
     overall_roi    = (total_pnl / total_invested * 100.0) if total_invested > 0 else 0.0
     active_holding = len([alt for alt in allotments if alt.status == "ACTIVE"])
     total_allot    = len([alt for alt in allotments if alt.status in ["ACTIVE", "SOLD"]])
 
-    total_bids = sum(a.total_applied_ipos for a in accounts)
-    total_wins = sum(a.total_allotments for a in accounts)
+    total_bids = sum(a.total_applied_ipos or 0 for a in accounts)
+    total_wins = sum(a.total_allotments or 0 for a in accounts)
     allotment_rate = (total_wins / total_bids * 100.0) if total_bids > 0 else 0.0
 
     return PnlSummaryResponse(
@@ -62,25 +91,43 @@ async def get_pnl_summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/accounts", response_model=List[AccountResponse])
-async def list_family_accounts(db: AsyncSession = Depends(get_db)):
-    """List all registered family demat accounts with balances, hit rates, and categories."""
+async def list_family_accounts(
+    db: AsyncSession = Depends(get_db),
+    user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """List all registered family demat accounts. Returns empty for guest mode."""
+    if user and user.get("is_guest"):
+        return []
     return await account_service.get_all_accounts(db)
 
 
 @router.post("/accounts", response_model=AccountResponse)
-async def add_family_account(data: AccountCreate, db: AsyncSession = Depends(get_db)):
+async def add_family_account(
+    data: AccountCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
     """Register a new family demat account with Angel One SmartAPI credentials."""
     return await account_service.create_account(db, data)
 
 
 @router.put("/accounts/{account_id}", response_model=AccountResponse)
-async def update_family_account(account_id: str, data: AccountUpdate, db: AsyncSession = Depends(get_db)):
+async def update_family_account(
+    account_id: str,
+    data: AccountUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
     """Update family member balance or category preferences."""
     return await account_service.update_account(db, account_id, data)
 
 
 @router.post("/accounts/{account_id}/sync", response_model=AccountResponse)
-async def sync_account_rms_balance(account_id: str, db: AsyncSession = Depends(get_db)):
+async def sync_account_rms_balance(
+    account_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
     """Trigger live Angel One RMS balance fetch and update demat balance in PostgreSQL."""
     from app.models.account import FamilyAccount
     from fastapi import HTTPException
@@ -97,8 +144,12 @@ async def sync_account_rms_balance(account_id: str, db: AsyncSession = Depends(g
 
 
 @router.post("/accounts/sync-all")
-async def sync_all_accounts_balance(db: AsyncSession = Depends(get_db)):
+async def sync_all_accounts_balance(
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
     """Trigger live Angel One RMS balance fetch for all connected family accounts."""
+
     accounts = await account_service.get_all_accounts(db)
     synced = []
     for a in accounts:

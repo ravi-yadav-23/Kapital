@@ -90,17 +90,36 @@ class IpoDueDiligenceOrchestrator:
         for rf in analysis_res.get("accounting_red_flags", []):
             if isinstance(rf, dict):
                 item = dict(rf)
+                desc = item.get("description") or item.get("detail") or item.get("flag") or item.get("title") or "Accounting Risk Identified"
+                sev = str(item.get("severity", "MEDIUM")).upper()
+                pen = item.get("penalty_points") or item.get("penalty") or (10 if sev == "HIGH" else 5)
                 item["title"] = item.get("title") or item.get("type") or "Accounting Risk"
+                item["description"] = desc
+                item["flag"] = desc
+                item["severity"] = sev
+                item["penalty_points"] = pen
+                item["penalty"] = pen
                 all_red_flags.append(item)
             else:
-                all_red_flags.append({"title": str(rf), "severity": "MEDIUM", "description": str(rf), "penalty_points": 0})
+                desc = str(rf)
+                all_red_flags.append({"title": desc, "flag": desc, "severity": "MEDIUM", "description": desc, "penalty_points": 5, "penalty": 5})
+
         for gf in news_res.get("governance_flags", []):
             if isinstance(gf, dict):
                 item = dict(gf)
+                desc = item.get("description") or item.get("detail") or item.get("flag") or item.get("title") or "Governance Flag Identified"
+                sev = str(item.get("severity", "MEDIUM")).upper()
+                pen = item.get("penalty_points") or item.get("penalty") or (10 if sev == "HIGH" else 5)
                 item["title"] = item.get("title") or item.get("type") or "Governance Flag"
+                item["description"] = desc
+                item["flag"] = desc
+                item["severity"] = sev
+                item["penalty_points"] = pen
+                item["penalty"] = pen
                 all_red_flags.append(item)
             else:
-                all_red_flags.append({"title": str(gf), "severity": "MEDIUM", "description": str(gf), "penalty_points": 0})
+                desc = str(gf)
+                all_red_flags.append({"title": desc, "flag": desc, "severity": "MEDIUM", "description": desc, "penalty_points": 5, "penalty": 5})
 
         penalties = sum(rf.get("penalty_points", 0) for rf in all_red_flags)
         overall_score = self.compute_weighted_score(fin, ind, sub_m, val, gmp_s, gov, penalties)

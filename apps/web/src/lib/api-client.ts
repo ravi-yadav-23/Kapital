@@ -25,13 +25,58 @@ const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/ap
 const API_BASE_URL = RAW_API_URL.endsWith('/api') ? RAW_API_URL : `${RAW_API_URL}/api`
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 
+// Local mock stores (prevents mutating exported constants)
+let localMockAccounts: FamilyAccount[] = [...MOCK_ACCOUNTS]
+let localMockOrders: IpoOrder[] = [...MOCK_ORDERS]
+
+function getAuthHeaders(): HeadersInit {
+  const headers: Record<string, string> = {}
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('kapitl_token')
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+  }
+  return headers
+}
+
+async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  const authHeaders = getAuthHeaders()
+  const headers = {
+    ...authHeaders,
+    ...(init?.headers || {}),
+  }
+  try {
+    const res = await fetch(url, { ...init, headers })
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      localStorage.removeItem('kapitl_token')
+      localStorage.removeItem('kapitl_user')
+      window.location.href = '/login'
+    }
+    return res
+  } catch (err) {
+    console.warn(`[Kapitl API] Network request to ${url} failed:`, err)
+    // Return synthetic 503 response so callers can gracefully fallback instead of crashing
+    return new Response(JSON.stringify({ detail: 'API unreachable' }), {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+}
+
 async function handleResponse<T>(res: Response, fallback: T): Promise<T> {
   if (res.ok) {
     return await res.json()
   }
-  const errorText = await res.text().catch(() => '')
-  throw new Error(`API Error ${res.status}: ${errorText || res.statusText}`)
+  if (fallback !== undefined && fallback !== null) {
+    return fallback
+  }
+  const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+  throw new Error(err.detail || 'API request failed')
 }
+
+
 
 export const apiClient = {
   // ── IPOs ──────────────────────────────────────────────────────────────────
@@ -40,8 +85,8 @@ export const apiClient = {
       if (!status || status === 'all') return MOCK_IPOS
       return MOCK_IPOS.filter((ipo) => ipo.status === status)
     }
-    const url = `${API_BASE_URL}/ipos${status && status !== 'all' ? `?status=${status}` : ''}`
-    const res = await fetch(url)
+    const query = status && status !== 'all' ? `?status=${status}` : ''
+    const res = await authFetch(`${API_BASE_URL}/ipos${query}`)
     return handleResponse(res, MOCK_IPOS)
   },
 
@@ -49,13 +94,13 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_IPOS.find((ipo) => ipo.id === id || ipo.slug === id) || null
     }
-    const res = await fetch(`${API_BASE_URL}/ipos/${id}`)
+    const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
     if (res.status === 404) return null
     return handleResponse(res, null as any)
   },
 
   async syncIpos(): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE_URL}/ipos/sync`, {
+    const res = await authFetch(`${API_BASE_URL}/ipos/sync`, {
       method: 'POST',
     })
     return handleResponse(res, { success: true, message: 'Sync complete' })
@@ -64,10 +109,10 @@ export const apiClient = {
   // ── Accounts ──────────────────────────────────────────────────────────────
   async getAccounts(): Promise<FamilyAccount[]> {
     if (USE_MOCK_DATA) {
-      return MOCK_ACCOUNTS
+      return [...localMockAccounts]
     }
-    const res = await fetch(`${API_BASE_URL}/funds/accounts`)
-    return handleResponse(res, MOCK_ACCOUNTS)
+    const res = await authFetch(`${API_BASE_URL}/funds/accounts`)
+    return handleResponse(res, localMockAccounts)
   },
 
   async createAccount(data: any): Promise<FamilyAccount> {
@@ -89,10 +134,10 @@ export const apiClient = {
         total_realized_pnl: 0,
         created_at: new Date().toISOString(),
       }
-      MOCK_ACCOUNTS.push(newAcc)
+      localMockAccounts = [...localMockAccounts, newAcc]
       return newAcc
     }
-    const res = await fetch(`${API_BASE_URL}/funds/accounts`, {
+    const res = await authFetch(`${API_BASE_URL}/funds/accounts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -101,14 +146,14 @@ export const apiClient = {
   },
 
   async syncAccountBalance(accountId: string): Promise<FamilyAccount> {
-    const res = await fetch(`${API_BASE_URL}/funds/accounts/${accountId}/sync`, {
+    const res = await authFetch(`${API_BASE_URL}/funds/accounts/${accountId}/sync`, {
       method: 'POST',
     })
     return handleResponse(res, null as any)
   },
 
   async syncAllAccounts(): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/funds/accounts/sync-all`, {
+    const res = await authFetch(`${API_BASE_URL}/funds/accounts/sync-all`, {
       method: 'POST',
     })
     return handleResponse(res, { success: true })
@@ -119,7 +164,7 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_FUND_SUMMARY
     }
-    const res = await fetch(`${API_BASE_URL}/funds/summary`)
+    const res = await authFetch(`${API_BASE_URL}/funds/summary`)
     return handleResponse(res, MOCK_FUND_SUMMARY)
   },
 
@@ -144,7 +189,7 @@ export const apiClient = {
       }
     }
 
-    const res = await fetch(`${API_BASE_URL}/funds/optimize`, {
+    const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
       method: 'POST',
     })
     const data = await handleResponse(res, MOCK_ALLOCATION_PLAN)
@@ -170,7 +215,7 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return []
     }
-    const res = await fetch(`${API_BASE_URL}/funds/locks`)
+    const res = await authFetch(`${API_BASE_URL}/funds/locks`)
     return handleResponse(res, [])
   },
 
@@ -179,12 +224,12 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_ALLOTMENTS
     }
-    const res = await fetch(`${API_BASE_URL}/allotments`)
+    const res = await authFetch(`${API_BASE_URL}/allotments`)
     return handleResponse(res, MOCK_ALLOTMENTS)
   },
 
   async stageSellOrder(allotmentId: string, limitPrice: number): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/allotments/${allotmentId}/stage-sell`, {
+    const res = await authFetch(`${API_BASE_URL}/allotments/${allotmentId}/stage-sell`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ limit_price: limitPrice, trigger_time: '09:00:00' }),
@@ -197,17 +242,17 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_PNL_SUMMARY
     }
-    const res = await fetch(`${API_BASE_URL}/funds/pnl-summary`)
+    const res = await authFetch(`${API_BASE_URL}/funds/pnl-summary`)
     return handleResponse(res, MOCK_PNL_SUMMARY)
   },
 
   // ── Orders ────────────────────────────────────────────────────────────────
   async getOrders(): Promise<IpoOrder[]> {
     if (USE_MOCK_DATA) {
-      return MOCK_ORDERS
+      return [...localMockOrders]
     }
-    const res = await fetch(`${API_BASE_URL}/orders`)
-    return handleResponse(res, MOCK_ORDERS)
+    const res = await authFetch(`${API_BASE_URL}/orders`)
+    return handleResponse(res, localMockOrders)
   },
 
   async applyOrder(data: any): Promise<IpoOrder> {
@@ -225,10 +270,10 @@ export const apiClient = {
         angel_order_id: `ANG_IPO_${Date.now().toString().slice(-6)}`,
         placed_at: new Date().toISOString(),
       }
-      MOCK_ORDERS.unshift(newOrder)
+      localMockOrders = [newOrder, ...localMockOrders]
       return newOrder
     }
-    const res = await fetch(`${API_BASE_URL}/orders/apply`, {
+    const res = await authFetch(`${API_BASE_URL}/orders/apply`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -237,28 +282,28 @@ export const apiClient = {
   },
 
   async cancelOrder(orderId: string): Promise<IpoOrder> {
-    const res = await fetch(`${API_BASE_URL}/orders/${orderId}/cancel`, {
+    const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/cancel`, {
       method: 'POST',
     })
     return handleResponse(res, null as any)
   },
 
   async deleteOrder(orderId: string): Promise<{ success: boolean }> {
-    const res = await fetch(`${API_BASE_URL}/orders/${orderId}`, {
+    const res = await authFetch(`${API_BASE_URL}/orders/${orderId}`, {
       method: 'DELETE',
     })
     return handleResponse(res, { success: true })
   },
 
   async markOrderApplied(orderId: string): Promise<IpoOrder> {
-    const res = await fetch(`${API_BASE_URL}/orders/${orderId}/mark-applied`, {
+    const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/mark-applied`, {
       method: 'POST',
     })
     return handleResponse(res, null as any)
   },
 
   async setOrderAllotmentResult(orderId: string, result: 'ALLOTTED' | 'NOT_ALLOTTED'): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}/orders/${orderId}/allotment?result=${result}`, {
+    const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/allotment?result=${result}`, {
       method: 'POST',
     })
     return handleResponse(res, { success: true })
@@ -269,7 +314,7 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_REPORTS
     }
-    const res = await fetch(`${API_BASE_URL}/reports`)
+    const res = await authFetch(`${API_BASE_URL}/reports`)
     return handleResponse(res, MOCK_REPORTS)
   },
 
@@ -277,13 +322,13 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null
     }
-    const res = await fetch(`${API_BASE_URL}/reports/${id}`)
+    const res = await authFetch(`${API_BASE_URL}/reports/${id}`)
     if (res.status === 404) return null
     return handleResponse(res, null as any)
   },
 
   async generateReport(id: string): Promise<AiReport> {
-    const res = await fetch(`${API_BASE_URL}/reports/${id}/generate`, {
+    const res = await authFetch(`${API_BASE_URL}/reports/${id}/generate`, {
       method: 'POST',
     })
     return handleResponse(res, null as any)
@@ -295,7 +340,7 @@ export const apiClient = {
       return { ...MOCK_APP_SETTINGS, notifications: { ...MOCK_APP_SETTINGS.notifications } }
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/settings`)
+      const res = await authFetch(`${API_BASE_URL}/settings`)
       if (res.ok) {
         return await res.json()
       }
@@ -309,7 +354,7 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return { success: true, settings }
     }
-    const res = await fetch(`${API_BASE_URL}/settings`, {
+    const res = await authFetch(`${API_BASE_URL}/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),

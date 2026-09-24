@@ -5,6 +5,10 @@ from typing import List
 
 router = APIRouter(tags=["websocket"])
 
+import logging
+
+logger = logging.getLogger("websocket")
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -12,17 +16,24 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        logger.debug(f"Client connected. Active WebSockets: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+            logger.debug(f"Client disconnected. Active WebSockets: {len(self.active_connections)}")
 
     async def broadcast(self, message: dict):
+        disconnected = []
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"WebSocket broadcast send failed, marking for cleanup: {e}")
+                disconnected.append(connection)
+
+        for conn in disconnected:
+            self.disconnect(conn)
 
 from datetime import datetime, timezone
 

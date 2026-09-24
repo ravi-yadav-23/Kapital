@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import '../styles/globals.css'
+import { AppProviders } from '@/components/providers/AppProviders'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
   keywords: ['IPO', 'investment', 'Angel One', 'allotment', 'GMP', 'DRHP', 'Kapitl'],
 }
 
+
 export default function RootLayout({
   children,
 }: {
@@ -21,8 +23,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <body className="antialiased">
-        {children}
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   )
 }
+

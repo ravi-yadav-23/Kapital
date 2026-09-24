@@ -63,8 +63,13 @@ class AiDueDiligenceService:
         row = res.scalar_one_or_none()
         prefs = row.value if row else {}
 
+        from app.agents.base import get_default_model_for_provider
         provider = prefs.get("ai_provider") or settings.default_ai_provider or "groq"
-        model = prefs.get("ai_model") or settings.default_ai_model or "openai/gpt-oss-120b"
+        raw_model = prefs.get("ai_model") or settings.default_ai_model or ""
+        if not raw_model or "gpt-oss-120b" in raw_model:
+            model = get_default_model_for_provider(provider)
+        else:
+            model = raw_model
 
         # Determine active API key
         if provider == "groq":

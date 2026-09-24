@@ -356,9 +356,12 @@ function ThemeToggle() {
 
 // ── Sub-component: User Menu ─────────────────────────────────────
 
+import { useAuth } from '@/lib/auth-context'
+
 function UserMenu() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const { user, isGuest, logout } = useAuth()
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -371,7 +374,7 @@ function UserMenu() {
   }, [])
 
   const menuItems = [
-    { icon: <LayoutDashboard className="w-3.5 h-3.5" />, label: 'Dashboard', href: '/' },
+    { icon: <LayoutDashboard className="w-3.5 h-3.5" />, label: 'Dashboard', href: '/dashboard' },
     { icon: <Wallet className="w-3.5 h-3.5" />, label: 'Fund Manager', href: '/funds' },
     { icon: <Settings className="w-3.5 h-3.5" />, label: 'Settings', href: '/settings' },
   ]
@@ -385,15 +388,33 @@ function UserMenu() {
         <div className="w-7 h-7 rounded-full bg-brand-from/15 flex items-center justify-center">
           <User className="w-3.5 h-3.5 text-brand-from" />
         </div>
+        <span className="hidden xl:inline text-xs font-medium text-text-primary">
+          {user?.username || (isGuest ? 'Guest' : 'Admin')}
+        </span>
         <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-surface-card border border-border-strong rounded-xl shadow-2xl py-1.5 z-50 animate-slide-down">
+        <div className="absolute right-0 mt-2 w-64 bg-surface-card border border-border-strong rounded-xl shadow-2xl py-1.5 z-50 animate-slide-down">
           {/* User Info */}
           <div className="px-4 py-3 border-b border-border-subtle">
-            <div className="text-sm font-semibold text-text-primary">Investor Account</div>
-            <div className="text-2xs text-text-muted">Primary Demat Portfolio</div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-text-primary truncate">
+                {user?.username || 'Kapitl User'}
+              </span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                  isGuest
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                }`}
+              >
+                {isGuest ? 'GUEST' : 'ADMIN'}
+              </span>
+            </div>
+            <div className="text-2xs text-text-muted truncate mt-0.5">
+              {user?.email || (isGuest ? 'guest-preview@kapitl.local' : 'Authorized Administrator')}
+            </div>
           </div>
 
           {/* Menu Items */}
@@ -408,11 +429,26 @@ function UserMenu() {
               {item.label}
             </Link>
           ))}
+
+          {/* Logout Button */}
+          <div className="border-t border-border-subtle mt-1 pt-1">
+            <button
+              onClick={() => {
+                setIsOpen(false)
+                logout()
+              }}
+              className="w-full flex items-center gap-3 px-4 py-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign Out
+            </button>
+          </div>
         </div>
       )}
     </div>
   )
 }
+
 
 
 // ── Main Component ─────────────────────────────────────────────────

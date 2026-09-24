@@ -17,7 +17,7 @@ export function RedFlagList({ redFlags = [] }: RedFlagListProps) {
           <span>Clean DRHP Audit — Zero Red Flags Detected</span>
         </div>
         <p className="text-2xs text-text-secondary">
-          Claude's prospectus audit found healthy promoter holding (&gt;50%), positive operating cash
+          Autonomous multi-agent forensic audit found healthy promoter holding (&gt;50%), positive operating cash
           flows, standard auditor unqualified opinions, and acceptable debt ratios.
         </p>
       </div>
@@ -38,8 +38,11 @@ export function RedFlagList({ redFlags = [] }: RedFlagListProps) {
 
       <div className="space-y-2.5">
         {redFlags.map((flag, index) => {
-          const isHigh = flag.severity === 'HIGH'
-          const isMedium = flag.severity === 'MEDIUM'
+          const sev = (flag.severity || 'MEDIUM').toUpperCase()
+          const isHigh = sev === 'HIGH'
+          const isMedium = sev === 'MEDIUM'
+          const flagText = flag.description || flag.flag || flag.detail || flag.title || 'Risk Factor Identified'
+          const penaltyPts = flag.penalty ?? flag.penalty_points ?? (isHigh ? 10 : isMedium ? 5 : 2)
 
           return (
             <div
@@ -63,18 +66,23 @@ export function RedFlagList({ redFlags = [] }: RedFlagListProps) {
                           : 'bg-accent-blue/15 text-accent-blue'
                       }`}
                     >
-                      {flag.severity} RISK
+                      {sev} RISK
                     </span>
+                    {flag.type && flag.type !== flagText && (
+                      <span className="text-[10px] text-text-muted font-mono uppercase">
+                        [{flag.type}]
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-text-primary mt-1 font-medium leading-snug">
-                    {flag.flag}
+                    {flagText}
                   </p>
                 </div>
               </div>
 
               <div className="text-right flex-shrink-0">
                 <span className="text-xs font-mono font-bold text-accent-red bg-accent-red/10 px-2 py-0.5 rounded">
-                  -{flag.penalty} pts
+                  -{penaltyPts} pts
                 </span>
               </div>
             </div>

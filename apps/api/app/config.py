@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from pydantic import field_validator
+from typing import List, Any
 import json
 
 
@@ -7,8 +8,21 @@ class Settings(BaseSettings):
     # App
     app_name: str = "Kapitl API"
     environment: str = "development"
-    secret_key: str
+    secret_key: str = "kapitl-default-development-secret-key"
     cors_origins: List[str] = ["http://localhost:3000"]
+
+    @field_validator("cors_origins", mode="before")
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [x.strip() for x in v.split(",") if x.strip()]
+        return v
+
 
     # Database
     database_url: str
@@ -25,7 +39,11 @@ class Settings(BaseSettings):
     default_ai_model: str = "openai/gpt-oss-120b"
 
     # Security & Auth
-    admin_pin: str = "7090"
+    admin_pin: str = ""
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    allowed_email: str = ""
+    admin_totp_secret: str = ""
 
     # IPO Data Sources
     ipoalerts_api_key: str = ""  # Free key from ipoalerts.in — sign up at https://ipoalerts.in
@@ -38,7 +56,13 @@ class Settings(BaseSettings):
 
     @property
     def angel_accounts(self) -> List[dict]:
-        return json.loads(self.angel_accounts_json)
+        if not self.angel_accounts_json or not self.angel_accounts_json.strip():
+            return []
+        try:
+            return json.loads(self.angel_accounts_json)
+        except Exception:
+            return []
+
 
 
 settings = Settings()

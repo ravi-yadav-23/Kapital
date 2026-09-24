@@ -18,7 +18,7 @@ async def _seed_accounts_from_env():
     On startup: upsert all accounts from ANGEL_ACCOUNTS_JSON into PostgreSQL
     and attempt a real SmartAPI TOTP login for each.
     """
-    from app.db.database import AsyncSessionLocal
+    from app.db import database
     from app.services.account_service import account_service, MOCK_ACCOUNTS_STORE, _model_to_dict
     from app.services.angel_service import angel_service
 
@@ -27,7 +27,8 @@ async def _seed_accounts_from_env():
         logger.info("No accounts in ANGEL_ACCOUNTS_JSON — skipping seed")
         return
 
-    async with AsyncSessionLocal() as db:
+    async with database.AsyncSessionLocal() as db:
+
         for env_acc in env_accounts:
             client_id = env_acc.get("client_id", "")
             name = env_acc.get("name", "Unknown")
@@ -85,18 +86,45 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware
+# CORS Middleware: Explicitly allow localhost origins with credentials
+cors_origins_list = list(set(settings.cors_origins + [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins if settings.environment == "production" else ["*"],
+    allow_origins=cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 # Request logging and rate limiting middleware
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
+
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    origin = request.headers.get("origin")
+    headers = {
+        "Access-Control-Allow-Credentials": "true",
+    }
+    if origin and (origin in cors_origins_list or origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:")):
+        headers["Access-Control-Allow-Origin"] = origin
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred.", "error": str(exc)},
+        headers=headers,
+    )
 
 # Register API Routers
 app.include_router(health.router, prefix="/health", tags=["health"])

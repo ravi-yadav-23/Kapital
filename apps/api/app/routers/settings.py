@@ -9,7 +9,10 @@ from app.models.setting import SystemSetting
 from app.utils.security import encrypt_credential, decrypt_credential, mask_secret
 from app.config import settings
 
+from app.middleware.auth import require_admin
+
 router = APIRouter(prefix="/settings", tags=["settings"])
+
 
 SENSITIVE_API_KEYS = {"groq_api_key", "gemini_api_key", "anthropic_api_key"}
 
@@ -60,9 +63,17 @@ async def get_decrypted_setting(db: AsyncSession, setting_field: str) -> Optiona
     return decrypt_credential(raw_val) if raw_val else None
 
 
+from app.middleware.auth import require_admin, get_current_user_optional
+
 @router.get("")
-async def get_app_settings(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
-    """Retrieve current platform settings from PostgreSQL with API keys masked."""
+async def get_app_settings(
+    db: AsyncSession = Depends(get_db),
+    user: Optional[dict] = Depends(get_current_user_optional),
+) -> Dict[str, Any]:
+    """Retrieve current platform settings with API keys masked. Returns defaults for guest mode."""
+    if user and user.get("is_guest"):
+        return _mask_settings(DEFAULT_SETTINGS)
+
     stmt = select(SystemSetting).where(SystemSetting.key == "app_preferences")
     res = await db.execute(stmt)
     setting_row = res.scalar_one_or_none()
@@ -87,7 +98,11 @@ async def get_app_settings(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]
 
 
 @router.post("")
-async def save_app_settings(payload: Dict[str, Any], db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+async def save_app_settings(
+    payload: Dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """Update and securely persist platform configuration with encrypted API keys."""
     stmt = select(SystemSetting).where(SystemSetting.key == "app_preferences")
     res = await db.execute(stmt)

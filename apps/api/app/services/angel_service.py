@@ -1,11 +1,15 @@
 import pyotp
 import httpx
 import logging
+import json
+import os
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from app.config import settings
 
 logger = logging.getLogger("angel_service")
+
+SESSION_CACHE_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".angel_sessions.json")
 
 
 class AngelOneSmartApiService:
@@ -17,45 +21,94 @@ class AngelOneSmartApiService:
     BASE_URL = "https://apiconnect.angelbroking.com"
     _instrument_cache: Dict[str, str] = {}
     _instrument_cache_loaded: bool = False
+    _last_scrip_refresh: Optional[datetime] = None
 
     def __init__(self):
-        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.sessions: Dict[str, Dict[str, Any]] = self._load_persisted_sessions()
+
+    def _load_persisted_sessions(self) -> Dict[str, Dict[str, Any]]:
+        """Loads cached Angel One sessions from disk on process startup."""
+        if not os.path.exists(SESSION_CACHE_FILE):
+            return {}
+        try:
+            with open(SESSION_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                valid = {}
+                now = datetime.now(timezone.utc).timestamp()
+                for cid, sess in data.items():
+                    exp = sess.get("expires_at", 0)
+                    if exp > now:
+                        valid[cid] = sess
+                logger.info(f"Loaded {len(valid)} active Angel One sessions from session cache")
+                return valid
+        except Exception as e:
+            logger.warning(f"Could not load persisted Angel One sessions: {e}")
+            return {}
+
+    def _persist_sessions(self):
+        """Saves active sessions to disk to survive server restarts."""
+        try:
+            with open(SESSION_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.sessions, f)
+        except Exception as e:
+            logger.warning(f"Could not persist Angel One sessions: {e}")
+
+    async def refresh_scrip_master(self, force: bool = False) -> int:
+        """
+        Refreshes OpenAPI Scrip Master instruments from Angel One.
+        Auto-skips if loaded within the last 12 hours unless force=True.
+        """
+        now = datetime.now(timezone.utc)
+        if not force and self._instrument_cache_loaded and self._last_scrip_refresh:
+            elapsed = (now - self._last_scrip_refresh).total_seconds()
+            if elapsed < 43200:  # 12 hours
+                return len(self._instrument_cache)
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(
+                    "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    new_cache: Dict[str, str] = {}
+                    for item in data:
+                        exch = item.get("exch_seg")
+                        tsym = item.get("name") or item.get("symbol", "")
+                        token = item.get("token")
+                        if exch and tsym and token:
+                            new_cache[f"{exch}:{tsym.upper().strip()}"] = str(token)
+                            if item.get("symbol"):
+                                new_cache[f"{exch}:{item['symbol'].upper().strip()}"] = str(token)
+                    self._instrument_cache = new_cache
+                    self._instrument_cache_loaded = True
+                    self._last_scrip_refresh = now
+                    logger.info(f"Refreshed {len(self._instrument_cache)} Angel One instruments into cache")
+                    return len(self._instrument_cache)
+        except Exception as ex:
+            logger.warning(f"Failed to fetch Angel One instrument master: {ex}")
+
+        return len(self._instrument_cache)
 
     async def get_symbol_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
         """
         Retrieves the exact Angel One scrip token from OpenAPI Scrip Master.
-        Returns None if not found, eliminating silent hardcoded fallbacks.
+        Refreshes scrip master on-demand if token is missing.
         """
         clean_symbol = symbol.upper().replace("-EQ", "").strip()
         cache_key = f"{exchange}:{clean_symbol}"
-        if cache_key in self._instrument_cache:
-            return self._instrument_cache[cache_key]
 
         if not self._instrument_cache_loaded:
-            try:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    res = await client.get(
-                        "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-                    )
-                    if res.status_code == 200:
-                        data = res.json()
-                        for item in data:
-                            exch = item.get("exch_seg")
-                            tsym = item.get("name") or item.get("symbol", "")
-                            token = item.get("token")
-                            if exch and tsym and token:
-                                self._instrument_cache[f"{exch}:{tsym.upper().strip()}"] = str(token)
-                                if item.get("symbol"):
-                                    self._instrument_cache[f"{exch}:{item['symbol'].upper().strip()}"] = str(token)
-                        self._instrument_cache_loaded = True
-                        logger.info(f"Loaded {len(self._instrument_cache)} Angel One instruments into cache")
-            except Exception as ex:
-                logger.warning(f"Failed to fetch Angel One instrument master: {ex}")
+            await self.refresh_scrip_master(force=True)
 
-        # Check cache or fallback match with -EQ
-        token = self._instrument_cache.get(cache_key)
-        if not token:
-            token = self._instrument_cache.get(f"{exchange}:{clean_symbol}-EQ")
+        token = self._instrument_cache.get(cache_key) or self._instrument_cache.get(f"{exchange}:{clean_symbol}-EQ")
+
+        # If missing and cache is over 30 mins old, refresh once on-demand for newly listed IPOs
+        if not token and self._last_scrip_refresh:
+            if (datetime.now(timezone.utc) - self._last_scrip_refresh).total_seconds() > 1800:
+                logger.info(f"Symbol '{clean_symbol}' not found in cache. Refreshing scrip master...")
+                await self.refresh_scrip_master(force=True)
+                token = self._instrument_cache.get(cache_key) or self._instrument_cache.get(f"{exchange}:{clean_symbol}-EQ")
 
         if not token:
             logger.error(f"Instrument token NOT found for {cache_key} in Angel One master scrip list.")
@@ -115,14 +168,18 @@ class AngelOneSmartApiService:
                     refresh_token = data["data"]["refreshToken"]
                     feed_token = data["data"].get("feedToken")
 
+                    # Session valid for ~24 hours
+                    exp_timestamp = datetime.now(timezone.utc).timestamp() + (24 * 3600)
                     self.sessions[client_id] = {
                         "jwtToken": jwt_token,
                         "refreshToken": refresh_token,
                         "feedToken": feed_token,
                         "api_key": api_key,
                         "logged_in_at": datetime.now(timezone.utc).isoformat(),
+                        "expires_at": exp_timestamp,
                     }
-                    logger.info(f"[{client_id}] SmartAPI login successful. Session active.")
+                    self._persist_sessions()
+                    logger.info(f"[{client_id}] SmartAPI login successful. Session active and persisted.")
                     return {"success": True, "jwtToken": jwt_token}
                 else:
                     error_msg = data.get("message", "Login failed")
@@ -186,18 +243,30 @@ class AngelOneSmartApiService:
             logger.error(f"Cannot stage pre-market sell: symbol token for '{symbol}' not found in Angel One instrument master.")
             return {
                 "success": False,
+                "status": "TOKEN_NOT_FOUND",
                 "message": f"Instrument token for '{symbol}' not found in Angel One master scrip file. Listing may not be active on NSE yet.",
             }
 
         session = self.sessions.get(client_id)
         if not session or not session.get("jwtToken"):
-            logger.warning(f"No active session for {client_id} during pre-market sell. Generating staged ID.")
-            sell_order_id = f"ANG_SELL_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
+            logger.info(f"Session not in memory for {client_id}. Attempting auto-login from configured credentials...")
+            matching_acc = next((a for a in settings.angel_accounts if a.get("client_id") == client_id), None)
+            if matching_acc:
+                login_res = await self.login_account(
+                    client_id=client_id,
+                    api_key=matching_acc.get("api_key", ""),
+                    pin=matching_acc.get("pin", ""),
+                    totp_secret=matching_acc.get("totp_secret", ""),
+                )
+                if login_res.get("success"):
+                    session = self.sessions.get(client_id)
+
+        if not session or not session.get("jwtToken"):
+            logger.error(f"No active or recoverable broker session for {client_id}.")
             return {
-                "success": True,
-                "sell_order_id": sell_order_id,
-                "status": "STAGE_PENDING_AUTH",
-                "limit_price": limit_price,
+                "success": False,
+                "status": "AUTH_FAILED",
+                "message": f"No active broker session for account {client_id}. Please re-authenticate.",
             }
 
         jwt_token = session["jwtToken"]
@@ -233,26 +302,28 @@ class AngelOneSmartApiService:
                         "sell_order_id": broker_order_id,
                         "status": "EXECUTED",
                         "limit_price": limit_price,
+                        "message": f"Order successfully submitted to Angel One. Order ID: {broker_order_id}",
                     }
                 else:
                     err = data.get("message", "Order placement failed")
-                    logger.warning(f"[{client_id}] SmartAPI limit order rejected (Market closed or unlisted yet): {err}")
-                    sell_order_id = f"ANG_SELL_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
+                    logger.error(f"[{client_id}] SmartAPI limit sell rejected by broker: {err}")
                     return {
-                        "success": True,
-                        "sell_order_id": sell_order_id,
-                        "status": "STAGED",
+                        "success": False,
+                        "sell_order_id": None,
+                        "status": "REJECTED",
                         "limit_price": limit_price,
-                        "message": f"Staged for 09:00 AM auction: {err}",
+                        "error": err,
+                        "message": f"Angel One rejected order: {err}",
                     }
         except Exception as e:
             logger.error(f"[{client_id}] Pre-market sell network error: {e}")
-            sell_order_id = f"ANG_SELL_{int(datetime.now(timezone.utc).timestamp())}_{symbol}"
             return {
-                "success": True,
-                "sell_order_id": sell_order_id,
-                "status": "STAGED",
+                "success": False,
+                "sell_order_id": None,
+                "status": "FAILED",
                 "limit_price": limit_price,
+                "error": str(e),
+                "message": f"Network exception while sending order: {str(e)}",
             }
 
 

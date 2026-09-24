@@ -65,26 +65,27 @@ export function AccountsTable({ accounts, onEditAccount }: AccountsTableProps) {
                 </td>
 
                 <td>
-                  <AmountDisplay amount={acc.total_balance} className="text-xs font-semibold" />
+                  <AmountDisplay amount={acc.total_balance ?? 0} className="text-xs font-semibold" />
                 </td>
 
                 <td>
                   <AmountDisplay
-                    amount={acc.available_balance}
+                    amount={acc.available_balance ?? 0}
                     className="text-xs font-semibold text-accent-green"
                   />
                 </td>
 
                 <td>
-                  {acc.locked_balance > 0 ? (
+                  {(acc.locked_balance ?? 0) > 0 ? (
                     <AmountDisplay
-                      amount={acc.locked_balance}
+                      amount={acc.locked_balance ?? 0}
                       className="text-xs font-semibold text-accent-amber"
                     />
                   ) : (
                     <span className="text-2xs font-mono text-text-muted">₹0 (Free)</span>
                   )}
                 </td>
+
 
                 <td>
                   <span
@@ -102,14 +103,14 @@ export function AccountsTable({ accounts, onEditAccount }: AccountsTableProps) {
 
                 <td>
                   <div className="flex items-center gap-1 font-mono text-2xs">
-                    <span className="font-bold text-text-primary">{acc.allotment_rate}%</span>
-                    <span className="text-text-muted">({acc.total_allotments}/{acc.total_applied_ipos})</span>
+                    <span className="font-bold text-text-primary">{(acc.allotment_rate ?? 0)}%</span>
+                    <span className="text-text-muted">({(acc.total_allotments ?? 0)}/{(acc.total_applied_ipos ?? 0)})</span>
                   </div>
                 </td>
 
                 <td>
                   <span className="text-accent-green font-mono font-bold text-xs">
-                    +₹{acc.total_realized_pnl.toLocaleString('en-IN')}
+                    +₹{(acc.total_realized_pnl ?? 0).toLocaleString('en-IN')}
                   </span>
                 </td>
 

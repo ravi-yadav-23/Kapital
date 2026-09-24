@@ -26,14 +26,21 @@ export default function FundsPage() {
       apiClient.getFundSummary(),
       apiClient.getAllocationPlan(),
       apiClient.getAsbaLocks(),
-    ]).then(([accs, funds, p, lcks]) => {
-      setAccounts(accs)
-      setFundSummary(funds)
-      setPlan(p)
-      setLocks(lcks || [])
-      setLoading(false)
-    })
+    ])
+      .then(([accs, funds, p, lcks]) => {
+        setAccounts(accs || [])
+        setFundSummary(funds)
+        setPlan(p)
+        setLocks(lcks || [])
+      })
+      .catch((err) => {
+        console.warn('Could not fetch all funds data from backend:', err)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
   }, [])
+
 
   const handleAddAccount = async (newAcc: Partial<FamilyAccount>) => {
     try {

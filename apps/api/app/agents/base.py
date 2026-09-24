@@ -11,6 +11,17 @@ from app.utils.security import decrypt_credential
 logger = logging.getLogger("agent.base")
 
 
+def get_default_model_for_provider(provider: str) -> str:
+    p = (provider or "").lower()
+    if p == "gemini":
+        return "gemini-1.5-flash"
+    elif p == "anthropic":
+        return "claude-3-5-sonnet-20241022"
+    elif p == "openai":
+        return "gpt-4o-mini"
+    return "openai/gpt-oss-120b"
+
+
 class BaseAgent:
     """
     Abstract Base Class for autonomous agents in Kapitl.
@@ -33,7 +44,8 @@ class BaseAgent:
         prefs = row.value if row else {}
 
         provider = prefs.get("ai_provider") or settings.default_ai_provider or "groq"
-        model = prefs.get("ai_model") or settings.default_ai_model or "openai/gpt-oss-120b"
+        raw_model = prefs.get("ai_model") or settings.default_ai_model or ""
+        model = raw_model if raw_model else get_default_model_for_provider(provider)
 
         if provider == "groq":
             raw_key = prefs.get("groq_api_key") or settings.groq_api_key or ""
@@ -60,7 +72,8 @@ class BaseAgent:
     ) -> Optional[Dict[str, Any]]:
         """Invokes the configured LLM with system instructions and user prompt expecting JSON."""
         provider = ai_cfg.get("provider", "groq")
-        model = ai_cfg.get("model", "openai/gpt-oss-120b")
+        raw_model = ai_cfg.get("model", "")
+        model = raw_model if raw_model else get_default_model_for_provider(provider)
         api_key = ai_cfg.get("api_key", "")
 
         if not api_key:
@@ -74,7 +87,7 @@ class BaseAgent:
                 from groq import AsyncGroq
                 client = AsyncGroq(api_key=api_key)
                 response = await client.chat.completions.create(
-                    model=model or "openai/gpt-oss-120b",
+                    model=model,
                     messages=[
                         {"role": "system", "content": full_system},
                         {"role": "user", "content": user_prompt},

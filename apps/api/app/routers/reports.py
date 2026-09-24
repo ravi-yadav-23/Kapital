@@ -43,8 +43,14 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
     return await report_service.get_or_generate_report(db, ipo)
 
 
+from app.middleware.auth import require_admin
+
 @router.post("/{ipo_id}/generate", response_model=AiReportResponse)
-async def trigger_ai_analysis(ipo_id: str, db: AsyncSession = Depends(get_db)):
+async def trigger_ai_analysis(
+    ipo_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
     """Trigger real-time DRHP extraction and GMP sentiment scoring for an IPO."""
     stmt = select(Ipo).where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id))
     res = await db.execute(stmt)
