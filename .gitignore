@@ -23,6 +23,11 @@ out/
 !.env.example
 !.env.local.example
 
+# Broker session state & secrets (NEVER commit these)
+.angel_sessions.json
+.totp_secret
+*.sessions.json
+
 # Build outputs
 build/
 dist/

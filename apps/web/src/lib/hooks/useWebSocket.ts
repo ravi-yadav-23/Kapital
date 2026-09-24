@@ -23,9 +23,26 @@ export function useWebSocket(onMessage?: MessageHandler) {
   const connect = useCallback(() => {
     if (typeof window === 'undefined') return
 
-    // Derive WS URL from NEXT_PUBLIC_API_URL or current host
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api'
-    const wsUrl = apiUrl.replace(/^http/, 'ws').replace(/\/api$/, '') + '/api/ws'
+    // Build the WebSocket URL robustly using the URL API instead of fragile regex.
+    // NEXT_PUBLIC_WS_URL takes priority (explicit ws:// URL).
+    // Otherwise, derive from NEXT_PUBLIC_API_URL by switching protocol and appending /ws path.
+    let wsUrl: string
+    const explicitWsUrl = process.env.NEXT_PUBLIC_WS_URL
+    if (explicitWsUrl) {
+      wsUrl = explicitWsUrl.replace(/\/$/, '') + '/ws'
+    } else {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+      try {
+        const parsed = new URL(apiUrl)
+        parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
+        // Strip any existing path (e.g. /api, /api/v1) — the WS endpoint is always at root /api/ws
+        parsed.pathname = '/api/ws'
+        wsUrl = parsed.toString()
+      } catch {
+        // Absolute fallback if URL parsing fails
+        wsUrl = 'ws://127.0.0.1:8000/api/ws'
+      }
+    }
 
     try {
       const ws = new WebSocket(wsUrl)

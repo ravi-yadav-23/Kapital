@@ -34,9 +34,7 @@ export default function LoginPage() {
 
   const googleBtnRef = useRef<HTMLDivElement>(null)
 
-  const GOOGLE_CLIENT_ID =
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-    '817266880199-0gilousjp4gnrbve1tli77db7c5v62oo.apps.googleusercontent.com'
+  const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -49,7 +47,10 @@ export default function LoginPage() {
   useEffect(() => {
     const initGoogle = () => {
       if (typeof window === 'undefined' || !(window as any).google?.accounts?.id) return false
-
+      if (!GOOGLE_CLIENT_ID) {
+        console.warn('NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set — Google Sign-In disabled.')
+        return false
+      }
       try {
         ;(window as any).google.accounts.id.initialize({
           client_id: GOOGLE_CLIENT_ID,

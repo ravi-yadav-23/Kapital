@@ -1,14 +1,20 @@
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from typing import List, Any
 import json
+import logging
+import secrets
+
+logger = logging.getLogger("config")
+
+_INSECURE_DEFAULT_KEY = "kapitl-default-development-secret-key"
 
 
 class Settings(BaseSettings):
     # App
     app_name: str = "Kapitl API"
     environment: str = "development"
-    secret_key: str = "kapitl-default-development-secret-key"
+    secret_key: str = _INSECURE_DEFAULT_KEY
     cors_origins: List[str] = ["http://localhost:3000"]
 
     @field_validator("cors_origins", mode="before")
@@ -22,6 +28,26 @@ class Settings(BaseSettings):
                     pass
             return [x.strip() for x in v.split(",") if x.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_secret_key(self):
+        is_insecure = (
+            not self.secret_key
+            or self.secret_key == _INSECURE_DEFAULT_KEY
+            or len(self.secret_key) < 32
+        )
+        if is_insecure:
+            if self.environment == "production":
+                raise ValueError(
+                    "SECRET_KEY must be set to a strong random value in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+            else:
+                logging.getLogger("config").warning(
+                    "\u26a0\ufe0f  SECRET_KEY is using the insecure default. "
+                    "Set SECRET_KEY in your .env file before deploying to production."
+                )
+        return self
 
 
     # Database

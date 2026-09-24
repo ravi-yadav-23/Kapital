@@ -13,8 +13,8 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: antigravity_test
-          POSTGRES_USER: antigravity
+          POSTGRES_DB: kapitl_test
+          POSTGRES_USER: kapitl
           POSTGRES_PASSWORD: password
         ports: ["5432:5432"]
       redis:
@@ -28,9 +28,9 @@ jobs:
       - run: pip install -r apps/api/requirements.txt
       - run: pytest apps/api/tests/
         env:
-          DATABASE_URL: postgresql+asyncpg://antigravity:password@localhost:5432/antigravity_test
+          DATABASE_URL: postgresql+asyncpg://kapitl:password@localhost:5432/kapitl_test
           REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: test-secret-key
+          SECRET_KEY: test-secret-key-for-ci-only-not-used-in-prod
 
   test-web:
     runs-on: ubuntu-latest

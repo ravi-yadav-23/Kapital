@@ -8,7 +8,16 @@ import uuid
 # ── Thin in-memory cache (populated from DB on startup, kept for fast reads) ──
 # This is NOT the source of truth — PostgreSQL is. This cache is refreshed
 # on startup and after each write operation.
-MOCK_ACCOUNTS_STORE: List[dict] = []
+_accounts_cache: List[dict] = []
+MOCK_ACCOUNTS_STORE = _accounts_cache  # backward-compat alias — remove after callers updated
+
+
+def _invalidate_cache(angel_client_id: str) -> None:
+    """Remove a specific account from the in-memory cache by client_id.
+    Called after any write that changes account balances or preferences,
+    so the optimizer always reads current data from the DB on the next request."""
+    global _accounts_cache
+    _accounts_cache[:] = [a for a in _accounts_cache if a.get("angel_client_id") != angel_client_id]
 
 
 def _model_to_response(acc: FamilyAccount) -> AccountResponse:
@@ -67,8 +76,8 @@ class AccountService:
         result = await db.execute(select(FamilyAccount).order_by(FamilyAccount.created_at))
         accounts = result.scalars().all()
         # Refresh in-memory cache
-        MOCK_ACCOUNTS_STORE.clear()
-        MOCK_ACCOUNTS_STORE.extend(_model_to_dict(a) for a in accounts)
+        _accounts_cache.clear()
+        _accounts_cache.extend(_model_to_dict(a) for a in accounts)
         return [_model_to_response(a) for a in accounts]
 
     @staticmethod
@@ -176,6 +185,7 @@ class AccountService:
 
         await db.flush()
         await db.refresh(acc)
+        _invalidate_cache(acc.angel_client_id)  # force re-read on next optimizer call
         return _model_to_response(acc)
 
     @staticmethod
@@ -219,13 +229,8 @@ class AccountService:
             await db.flush()
             await db.refresh(acc)
 
-            # Refresh in-memory cache
-            for cached in MOCK_ACCOUNTS_STORE:
-                if cached.get("angel_client_id") == client_id:
-                    cached["total_balance"] = net
-                    cached["total_demat_balance"] = net
-                    cached["available_balance"] = avail
-                    cached["available_liquid_balance"] = avail
+            # Invalidate stale cache entry so optimizer reads live balance
+            _invalidate_cache(client_id)
 
             return _model_to_response(acc)
         except Exception as e:

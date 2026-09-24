@@ -36,9 +36,15 @@ celery.conf.beat_schedule = {}
 def dispatch_listing_sells_celery(self):
     """Celery task: Execute 09:00:00 AM IST pre-listing sell orders."""
     logger.info("Executing Celery task: dispatch_listing_sells")
+
+    async def _run():
+        from app.db.database import AsyncSessionLocal
+        from app.tasks.allotment_tasks import run_listing_day_sell_staging
+        async with AsyncSessionLocal() as db:
+            return await run_listing_day_sell_staging(db)
+
     try:
-        from app.tasks.allotment_tasks import dispatch_listing_sells
-        return asyncio.run(dispatch_listing_sells())
+        return asyncio.run(_run())
     except Exception as exc:
         logger.error(f"dispatch_listing_sells failed: {exc}")
         raise self.retry(exc=exc, countdown=15)

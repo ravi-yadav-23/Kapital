@@ -38,10 +38,10 @@ class BankService:
     @staticmethod
     def check_asba_category_limits(category: str, amount: float) -> Dict[str, Any]:
         """
-        Validates bid amount against regulatory SEBI ASBA bidding categories:
-        - RETAIL: Maximum ₹2,00,000 (UPI mandate supported up to ₹5,00,000)
-        - sHNI: ₹2,00,001 to ₹5,00,000 (UPI mandate supported up to ₹5,00,000)
-        - bHNI: > ₹5,00,000 (Netbanking / Syndicate ASBA)
+        Validates bid amount against SEBI ASBA bidding category boundaries (SEBI ICDR Regulations):
+        - RETAIL: Up to ₹2,00,000. UPI mandate supported up to ₹5,00,000 (payment limit, not category limit).
+        - sHNI:   ₹2,00,001 to ₹10,00,000 (Small Non-Institutional Investor).
+        - bHNI:   Above ₹10,00,000 (Big Non-Institutional Investor — requires Netbanking / Syndicate ASBA).
         """
         cat = category.upper()
         if cat == "RETAIL":
@@ -58,18 +58,18 @@ class BankService:
                     "valid": False,
                     "message": f"sHNI category bid must exceed ₹2,00,000 (requested ₹{amount:,.2f}).",
                 }
-            if amount > 500000:
+            if amount > 1000000:
                 return {
                     "valid": False,
-                    "message": f"sHNI category bid cannot exceed ₹5,00,000 (requested ₹{amount:,.2f}). Use bHNI instead.",
+                    "message": f"sHNI category bid cannot exceed ₹10,00,000 (requested ₹{amount:,.2f}). Use bHNI category instead.",
                 }
             return {"valid": True, "message": "Valid sHNI application."}
 
         elif cat == "BHNI":
-            if amount <= 500000:
+            if amount <= 1000000:
                 return {
                     "valid": False,
-                    "message": f"bHNI category bid must exceed ₹5,00,000 (requested ₹{amount:,.2f}).",
+                    "message": f"bHNI category bid must exceed ₹10,00,000 (requested ₹{amount:,.2f}). Use sHNI for amounts up to ₹10L.",
                 }
             return {"valid": True, "message": "Valid bHNI application."}
 

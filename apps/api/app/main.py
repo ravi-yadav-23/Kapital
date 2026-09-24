@@ -19,7 +19,7 @@ async def _seed_accounts_from_env():
     and attempt a real SmartAPI TOTP login for each.
     """
     from app.db import database
-    from app.services.account_service import account_service, MOCK_ACCOUNTS_STORE, _model_to_dict
+    from app.services.account_service import account_service, _accounts_cache, _model_to_dict
     from app.services.angel_service import angel_service
 
     env_accounts = settings.angel_accounts
@@ -41,8 +41,8 @@ async def _seed_accounts_from_env():
 
                 # Refresh in-memory cache entry
                 acc_dict = _model_to_dict(acc_model)
-                if not any(a.get("angel_client_id") == client_id for a in MOCK_ACCOUNTS_STORE):
-                    MOCK_ACCOUNTS_STORE.append(acc_dict)
+                if not any(a.get("angel_client_id") == client_id for a in _accounts_cache):
+                    _accounts_cache.append(acc_dict)
             except Exception as e:
                 await db.rollback()
                 logger.error(f"[{name}] DB upsert failed: {e}")

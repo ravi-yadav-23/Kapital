@@ -75,15 +75,54 @@ class IpoScoreEngine:
         else:
             size_points = 12
 
-        # 4. Qualitative Strengths & Peer Standing (0 - 15 points)
+        # 4. Qualitative Strengths — keyword-weighted content scoring (0–15 points)
+        # Rewards substantive signals over generic marketing language.
+        STRENGTH_KEYWORDS = {
+            # High-signal financial/competitive strengths
+            "high": ["market leader", "market share", "revenue cagr", "profit cagr", "ebitda margin",
+                     "debt free", "zero debt", "net cash", "patent", "proprietary", "monopoly",
+                     "government contract", "export", "backward integrated"],
+            # Medium-signal strengths
+            "medium": ["experienced management", "promoter", "established brand", "repeat customers",
+                       "diversified revenue", "asset light", "capex", "capacity expansion",
+                       "regulatory approved", "fda approved"],
+        }
         strengths = raw.get("strengths") or []
-        num_strengths = len(strengths) if isinstance(strengths, list) else 0
-        quality_points = min(15, 6 + (num_strengths * 2))
+        quality_points = 6  # neutral baseline
+        if isinstance(strengths, list):
+            for strength in strengths[:6]:  # cap to avoid inflation
+                text = str(strength).lower()
+                if any(kw in text for kw in STRENGTH_KEYWORDS["high"]):
+                    quality_points += 3
+                elif any(kw in text for kw in STRENGTH_KEYWORDS["medium"]):
+                    quality_points += 1.5
+                else:
+                    quality_points += 0.5  # generic strength — minimal credit
+        quality_points = min(15, int(quality_points))
 
-        # 5. Risk / Red Flag Penalties (0 - 10 deduction)
+        # 5. Risk / Red Flag Penalties — keyword-weighted (0–15 point deduction)
+        # Penalizes material risks over vague generic disclaimers.
+        HIGH_RISK_KEYWORDS = [
+            "litigation", "sebi action", "fraud", "regulatory investigation", "forensic",
+            "debt heavy", "high leverage", "negative cash flow", "going concern",
+            "promoter pledge", "related party", "concentration risk", "single customer",
+        ]
+        MEDIUM_RISK_KEYWORDS = [
+            "competition", "margin pressure", "raw material", "commodity", "forex",
+            "interest rate", "capex risk", "dependent on", "regulatory change",
+        ]
         risks = raw.get("risks") or []
-        num_risks = len(risks) if isinstance(risks, list) else 0
-        risk_penalty = min(15, num_risks * 3)
+        risk_penalty = 0
+        if isinstance(risks, list):
+            for risk in risks[:5]:  # cap penalties at 5 risks
+                text = str(risk).lower()
+                if any(kw in text for kw in HIGH_RISK_KEYWORDS):
+                    risk_penalty += 5
+                elif any(kw in text for kw in MEDIUM_RISK_KEYWORDS):
+                    risk_penalty += 2
+                else:
+                    risk_penalty += 1  # generic boilerplate risk — minimal penalty
+        risk_penalty = min(15, int(risk_penalty))
 
         # Sum of weighted dimensions
         total_score = gmp_points + sub_points + size_points + quality_points - risk_penalty
