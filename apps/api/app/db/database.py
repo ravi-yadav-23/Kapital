@@ -22,6 +22,9 @@ def _build_engine(url: str):
             connect_args={"statement_cache_size": 0, "command_timeout": 3.0, "timeout": 3.0},
         )
     elif url.startswith("sqlite"):
+        if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            # Serverless working directory is read-only; use /tmp
+            url = "sqlite+aiosqlite:////tmp/kapitl_local.db"
         return create_async_engine(url, echo=False)
     else:
         return create_async_engine(url, echo=False, pool_pre_ping=True)

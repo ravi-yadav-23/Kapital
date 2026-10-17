@@ -70,11 +70,27 @@ async def _seed_accounts_from_env():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.tasks.scheduler import start_scheduler, stop_scheduler
-    await init_db()
-    await _seed_accounts_from_env()
-    start_scheduler()
+    try:
+        await init_db()
+    except Exception as e:
+        logger.error(f"[Lifespan Error] Database initialization failed: {e}")
+
+    try:
+        await _seed_accounts_from_env()
+    except Exception as e:
+        logger.warning(f"[Lifespan Warning] Account seeding failed: {e}")
+
+    try:
+        start_scheduler()
+    except Exception as e:
+        logger.warning(f"[Lifespan Warning] Scheduler startup failed: {e}")
+
     yield
-    stop_scheduler()
+
+    try:
+        stop_scheduler()
+    except Exception:
+        pass
 
 
 app = FastAPI(
