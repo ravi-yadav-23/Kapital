@@ -35,28 +35,21 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def init_db():
-    """Called on startup — verifies DB connection and ensures tables exist. Falls back to local SQLite if remote PostgreSQL is unreachable."""
-    global engine, AsyncSessionLocal
+    """Called on startup — verifies DB connection and ensures tables exist."""
     try:
         async with engine.connect() as conn:
             await conn.exec_driver_sql("SELECT 1")
-        print("[DB] Primary database connection OK")
+        logger.info(f"[DB] Primary database connection OK ({engine.url.drivername})")
     except Exception as e:
-        print(f"[DB Notice] Remote database unavailable ({e}). Automatically activating resilient local SQLite database.")
-        sqlite_url = "sqlite+aiosqlite:///./kapitl_local.db"
-        engine = create_async_engine(sqlite_url, echo=False)
-        AsyncSessionLocal = async_sessionmaker(
-            engine,
-            expire_on_commit=False,
-            class_=AsyncSession,
-        )
+        logger.error(f"[DB Error] Primary database unavailable: {e}")
+        raise RuntimeError(f"Database connection failed: {e}") from e
 
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        print(f"[DB] All tables verified and ready ({engine.url.drivername})")
+        logger.info(f"[DB] All tables verified and ready ({engine.url.drivername})")
     except Exception as e:
-        print(f"[DB Warning] Could not sync metadata tables: {e}")
+        logger.warning(f"[DB Warning] Could not sync metadata tables: {e}")
 
 
 async def get_db() -> AsyncSession:

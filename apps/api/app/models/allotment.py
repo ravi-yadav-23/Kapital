@@ -1,9 +1,12 @@
-from sqlalchemy import Column, String, Float, Integer, ForeignKey, Date, Boolean
+from sqlalchemy import Column, String, Float, Integer, ForeignKey, Date, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
 class Allotment(BaseModel):
     __tablename__ = "allotments"
+    __table_args__ = (
+        UniqueConstraint("account_id", "ipo_id", name="uq_allotment_account_ipo"),
+    )
 
     account_id = Column(String(36), ForeignKey("family_accounts.id", ondelete="CASCADE"), nullable=False)
     ipo_id = Column(String(36), ForeignKey("ipos.id", ondelete="CASCADE"), nullable=False)

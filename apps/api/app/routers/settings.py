@@ -9,7 +9,7 @@ from app.models.setting import SystemSetting
 from app.utils.security import encrypt_credential, decrypt_credential, mask_secret
 from app.config import settings
 
-from app.middleware.auth import require_admin
+from app.middleware.auth import require_admin, get_current_user_optional
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -62,8 +62,6 @@ async def get_decrypted_setting(db: AsyncSession, setting_field: str) -> Optiona
     raw_val = setting_row.value.get(setting_field)
     return decrypt_credential(raw_val) if raw_val else None
 
-
-from app.middleware.auth import require_admin, get_current_user_optional
 
 @router.get("")
 async def get_app_settings(

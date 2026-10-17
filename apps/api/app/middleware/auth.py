@@ -30,12 +30,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
+def _get_secret_key() -> str:
+    key = (settings.secret_key or "").strip()
+    if not key:
+        raise RuntimeError("SECRET_KEY must be configured.")
+    return key
+
+
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """Generates a signed JWT access token."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key or "kapitl-secret", algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=ALGORITHM)
     return encoded_jwt
 
 
@@ -44,14 +51,14 @@ def create_temp_2fa_token(data: Dict[str, Any], expires_minutes: int = 5) -> str
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     to_encode.update({"exp": expire, "type": "2fa_pending"})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key or "kapitl-secret", algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=ALGORITHM)
     return encoded_jwt
 
 
 def decode_token(token: str) -> Dict[str, Any]:
     """Decodes and validates any Kapitl JWT token."""
     try:
-        payload = jwt.decode(token, settings.secret_key or "kapitl-secret", algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
         return payload
     except JWTError as e:
         logger.warning(f"JWT validation failed: {e}")
@@ -105,7 +112,7 @@ async def get_current_user(
         )
 
     # 3. Development fallback ONLY when running automated tests without auth config
-    if settings.environment == "test":
+    if settings.environment.lower() == "test" and settings.environment.lower() not in ["production", "prod"]:
         return {"id": "test-admin", "email": "test@kapitl.local", "username": "admin", "role": "ADMIN", "is_guest": False}
 
     raise HTTPException(

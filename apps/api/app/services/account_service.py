@@ -71,6 +71,13 @@ def _model_to_dict(acc: FamilyAccount) -> dict:
 class AccountService:
 
     @staticmethod
+    def cache_account(acc: FamilyAccount) -> None:
+        """Add or update an account in the in-memory cache."""
+        acc_dict = _model_to_dict(acc)
+        _invalidate_cache(acc.angel_client_id)
+        _accounts_cache.append(acc_dict)
+
+    @staticmethod
     async def get_all_accounts(db: AsyncSession) -> List[AccountResponse]:
         """Fetch all family accounts from PostgreSQL."""
         result = await db.execute(select(FamilyAccount).order_by(FamilyAccount.created_at))

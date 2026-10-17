@@ -43,7 +43,7 @@ async def get_ipo_full_profile(db: AsyncSession, ipo_id_or_symbol: str) -> Optio
     }
 
 
-async def get_family_corpus_profile(db: AsyncSession) -> Dict[str, Any]:
+async def get_family_corpus_profile(db: AsyncSession, min_retail_ticket: float = 15000.0) -> Dict[str, Any]:
     """Retrieves family demat accounts, total available liquidity, and category readiness."""
     stmt = select(FamilyAccount).where(FamilyAccount.is_active == True)
     res = await db.execute(stmt)
@@ -53,7 +53,7 @@ async def get_family_corpus_profile(db: AsyncSession) -> Dict[str, Any]:
     total_locked = sum(a.locked_asba_balance or 0.0 for a in accounts)
     total_demat = sum(a.total_demat_balance or 0.0 for a in accounts)
 
-    retail_capable = [a for a in accounts if (a.available_liquid_balance or 0.0) >= 15000]
+    retail_capable = [a for a in accounts if (a.available_liquid_balance or 0.0) >= min_retail_ticket]
     shni_capable = [a for a in accounts if (a.available_liquid_balance or 0.0) >= 200000]
     bhni_capable = [a for a in accounts if (a.available_liquid_balance or 0.0) >= 1000000]
 

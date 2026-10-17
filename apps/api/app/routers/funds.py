@@ -163,7 +163,10 @@ async def sync_all_accounts_balance(
 
 
 @router.post("/optimize", response_model=AllocationPlanResponse)
-async def run_pulp_optimization(db: AsyncSession = Depends(get_db)):
+async def run_pulp_optimization(
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
     """Execute PuLP MILP solver to compute optimal capital distribution using real accounts and active IPOs."""
     db_accounts = await account_service.get_all_accounts(db)
     db_ipos = await ipo_service.get_all_ipos(db)

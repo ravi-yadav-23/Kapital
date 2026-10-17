@@ -13,6 +13,12 @@ from app.models.account import FamilyAccount
 from app.models.ipo import Ipo
 from app.models.report import AiReport
 
+from app.config import settings
+
+# Explicit test configuration
+settings.admin_pin = "7090"
+settings.allowed_email = "ravi@kapitl.local"
+
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 

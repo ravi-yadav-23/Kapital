@@ -3,6 +3,7 @@ import httpx
 import logging
 import json
 import os
+import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from app.config import settings
@@ -46,12 +47,28 @@ class AngelOneSmartApiService:
             return {}
 
     def _persist_sessions(self):
-        """Saves active sessions to disk to survive server restarts."""
+        """Saves active sessions to disk and attempts Redis persistence to survive restarts."""
         try:
             with open(SESSION_CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.sessions, f)
         except Exception as e:
-            logger.warning(f"Could not persist Angel One sessions: {e}")
+            logger.warning(f"Could not persist Angel One sessions to disk: {e}")
+
+        # Async best-effort persistence to Redis if loop is running
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._persist_sessions_to_redis())
+        except RuntimeError:
+            pass
+
+    async def _persist_sessions_to_redis(self):
+        try:
+            from app.db.redis import get_redis_pool
+            redis = await get_redis_pool()
+            if redis:
+                await redis.set("angel_sessions", json.dumps(self.sessions), ex=24 * 3600)
+        except Exception as e:
+            logger.debug(f"Redis session persistence skipped/failed: {e}")
 
     async def refresh_scrip_master(self, force: bool = False) -> int:
         """
@@ -127,9 +144,9 @@ class AngelOneSmartApiService:
             "Accept": "application/json",
             "X-UserType": "USER",
             "X-SourceID": "WEB",
-            "X-ClientLocalIP": "127.0.0.1",
+            "X-ClientLocalIP": getattr(settings, "client_local_ip", "127.0.0.1") or "127.0.0.1",
             "X-ClientPublicIP": settings.static_ip or "127.0.0.1",
-            "X-MACAddress": "fe80::216e:6507:4b9c:9045",
+            "X-MACAddress": getattr(settings, "static_mac", "fe80::216e:6507:4b9c:9045") or "fe80::216e:6507:4b9c:9045",
             "X-PrivateKey": api_key,
         }
         if jwt_token:

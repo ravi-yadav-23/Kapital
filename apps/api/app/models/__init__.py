@@ -4,6 +4,9 @@ from app.models.ipo import Ipo, IpoSchedule
 from app.models.report import AiReport
 from app.models.order import IpoOrder
 from app.models.allotment import Allotment, AsbaLock
+from app.models.setting import SystemSetting
+from app.models.fund import FundSnapshot
+from app.models.pnl import RealizedPnl
 
 __all__ = [
     "Base",
@@ -15,4 +18,7 @@ __all__ = [
     "IpoOrder",
     "Allotment",
     "AsbaLock",
+    "SystemSetting",
+    "FundSnapshot",
+    "RealizedPnl",
 ]

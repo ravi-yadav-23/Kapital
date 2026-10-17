@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     groq_api_key: str = ""
     default_ai_provider: str = "groq"
-    default_ai_model: str = "openai/gpt-oss-120b"
+    default_ai_model: str = "llama-3.3-70b-versatile"
 
     # Security & Auth
     admin_pin: str = ""
@@ -76,6 +76,8 @@ class Settings(BaseSettings):
 
     # NSE compliance
     static_ip: str = ""
+    static_mac: str = "fe80::216e:6507:4b9c:9045"
+    client_local_ip: str = "127.0.0.1"
 
     class Config:
         env_file = ".env"

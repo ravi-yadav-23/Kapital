@@ -237,3 +237,112 @@ async def test_totp_verify_wrong_code_raises_400():
         await verify_totp(req)
     assert exc_info.value.status_code == 400
     assert "Incorrect" in exc_info.value.detail
+
+
+# ─── Security & Hardening Tests ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_google_auth_aud_mismatch_raises_401():
+    """Google token with mismatched audience must be rejected with 401."""
+    from app.routers.auth import google_auth, GoogleAuthRequest
+
+    mock_token_info = {
+        "email": "ravi@kapitl.local",
+        "email_verified": "true",
+        "name": "Ravi",
+        "aud": "wrong-client-id.apps.googleusercontent.com",
+    }
+
+    with patch("app.routers.auth.settings") as mock_settings, \
+         patch("httpx.AsyncClient") as mock_http:
+        mock_settings.google_client_id = "real-client-id.apps.googleusercontent.com"
+        mock_settings.allowed_email = "ravi@kapitl.local"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = mock_token_info
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_http.return_value = mock_client
+
+        req = GoogleAuthRequest(credential="mock-token")
+        with pytest.raises(HTTPException) as exc_info:
+            await google_auth(req)
+
+    assert exc_info.value.status_code == 401
+    assert "not issued for this application" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_google_auth_unconfigured_allowed_email_fails_closed():
+    """If ALLOWED_EMAIL is empty/unset, login must fail closed with 403."""
+    from app.routers.auth import google_auth, GoogleAuthRequest
+
+    mock_token_info = {
+        "email": "anyone@gmail.com",
+        "email_verified": "true",
+        "name": "Anyone",
+        "aud": "client-id",
+    }
+
+    with patch("app.routers.auth.settings") as mock_settings, \
+         patch("httpx.AsyncClient") as mock_http:
+        mock_settings.google_client_id = ""
+        mock_settings.allowed_email = ""  # Unset!
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = mock_token_info
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_http.return_value = mock_client
+
+        req = GoogleAuthRequest(credential="mock-token")
+        with pytest.raises(HTTPException) as exc_info:
+            await google_auth(req)
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_pin_login_unconfigured_raises_500():
+    """If ADMIN_PIN is not configured on server, /auth/login must return 500, not fall back to 7090."""
+    from app.routers.auth import pin_login, LoginRequest
+
+    with patch("app.routers.auth.settings") as mock_settings:
+        mock_settings.admin_pin = ""  # Unset
+
+        req = LoginRequest(pin="7090")
+        with pytest.raises(HTTPException) as exc_info:
+            await pin_login(req)
+
+    assert exc_info.value.status_code == 500
+    assert "not configured" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_pin_login_with_configured_pin():
+    """When configured, correct PIN logs in and incorrect PIN is rejected."""
+    from app.routers.auth import pin_login, LoginRequest
+
+    with patch("app.routers.auth.settings") as mock_settings:
+        mock_settings.admin_pin = "8899"
+        mock_settings.secret_key = "secure-secret-key-32-bytes-long!!"
+        mock_settings.allowed_email = "admin@kapitl.local"
+
+        # Correct PIN
+        res = await pin_login(LoginRequest(pin="8899"))
+        assert res.access_token is not None
+        assert res.user.role == "ADMIN"
+
+        # Wrong PIN
+        with pytest.raises(HTTPException) as exc_info:
+            await pin_login(LoginRequest(pin="1111"))
+        assert exc_info.value.status_code == 401
+

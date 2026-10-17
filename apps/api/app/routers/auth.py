@@ -137,6 +137,17 @@ async def google_auth(req: GoogleAuthRequest):
             detail="Unable to reach Google authentication service.",
         )
 
+    # Validate audience (aud) claim if GOOGLE_CLIENT_ID is configured
+    google_client_id = getattr(settings, "google_client_id", None)
+    if isinstance(google_client_id, str) and google_client_id.strip():
+        token_aud = token_info.get("aud")
+        if token_aud != google_client_id.strip():
+            logger.warning(f"Google token aud mismatch: expected {google_client_id}, got {token_aud}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google token was not issued for this application.",
+            )
+
     # Validate email
     email = token_info.get("email", "").strip().lower()
     email_verified = str(token_info.get("email_verified", "")).lower() == "true"
@@ -147,9 +158,15 @@ async def google_auth(req: GoogleAuthRequest):
             detail="Google account email is not verified.",
         )
 
-    # 2. Enforce Strict Email Whitelist
+    # 2. Enforce Strict Email Whitelist (Fail closed)
     allowed_email = (settings.allowed_email or "").strip().lower()
-    if allowed_email and email != allowed_email:
+    if not allowed_email:
+        logger.error("ALLOWED_EMAIL is not configured on the server.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Server is not configured with an ALLOWED_EMAIL administrator whitelist.",
+        )
+    if email != allowed_email:
         logger.warning(f"Unauthorized Google login attempt from: {email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -311,7 +328,12 @@ async def pin_login(req: LoginRequest):
     credential = req.password or req.pin or ""
     valid = False
 
-    admin_pin = (getattr(settings, "admin_pin", None) or "").strip() or "7090"
+    admin_pin = (getattr(settings, "admin_pin", None) or "").strip()
+    if not admin_pin:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin PIN authentication is not configured on this server.",
+        )
     admin_hash = hash_password(admin_pin)
 
     if credential in [admin_pin, settings.secret_key]:

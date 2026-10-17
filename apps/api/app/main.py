@@ -6,7 +6,7 @@ import uuid
 
 from app.config import settings
 from app.db.database import init_db
-from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, accounts, auth
+from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, auth
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -19,7 +19,7 @@ async def _seed_accounts_from_env():
     and attempt a real SmartAPI TOTP login for each.
     """
     from app.db import database
-    from app.services.account_service import account_service, _accounts_cache, _model_to_dict
+    from app.services.account_service import account_service
     from app.services.angel_service import angel_service
 
     env_accounts = settings.angel_accounts
@@ -40,9 +40,7 @@ async def _seed_accounts_from_env():
                 logger.info(f"[{name}] Account persisted to DB (id: {acc_model.id})")
 
                 # Refresh in-memory cache entry
-                acc_dict = _model_to_dict(acc_model)
-                if not any(a.get("angel_client_id") == client_id for a in _accounts_cache):
-                    _accounts_cache.append(acc_dict)
+                account_service.cache_account(acc_model)
             except Exception as e:
                 await db.rollback()
                 logger.error(f"[{name}] DB upsert failed: {e}")
@@ -125,7 +123,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"detail": "An internal server error occurred.", "error": str(exc)},
+        content={"detail": "An internal server error occurred."},
         headers=headers,
     )
 
@@ -139,6 +137,5 @@ app.include_router(orders.router, prefix="/api", tags=["orders"])
 app.include_router(allotments.router, prefix="/api", tags=["allotments"])
 app.include_router(reports.router, prefix="/api", tags=["reports"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
-app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(websocket.router, tags=["websocket"])
 app.include_router(websocket.router, prefix="/api", tags=["websocket"])

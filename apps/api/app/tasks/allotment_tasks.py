@@ -19,7 +19,7 @@ async def run_listing_day_sell_staging(db: AsyncSession) -> int:
     today = date.today()
     stmt = select(Allotment).where(
         (Allotment.listing_date == today)
-        & (Allotment.status == "ACTIVE")
+        & (Allotment.status.in_(["ACTIVE", "STAGED"]))
         & (Allotment.staged_sell_limit_price.isnot(None))
         & (Allotment.sell_order_id.is_(None))
     )

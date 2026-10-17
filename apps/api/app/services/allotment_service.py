@@ -85,7 +85,8 @@ class AllotmentService:
             return {"success": False, "message": "Allotment not found"}
 
         alt.staged_sell_limit_price = data.limit_price
-        alt.status = "ACTIVE"
+        alt.status = "SELL_SUBMITTED"
+        await db.flush()
 
         # Resolve real Angel One client_id code (e.g., R1234567)
         client_code = alt.angel_client_id
@@ -96,16 +97,25 @@ class AllotmentService:
                 client_code = acc.angel_client_id
                 alt.angel_client_id = client_code
 
-        # Trigger order staging via SmartAPI using real client_id code
-        api_res = await angel_service.stage_listing_sell_order(
-            client_id=client_code or alt.account_name,
-            symbol=alt.ipo_symbol,
-            shares=alt.allotted_shares,
-            limit_price=data.limit_price,
-        )
-        alt.sell_order_id = api_res.get("sell_order_id")
-        await db.flush()
-        await db.refresh(alt)
+        try:
+            # Trigger order staging via SmartAPI using real client_id code
+            api_res = await angel_service.stage_listing_sell_order(
+                client_id=client_code or alt.account_name,
+                symbol=alt.ipo_symbol,
+                shares=alt.allotted_shares,
+                limit_price=data.limit_price,
+            )
+            if api_res.get("success"):
+                alt.sell_order_id = api_res.get("sell_order_id")
+                alt.status = "STAGED"
+            else:
+                alt.status = "ACTIVE"
+            await db.flush()
+            await db.refresh(alt)
+        except Exception as e:
+            alt.status = "ACTIVE"
+            await db.flush()
+            raise e
 
         return {
             "success": True,

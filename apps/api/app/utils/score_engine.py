@@ -126,7 +126,7 @@ class IpoScoreEngine:
 
         # Sum of weighted dimensions
         total_score = gmp_points + sub_points + size_points + quality_points - risk_penalty
-        final_score = max(20, min(98, total_score))
+        final_score = max(0, min(100, total_score))
 
         # Recommendation mapping
         if final_score >= 78:

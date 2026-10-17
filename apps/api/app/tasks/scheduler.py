@@ -74,54 +74,66 @@ async def listing_day_premarket_execution():
     from sqlalchemy import select
 
     today = date.today()
-    async with AsyncSessionLocal() as db:
-        stmt = select(Allotment).where(
-            Allotment.status == "ACTIVE",
-            Allotment.listing_date == today,
-            Allotment.staged_sell_limit_price.isnot(None),
-        )
-        res = await db.execute(stmt)
-        holdings = res.scalars().all()
+    try:
+        async with AsyncSessionLocal() as db:
+            stmt = select(Allotment).where(
+                Allotment.status.in_(["ACTIVE", "STAGED"]),
+                Allotment.listing_date == today,
+                Allotment.staged_sell_limit_price.isnot(None),
+                Allotment.sell_order_id.is_(None),
+            )
+            res = await db.execute(stmt)
+            holdings = res.scalars().all()
 
-        if not holdings:
-            logger.info("No IPOs scheduled for pre-market listing sell today.")
-            return
+            if not holdings:
+                logger.info("No IPOs scheduled for pre-market listing sell today.")
+                return
 
-        for alt in holdings:
-            logger.info(f"Triggering 09:00 AM sell order for {alt.ipo_symbol}: {alt.allotted_shares} shares @ ₹{alt.staged_sell_limit_price}")
-            try:
-                client_code = alt.angel_client_id
-                if not client_code:
-                    from app.models.account import FamilyAccount
-                    acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == alt.account_id))
-                    acc = acc_res.scalar_one_or_none()
-                    if acc and acc.angel_client_id:
-                        client_code = acc.angel_client_id
-                        alt.angel_client_id = client_code
-
-                order_res = await angel_service.stage_listing_sell_order(
-                    client_id=client_code or alt.account_name,
-                    symbol=alt.ipo_symbol,
-                    shares=alt.allotted_shares,
-                    limit_price=alt.staged_sell_limit_price,
-                )
-                if order_res.get("success"):
-                    alt.sell_order_id = order_res.get("sell_order_id")
+            for alt in holdings:
+                logger.info(f"Triggering 09:00 AM sell order for {alt.ipo_symbol}: {alt.allotted_shares} shares @ ₹{alt.staged_sell_limit_price}")
+                try:
+                    # Intermediate status before broker dispatch
+                    alt.status = "SELL_SUBMITTED"
                     await db.flush()
-                    logger.info(f"[{alt.ipo_symbol}] Sell order placed successfully: {alt.sell_order_id}")
 
-                    # Record realized P&L — use staged limit price as exit price
-                    # (actual fill price may differ; can be corrected by broker sync)
-                    exit_px = float(alt.staged_sell_limit_price or 0.0)
-                    if exit_px > 0:
-                        await pnl_service.record_sell(db, alt, exit_px, exit_type="PRE_MARKET_LISTING")
-                        logger.info(f"[{alt.ipo_symbol}] P&L recorded at exit price ₹{exit_px}")
-                else:
-                    err_msg = order_res.get("message") or order_res.get("error", "Unknown error")
-                    logger.error(f"[{alt.ipo_symbol}] Listing sell order FAILED at broker: {err_msg}")
-            except Exception as e:
-                logger.error(f"[{alt.ipo_symbol}] Exception while dispatching listing sell order: {e}")
-        await db.commit()
+                    client_code = alt.angel_client_id
+                    if not client_code:
+                        from app.models.account import FamilyAccount
+                        acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == alt.account_id))
+                        acc = acc_res.scalar_one_or_none()
+                        if acc and acc.angel_client_id:
+                            client_code = acc.angel_client_id
+                            alt.angel_client_id = client_code
+
+                    order_res = await angel_service.stage_listing_sell_order(
+                        client_id=client_code or alt.account_name,
+                        symbol=alt.ipo_symbol,
+                        shares=alt.allotted_shares,
+                        limit_price=alt.staged_sell_limit_price,
+                    )
+                    if order_res.get("success"):
+                        alt.sell_order_id = order_res.get("sell_order_id")
+                        alt.status = "STAGED"
+                        await db.flush()
+                        logger.info(f"[{alt.ipo_symbol}] Sell order placed successfully: {alt.sell_order_id}")
+
+                        # Record realized P&L — use staged limit price as exit price
+                        exit_px = float(alt.staged_sell_limit_price or 0.0)
+                        if exit_px > 0:
+                            await pnl_service.record_sell(db, alt, exit_px, exit_type="PRE_MARKET_LISTING")
+                            logger.info(f"[{alt.ipo_symbol}] P&L recorded at exit price ₹{exit_px}")
+                    else:
+                        alt.status = "ACTIVE"
+                        await db.flush()
+                        err_msg = order_res.get("message") or order_res.get("error", "Unknown error")
+                        logger.error(f"[{alt.ipo_symbol}] Listing sell order FAILED at broker: {err_msg}")
+                except Exception as e:
+                    alt.status = "ACTIVE"
+                    await db.flush()
+                    logger.error(f"[{alt.ipo_symbol}] Exception while dispatching listing sell order: {e}")
+            await db.commit()
+    except Exception as job_err:
+        logger.error(f"listing_day_premarket_execution job failed: {job_err}")
 
 
 async def daily_ipo_scraper_sync():

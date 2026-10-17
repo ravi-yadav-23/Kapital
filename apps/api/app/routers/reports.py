@@ -5,15 +5,13 @@ from sqlalchemy import select
 
 from app.db.database import get_db
 from app.models.ipo import Ipo
+from app.models.report import AiReport
 from app.schemas.report import AiReportResponse
 from app.services.report_service import report_service
 from app.services.pnl_service import pnl_service
-from app.middleware.auth import get_current_user_optional
+from app.middleware.auth import get_current_user_optional, require_admin
 
 router = APIRouter(prefix="/reports", tags=["reports"])
-
-
-from app.models.report import AiReport
 
 @router.get("", response_model=List[AiReportResponse])
 async def list_ai_reports(db: AsyncSession = Depends(get_db)):
@@ -44,8 +42,6 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="IPO not found")
     return await report_service.get_or_generate_report(db, ipo)
 
-
-from app.middleware.auth import require_admin
 
 @router.post("/{ipo_id}/generate", response_model=AiReportResponse)
 async def trigger_ai_analysis(
