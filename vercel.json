@@ -4,8 +4,7 @@
     "api": {
       "root": "apps/api",
       "framework": "fastapi",
-      "entrypoint": "app/main.py",
-      "maxDuration": 60
+      "entrypoint": "app/main.py"
     },
     "web": {
       "root": "apps/web",
