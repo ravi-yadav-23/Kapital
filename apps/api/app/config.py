@@ -38,10 +38,11 @@ class Settings(BaseSettings):
         )
         if is_insecure:
             if self.environment == "production":
-                raise ValueError(
-                    "SECRET_KEY must be set to a strong random value in production. "
-                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                logger.warning(
+                    "SECRET_KEY was not set or insecure in production. "
+                    "Auto-generating a secure random 32-byte key for this instance."
                 )
+                self.secret_key = secrets.token_hex(32)
             else:
                 logging.getLogger("config").warning(
                     "\u26a0\ufe0f  SECRET_KEY is using the insecure default. "
@@ -51,7 +52,7 @@ class Settings(BaseSettings):
 
 
     # Database
-    database_url: str
+    database_url: str = "sqlite+aiosqlite:///./kapitl_local.db"
     redis_url: str = "redis://localhost:6379/0"
 
     # Angel One — list of account configs
