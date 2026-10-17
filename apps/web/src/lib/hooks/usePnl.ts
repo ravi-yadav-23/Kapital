@@ -50,9 +50,12 @@ export function usePnl() {
     setIsLoading(true)
     setError(null)
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
+      const apiBase =
+        process.env.API_URL?.replace(/\/$/, '') ||
+        process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
+        (typeof window !== 'undefined' ? '' : 'http://127.0.0.1:8000')
       const token = typeof window !== 'undefined' ? localStorage.getItem('kapitl_token') : null
-      const res = await fetch(`${apiBase}/api/v1/reports/pnl/summary`, {
+      const res = await fetch(`${apiBase}/api/reports/pnl/summary`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) {

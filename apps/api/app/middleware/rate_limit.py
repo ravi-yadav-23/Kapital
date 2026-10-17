@@ -32,8 +32,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Exclude internal health checks, docs, websocket
         path = request.url.path
         if (
-            path in ["/api/health", "/docs", "/redoc", "/openapi.json"]
+            path in ["/health", "/api/health", "/docs", "/redoc", "/openapi.json", "/api/docs", "/api/redoc", "/api/openapi.json"]
             or path.startswith("/ws")
+            or path.startswith("/api/ws")
             or request.method == "OPTIONS"
         ):
             return await call_next(request)

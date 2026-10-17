@@ -35,8 +35,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api'
-const API_BASE_URL = RAW_API_URL.endsWith('/api') ? RAW_API_URL : `${RAW_API_URL}/api`
+function getApiBaseUrl(): string {
+  if (process.env.API_URL) {
+    const base = process.env.API_URL.replace(/\/$/, '')
+    return base.endsWith('/api') ? base : `${base}/api`
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
+    return base.endsWith('/api') ? base : `${base}/api`
+  }
+  if (typeof window !== 'undefined') {
+    return '/api'
+  }
+  return 'http://127.0.0.1:8000/api'
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null)

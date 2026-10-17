@@ -21,8 +21,26 @@ import {
   MOCK_APP_SETTINGS,
 } from './mock-data'
 
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api'
-const API_BASE_URL = RAW_API_URL.endsWith('/api') ? RAW_API_URL : `${RAW_API_URL}/api`
+function getApiBaseUrl(): string {
+  // 1. Runtime service binding injected by Vercel for server functions
+  if (process.env.API_URL) {
+    const base = process.env.API_URL.replace(/\/$/, '')
+    return base.endsWith('/api') ? base : `${base}/api`
+  }
+  // 2. Explicit public API URL if configured
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
+    return base.endsWith('/api') ? base : `${base}/api`
+  }
+  // 3. Client-side browser: relative /api routed to the api service via Vercel rewrites
+  if (typeof window !== 'undefined') {
+    return '/api'
+  }
+  // 4. Default fallback for local standalone development
+  return 'http://127.0.0.1:8000/api'
+}
+
+const API_BASE_URL = getApiBaseUrl()
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 
 // Local mock stores (prevents mutating exported constants)

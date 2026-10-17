@@ -84,6 +84,9 @@ app = FastAPI(
     description="Kapitl Autonomous Multi-Account IPO Trading & Intelligence Platform",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 # CORS Middleware: Explicitly allow localhost origins with credentials
@@ -128,6 +131,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Register API Routers
 app.include_router(health.router, prefix="/health", tags=["health"])
+app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(ipos.router, prefix="/api", tags=["ipos"])
 app.include_router(funds.router, prefix="/api", tags=["funds"])
@@ -137,3 +141,4 @@ app.include_router(reports.router, prefix="/api", tags=["reports"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(websocket.router, tags=["websocket"])
+app.include_router(websocket.router, prefix="/api", tags=["websocket"])
