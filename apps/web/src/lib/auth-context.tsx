@@ -29,7 +29,7 @@ interface AuthContextType {
   isGuest: boolean
   loginWithGoogle: (credential: string) => Promise<GoogleAuthResponse>
   verifyTotp: (tempToken: string, code: string) => Promise<void>
-  loginAsGuest: () => Promise<void>
+  loginAsGuest: (redirectTo?: string) => Promise<void>
   logout: () => void
 }
 
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('kapitl_user', JSON.stringify(profile))
   }
 
-  const loginAsGuest = async (): Promise<void> => {
+  const loginAsGuest = async (redirectTo = '/ipos'): Promise<void> => {
     const res = await fetch(`${API_BASE_URL}/auth/guest-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -143,7 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(profile)
     localStorage.setItem('kapitl_token', accessToken)
     localStorage.setItem('kapitl_user', JSON.stringify(profile))
-    router.push('/dashboard')
+    if (redirectTo) {
+      router.push(redirectTo)
+    }
   }
 
   const logout = () => {

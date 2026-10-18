@@ -87,19 +87,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="main-content flex flex-col">
         {/* Guest Mode Notice Banner */}
         {isGuest && (
-          <div className="bg-emerald-950/40 border-b border-emerald-500/20 px-4 py-2 flex items-center justify-between text-xs text-emerald-300">
-            <div className="flex items-center gap-2">
-              <Eye className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+          <div className="bg-[#1a1612] border-b border-[#2d2520] px-4 py-2.5 flex items-center justify-between text-xs text-[#fafaf9]">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2 h-2 rounded-full bg-[#f59e0b] animate-pulse flex-shrink-0" />
               <span>
-                <strong>Guest Preview Mode:</strong> You are exploring Kapitl with a blank demo profile. Live order placement and Angel One account credentials are locked.
+                <strong className="text-[#f59e0b]">Guest Portfolio Preview:</strong> Exploring live market data and seeded family demo allocations. Order placement and broker credentials are locked.
               </span>
             </div>
-            <button
-              onClick={() => router.push('/login')}
-              className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-200 underline ml-2 cursor-pointer flex-shrink-0"
-            >
-              Sign in as Admin
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.push('/settings')}
+                className="text-xs font-semibold text-[#f59e0b] hover:text-[#d97706] hover:underline cursor-pointer flex-shrink-0"
+              >
+                Link your Angel One accounts →
+              </button>
+              <button
+                onClick={() => router.push('/login')}
+                className="text-[11px] text-[#a8a29e] hover:text-[#fafaf9] underline cursor-pointer flex-shrink-0"
+              >
+                Admin Sign In
+              </button>
+            </div>
           </div>
         )}
 
