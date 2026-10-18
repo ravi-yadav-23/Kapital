@@ -27,6 +27,11 @@ out/
 .angel_sessions.json
 .totp_secret
 *.sessions.json
+*session*.json
+.angel_*
+angel_session*
+*.pem
+*.key
 
 # Build outputs
 build/
