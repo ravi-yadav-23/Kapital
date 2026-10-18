@@ -3,8 +3,7 @@
   "services": {
     "api": {
       "root": "apps/api",
-      "framework": "fastapi",
-      "entrypoint": "main:app"
+      "framework": "fastapi"
     },
     "web": {
       "root": "apps/web",
@@ -21,7 +20,7 @@
   },
   "rewrites": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/:path*",
       "destination": {
         "service": "api"
       }

@@ -69,28 +69,33 @@ async def _seed_accounts_from_env():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.tasks.scheduler import start_scheduler, stop_scheduler
+    import os
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
     try:
         await init_db()
     except Exception as e:
         logger.error(f"[Lifespan Error] Database initialization failed: {e}")
 
-    try:
-        await _seed_accounts_from_env()
-    except Exception as e:
-        logger.warning(f"[Lifespan Warning] Account seeding failed: {e}")
+    if not is_serverless:
+        try:
+            await _seed_accounts_from_env()
+        except Exception as e:
+            logger.warning(f"[Lifespan Warning] Account seeding failed: {e}")
 
-    try:
-        start_scheduler()
-    except Exception as e:
-        logger.warning(f"[Lifespan Warning] Scheduler startup failed: {e}")
+        try:
+            from app.tasks.scheduler import start_scheduler
+            start_scheduler()
+        except Exception as e:
+            logger.warning(f"[Lifespan Warning] Scheduler startup failed: {e}")
 
     yield
 
-    try:
-        stop_scheduler()
-    except Exception:
-        pass
+    if not is_serverless:
+        try:
+            from app.tasks.scheduler import stop_scheduler
+            stop_scheduler()
+        except Exception:
+            pass
 
 
 app = FastAPI(
@@ -150,15 +155,22 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers=headers,
     )
 
-# Register API Routers
+# Register API Routers (support both /api/* and root paths)
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(auth.router, prefix="", tags=["auth"])
 app.include_router(ipos.router, prefix="/api", tags=["ipos"])
+app.include_router(ipos.router, prefix="", tags=["ipos"])
 app.include_router(funds.router, prefix="/api", tags=["funds"])
+app.include_router(funds.router, prefix="", tags=["funds"])
 app.include_router(orders.router, prefix="/api", tags=["orders"])
+app.include_router(orders.router, prefix="", tags=["orders"])
 app.include_router(allotments.router, prefix="/api", tags=["allotments"])
+app.include_router(allotments.router, prefix="", tags=["allotments"])
 app.include_router(reports.router, prefix="/api", tags=["reports"])
+app.include_router(reports.router, prefix="", tags=["reports"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+app.include_router(settings_router.router, prefix="", tags=["settings"])
 app.include_router(websocket.router, tags=["websocket"])
 app.include_router(websocket.router, prefix="/api", tags=["websocket"])

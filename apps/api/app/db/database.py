@@ -44,8 +44,8 @@ async def init_db():
             await conn.exec_driver_sql("SELECT 1")
         logger.info(f"[DB] Primary database connection OK ({engine.url.drivername})")
     except Exception as e:
-        logger.error(f"[DB Error] Primary database unavailable: {e}")
-        raise RuntimeError(f"Database connection failed: {e}") from e
+        logger.warning(f"[DB Warning] Primary database unavailable: {e}")
+        return
 
     try:
         async with engine.begin() as conn:
