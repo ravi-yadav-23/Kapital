@@ -9,46 +9,53 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand
+        // Brand (Option A: Premium Amber / Gold)
         brand: {
-          from: "#3b82f6",
-          to:   "#6366f1",
-          DEFAULT: "#6366f1",
+          from: "#f59e0b",
+          to:   "#d97706",
+          DEFAULT: "#f59e0b",
         },
-        // Surface layers
+        // Surface layers (Option A: Warm Near-Black & Warm Dark Brown-Black)
         surface: {
-          base:     "#080c14",
-          DEFAULT:  "#0d1220",
-          elevated: "#131929",
-          card:     "#161e2e",
+          base:     "#0c0a09",
+          DEFAULT:  "#1a1612",
+          elevated: "#241e19",
+          card:     "#1a1612",
+        },
+        // Border palette
+        border: {
+          subtle:  "#2d2520",
+          default: "#3d322b",
+          strong:  "#52433a",
         },
         // Accent palette
         accent: {
-          green:  "#22d3a5",
-          red:    "#f43f5e",
-          amber:  "#fbbf24",
-          blue:   "#60a5fa",
-          purple: "#a78bfa",
-          cyan:   "#22d3ee",
+          green:  "#22c55e",
+          red:    "#ef4444",
+          amber:  "#f59e0b",
+          blue:   "#38bdf8",
+          purple: "#c084fc",
+          cyan:   "#2dd4bf",
         },
         // Text
         text: {
-          primary:   "#f1f5f9",
-          secondary: "#94a3b8",
-          muted:     "#828fa3",
-          accent:    "#818cf8",
+          primary:   "#fafaf9",
+          secondary: "#a8a29e",
+          muted:     "#78716c",
+          accent:    "#f59e0b",
         },
         // Score tiers
         score: {
-          strong:   "#22d3a5",
-          moderate: "#60a5fa",
-          watch:    "#fbbf24",
-          avoid:    "#f43f5e",
+          strong:   "#22c55e",
+          moderate: "#f59e0b",
+          watch:    "#d97706",
+          avoid:    "#ef4444",
         },
       },
       fontFamily: {
-        sans: ["Inter", "sans-serif"],
-        mono: ["Inter", "sans-serif"],
+        sans: ["var(--font-inter)", "Inter", "sans-serif"],
+        heading: ["var(--font-heading)", "DM Sans", "sans-serif"],
+        mono: ["var(--font-inter)", "monospace"],
       },
       fontSize: {
         "2xs": ["11px", "15px"],
@@ -62,10 +69,11 @@ const config: Config = {
         "2xl": "20px",
       },
       boxShadow: {
-        card:  "0 4px 24px rgba(0,0,0,0.4)",
-        glow:  "0 0 40px rgba(99,102,241,0.15)",
-        green: "0 0 20px rgba(34,211,165,0.2)",
-        red:   "0 0 20px rgba(244,63,94,0.2)",
+        card:  "0 4px 24px rgba(0,0,0,0.5)",
+        glow:  "0 0 40px rgba(245,158,11,0.18)",
+        green: "0 0 20px rgba(34,197,94,0.2)",
+        red:   "0 0 20px rgba(239,68,68,0.2)",
+        amber: "0 0 20px rgba(245,158,11,0.25)",
       },
       animation: {
         "fade-in":    "fade-in 0.3s ease forwards",

@@ -4,60 +4,60 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Design Tokens ──────────────────────────────────────────────────────────── */
+/* ── Design Tokens (Option A: Premium Amber/Dark) ────────────────────────────── */
 :root {
   /* Surface */
-  --bg-base:        #080c14;
-  --bg-surface:     #0d1220;
-  --bg-elevated:    #131929;
-  --bg-card:        #161e2e;
-  --bg-overlay:     rgba(13,18,32,0.85);
+  --bg-base:        #0c0a09;   /* warm near-black */
+  --bg-surface:     #1a1612;   /* warm dark brown-black */
+  --bg-elevated:    #241e19;   /* elevated surface */
+  --bg-card:        #1a1612;   /* warm card surface */
+  --bg-overlay:     rgba(26,22,18,0.88);
 
-  /* Brand gradient */
-  --brand-from:     #3b82f6;
-  --brand-to:       #6366f1;
-  --brand-glow:     rgba(99,102,241,0.25);
+  /* Brand gradient (Amber - gold, money, premium India) */
+  --brand-from:     #f59e0b;
+  --brand-to:       #d97706;
+  --brand-glow:     rgba(245,158,11,0.22);
 
   /* Accent colors */
-  --accent-green:   #22d3a5;
-  --accent-red:     #f43f5e;
-  --accent-amber:   #fbbf24;
-  --accent-blue:    #60a5fa;
-  --accent-purple:  #a78bfa;
-  --accent-cyan:    #22d3ee;
+  --accent-green:   #22c55e;   /* keep green for gains */
+  --accent-red:     #ef4444;   /* keep red for losses */
+  --accent-amber:   #f59e0b;
+  --accent-blue:    #38bdf8;
+  --accent-purple:  #c084fc;
+  --accent-cyan:    #2dd4bf;
 
   /* Text */
-  --text-primary:   #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted:     #828fa3;
-  --text-accent:    #818cf8;
+  --text-primary:   #fafaf9;   /* warm white */
+  --text-secondary: #a8a29e;   /* warm gray */
+  --text-muted:     #78716c;   /* warm muted gray */
+  --text-accent:    #f59e0b;
 
   /* Border */
-  --border-subtle:  rgba(148,163,184,0.08);
-  --border-default: rgba(148,163,184,0.12);
-  --border-strong:  rgba(148,163,184,0.20);
+  --border-subtle:  #2d2520;   /* warm subtle border */
+  --border-default: #3d322b;
+  --border-strong:  #52433a;
 
   /* Scoring colors */
-  --score-strong:   #22d3a5;   /* 80-100 */
-  --score-moderate: #60a5fa;   /* 60-79  */
-  --score-watch:    #fbbf24;   /* 40-59  */
-  --score-avoid:    #f43f5e;   /* 0-39   */
+  --score-strong:   #22c55e;   /* 80-100 */
+  --score-moderate: #f59e0b;   /* 60-79  */
+  --score-watch:    #d97706;   /* 40-59  */
+  --score-avoid:    #ef4444;   /* 0-39   */
 
   /* Status badge colors */
-  --status-open:     rgba(34,211,165,0.15);
-  --status-open-fg:  #22d3a5;
-  --status-upcoming: rgba(96,165,250,0.15);
-  --status-upcoming-fg: #60a5fa;
-  --status-closing:  rgba(251,191,36,0.15);
-  --status-closing-fg: #fbbf24;
-  --status-closed:   rgba(71,85,105,0.15);
-  --status-closed-fg: #94a3b8;
+  --status-open:     rgba(34,197,94,0.15);
+  --status-open-fg:  #22c55e;
+  --status-upcoming: rgba(217,119,6,0.18);
+  --status-upcoming-fg: #fbbf24;
+  --status-closing:  rgba(245,158,11,0.18);
+  --status-closing-fg: #f59e0b;
+  --status-closed:   rgba(120,113,108,0.22);
+  --status-closed-fg: #a8a29e;
 
   /* Shadows */
-  --shadow-card:    0 4px 24px rgba(0,0,0,0.4);
-  --shadow-glow:    0 0 40px rgba(99,102,241,0.15);
-  --shadow-green:   0 0 20px rgba(34,211,165,0.2);
-  --shadow-red:     0 0 20px rgba(244,63,94,0.2);
+  --shadow-card:    0 4px 24px rgba(0,0,0,0.5);
+  --shadow-glow:    0 0 40px rgba(245,158,11,0.18);
+  --shadow-green:   0 0 20px rgba(34,197,94,0.2);
+  --shadow-red:     0 0 20px rgba(239,68,68,0.2);
 
   /* Sidebar */
   --sidebar-w: 240px;
@@ -76,7 +76,7 @@
   body {
     background-color: var(--bg-base);
     color: var(--text-primary);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-inter), 'Inter', sans-serif;
     font-size: 15px;
     line-height: 1.6;
     min-height: 100vh;
@@ -96,10 +96,12 @@
     border-radius: 4px;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-weight: 600;
+  h1, h2, h3, h4, h5, h6, .page-title, .font-heading {
+    font-family: var(--font-heading), 'DM Sans', sans-serif;
+    font-weight: 700;
     line-height: 1.25;
     color: var(--text-primary);
+    letter-spacing: -0.02em;
   }
 
   a { color: inherit; text-decoration: none; }
@@ -116,7 +118,7 @@
   }
   input:focus, textarea:focus, select:focus {
     border-color: var(--brand-from);
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.18);
     outline: none;
   }
 }
@@ -229,12 +231,13 @@
 
   .btn-primary {
     background: linear-gradient(135deg, var(--brand-from), var(--brand-to));
-    color: #fff;
-    box-shadow: 0 2px 12px rgba(99,102,241,0.35);
+    color: #0c0a09;
+    font-weight: 700;
+    box-shadow: 0 2px 12px rgba(245,158,11,0.30);
   }
   .btn-primary:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(99,102,241,0.5);
+    box-shadow: 0 4px 20px rgba(245,158,11,0.45);
   }
 
   .btn-ghost {
@@ -335,8 +338,9 @@
     color: var(--text-secondary);
   }
   .nav-item.active {
-    background: rgba(99,102,241,0.15);
-    color: var(--text-accent);
+    background: rgba(245,158,11,0.12);
+    color: var(--brand-from);
+    border: 1px solid rgba(245,158,11,0.25);
   }
   .nav-item.active .nav-icon { color: var(--brand-from); }
 
@@ -405,8 +409,8 @@
 }
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(99,102,241,0.1); }
-  50%       { box-shadow: 0 0 30px rgba(99,102,241,0.25); }
+  0%, 100% { box-shadow: 0 0 20px rgba(245,158,11,0.12); }
+  50%       { box-shadow: 0 0 30px rgba(245,158,11,0.28); }
 }
 
 .animate-fade-in      { animation: fade-in 0.3s ease forwards; }

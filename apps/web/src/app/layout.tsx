@@ -1,11 +1,19 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, DM_Sans } from 'next/font/google'
 import '../styles/globals.css'
 import { AppProviders } from '@/components/providers/AppProviders'
 
 const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
+  variable: '--font-inter',
+})
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-heading',
+  weight: ['400', '500', '600', '700', '800'],
 })
 
 export const metadata: Metadata = {
@@ -14,14 +22,17 @@ export const metadata: Metadata = {
   keywords: ['IPO', 'investment', 'Angel One', 'allotment', 'GMP', 'DRHP', 'Kapitl'],
 }
 
-
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${inter.variable} ${dmSans.variable} ${inter.className}`}
+      suppressHydrationWarning
+    >
       <body className="antialiased">
         <AppProviders>{children}</AppProviders>
       </body>
