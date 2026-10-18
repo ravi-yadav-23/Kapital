@@ -17,6 +17,7 @@ import {
   MOCK_PNL_SUMMARY,
   MOCK_ALLOCATION_PLAN,
   MOCK_ORDERS,
+  MOCK_ASBA_LOCKS,
   MOCK_REPORTS,
   MOCK_APP_SETTINGS,
 } from './mock-data'
@@ -42,6 +43,18 @@ function getApiBaseUrl(): string {
 
 const API_BASE_URL = getApiBaseUrl()
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
+
+function isGuestSession(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const userStr = localStorage.getItem('kapitl_user')
+    if (userStr) {
+      const u = JSON.parse(userStr)
+      return Boolean(u.is_guest || u.role === 'GUEST')
+    }
+  } catch {}
+  return false
+}
 
 // Local mock stores (prevents mutating exported constants)
 let localMockAccounts: FamilyAccount[] = [...MOCK_ACCOUNTS]
@@ -198,7 +211,7 @@ export const apiClient = {
 
   // ── Accounts ──────────────────────────────────────────────────────────────
   async getAccounts(): Promise<FamilyAccount[]> {
-    if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA || isGuestSession()) {
       return [...localMockAccounts]
     }
     const cacheKey = 'funds:accounts'
@@ -212,8 +225,9 @@ export const apiClient = {
     }
     const res = await authFetch(`${API_BASE_URL}/funds/accounts`)
     const data = await handleResponse(res, localMockAccounts)
-    setCached(cacheKey, data)
-    return data
+    const result = data && data.length > 0 ? data : localMockAccounts
+    setCached(cacheKey, result)
+    return result
   },
 
   async createAccount(data: any): Promise<FamilyAccount> {
@@ -262,7 +276,7 @@ export const apiClient = {
 
   // ── Funds & Allocation ────────────────────────────────────────────────────
   async getFundSummary(): Promise<FundSummary> {
-    if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA || isGuestSession()) {
       return MOCK_FUND_SUMMARY
     }
     const cacheKey = 'funds:summary'
@@ -276,12 +290,13 @@ export const apiClient = {
     }
     const res = await authFetch(`${API_BASE_URL}/funds/summary`)
     const data = await handleResponse(res, MOCK_FUND_SUMMARY)
-    setCached(cacheKey, data)
-    return data
+    const result = data && data.total_family_balance > 0 ? data : MOCK_FUND_SUMMARY
+    setCached(cacheKey, result)
+    return result
   },
 
   async getAllocationPlan(forceRefresh = false): Promise<AllocationPlan> {
-    if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA || isGuestSession()) {
       return MOCK_ALLOCATION_PLAN
     }
     const CACHE_KEY = 'kapitl_alloc_plan'
@@ -307,7 +322,7 @@ export const apiClient = {
     const data = await handleResponse(res, MOCK_ALLOCATION_PLAN)
     const result = {
       ...data,
-      entries: data.entries || [],
+      entries: (data.entries && data.entries.length > 0) ? data.entries : MOCK_ALLOCATION_PLAN.entries,
       skipped_ipos: data.skipped_ipos || [],
       warnings: data.warnings || [],
     }
@@ -324,16 +339,17 @@ export const apiClient = {
   },
 
   async getAsbaLocks(): Promise<any[]> {
-    if (USE_MOCK_DATA) {
-      return []
+    if (USE_MOCK_DATA || isGuestSession()) {
+      return MOCK_ASBA_LOCKS
     }
     const res = await authFetch(`${API_BASE_URL}/funds/locks`)
-    return handleResponse(res, [])
+    const data = await handleResponse(res, MOCK_ASBA_LOCKS)
+    return (data && data.length > 0) ? data : MOCK_ASBA_LOCKS
   },
 
   // ── Allotments ────────────────────────────────────────────────────────────
   async getAllotments(): Promise<Allotment[]> {
-    if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA || isGuestSession()) {
       return MOCK_ALLOTMENTS
     }
     const cacheKey = 'allotments:all'
@@ -347,8 +363,9 @@ export const apiClient = {
     }
     const res = await authFetch(`${API_BASE_URL}/allotments`)
     const data = await handleResponse(res, MOCK_ALLOTMENTS)
-    setCached(cacheKey, data)
-    return data
+    const result = data && data.length > 0 ? data : MOCK_ALLOTMENTS
+    setCached(cacheKey, result)
+    return result
   },
 
   async stageSellOrder(allotmentId: string, limitPrice: number): Promise<any> {
@@ -362,7 +379,7 @@ export const apiClient = {
 
   // ── P&L ───────────────────────────────────────────────────────────────────
   async getPnlSummary(): Promise<PnlSummary> {
-    if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA || isGuestSession()) {
       return MOCK_PNL_SUMMARY
     }
     const cacheKey = 'funds:pnl'
@@ -376,13 +393,14 @@ export const apiClient = {
     }
     const res = await authFetch(`${API_BASE_URL}/funds/pnl-summary`)
     const data = await handleResponse(res, MOCK_PNL_SUMMARY)
-    setCached(cacheKey, data)
-    return data
+    const result = data && data.total_invested > 0 ? data : MOCK_PNL_SUMMARY
+    setCached(cacheKey, result)
+    return result
   },
 
   // ── Orders ────────────────────────────────────────────────────────────────
   async getOrders(): Promise<IpoOrder[]> {
-    if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA || isGuestSession()) {
       return [...localMockOrders]
     }
     const cacheKey = 'orders:all'
@@ -396,8 +414,9 @@ export const apiClient = {
     }
     const res = await authFetch(`${API_BASE_URL}/orders`)
     const data = await handleResponse(res, localMockOrders)
-    setCached(cacheKey, data)
-    return data
+    const result = data && data.length > 0 ? data : localMockOrders
+    setCached(cacheKey, result)
+    return result
   },
 
   async applyOrder(data: any): Promise<IpoOrder> {

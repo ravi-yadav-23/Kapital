@@ -27,29 +27,11 @@ import {
 } from 'lucide-react'
 import { LiveProfitAllocationCalculator } from '@/components/landing/LiveProfitAllocationCalculator'
 
-// Realistic Demo Dataset seeded for Guest/Recruiter preview
-const DEMO_FUND_SUMMARY: FundSummary = {
-  total_family_balance: 1400000,
-  total_locked_asba: 580000,
-  total_available: 820000,
-  utilization_percent: 41.4,
-  accounts_total: 6,
-  accounts_active: 6,
-}
-
-const DEMO_PNL_SUMMARY: PnlSummary = {
-  total_invested: 580000,
-  total_realized_pnl: 18400,
-  total_unrealized_pnl: 42100,
-  total_pnl: 60500,
-  overall_roi_percent: 3.2,
-  total_applied_ipos: 5,
-  total_allotments: 3,
-  allotment_rate_percent: 66.7,
-  total_sold: 2,
-  total_holding: 3,
-  best_ipo: { name: 'Bonfiglioli Transmissions', roi: 27.8 },
-}
+import {
+  MOCK_FUND_SUMMARY as DEMO_FUND_SUMMARY,
+  MOCK_PNL_SUMMARY as DEMO_PNL_SUMMARY,
+  MOCK_ACCOUNTS as DEMO_ACCOUNTS,
+} from '@/lib/mock-data'
 
 const DEMO_ACTIVITIES: ActivityItem[] = [
   {
@@ -138,17 +120,18 @@ export default function DashboardPage() {
         if (guestOrEmpty) {
           setFundSummary(DEMO_FUND_SUMMARY)
           setPnlSummary(DEMO_PNL_SUMMARY)
+          setAccounts(DEMO_ACCOUNTS)
         } else {
           setFundSummary(fundsData)
           setPnlSummary(pnlData)
+          setAccounts(accountsData || [])
         }
-
-        setAccounts(accountsData || [])
       } catch (err) {
         console.error('Error loading dashboard data:', err)
         if (!isMounted) return
         setFundSummary(DEMO_FUND_SUMMARY)
         setPnlSummary(DEMO_PNL_SUMMARY)
+        setAccounts(DEMO_ACCOUNTS)
       } finally {
         if (isMounted) {
           setLoading(false)
