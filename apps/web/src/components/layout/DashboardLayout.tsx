@@ -44,8 +44,8 @@ const WS_EVENT_LABELS: Record<string, string> = {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const { isAuthenticated, isGuest, isLoading } = useAuth()
-
   const [toast, setToast] = React.useState<string | null>(null)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
 
   const handleWsMessage = useCallback((msg: WebSocketMessage) => {
     // Suppress heartbeats; surface all other events
@@ -80,8 +80,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   if (!isAuthenticated) {
     return null
   }
-
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
 
   return (
     <div className="main-layout">
