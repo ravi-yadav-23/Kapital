@@ -13,6 +13,11 @@ interface StatCardProps {
     isPositive: boolean
     label?: string
   }
+  action?: {
+    label: string
+    href?: string
+    onClick?: () => void
+  }
   className?: string
 }
 
@@ -22,6 +27,7 @@ export function StatCard({
   subtitle,
   icon,
   delta,
+  action,
   className = '',
 }: StatCardProps) {
   return (
@@ -49,6 +55,28 @@ export function StatCard({
               </span>
             )}
             {subtitle && <span className="text-2xs text-text-muted">{subtitle}</span>}
+          </div>
+        )}
+        {action && (
+          <div className="mt-2 pt-2 border-t border-border-subtle/60">
+            {action.href ? (
+              <a
+                href={action.href}
+                className="text-xs font-semibold text-brand-from hover:text-brand-to inline-flex items-center gap-1 transition"
+              >
+                <span>{action.label}</span>
+                <ArrowUpRight className="w-3 h-3" />
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={action.onClick}
+                className="text-xs font-semibold text-brand-from hover:text-brand-to inline-flex items-center gap-1 transition cursor-pointer"
+              >
+                <span>{action.label}</span>
+                <ArrowUpRight className="w-3 h-3" />
+              </button>
+            )}
           </div>
         )}
       </div>

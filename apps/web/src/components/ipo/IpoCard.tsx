@@ -145,7 +145,7 @@ export function IpoCard({ ipo, onApply }: IpoCardProps) {
               className="btn btn-primary btn-sm flex-1 justify-center text-xs gap-1.5 shadow-md shadow-brand-from/20"
             >
               <Send className="w-3 h-3" />
-              <span>Apply Now</span>
+              <span>View Allocation Plan</span>
             </button>
           ) : isUpcoming ? (
             <Link

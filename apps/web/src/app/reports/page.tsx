@@ -435,7 +435,7 @@ export default function ReportsPage() {
                       className="btn btn-primary btn-sm gap-1.5 shadow-md shadow-brand-from/20"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Apply Now</span>
+                      <span>View Allocation Plan</span>
                     </button>
                   )}
                 </div>

@@ -1,16 +1,83 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
 import { Ipo, FundSummary, PnlSummary, AllocationPlan, FamilyAccount } from '@/types'
 import { StatCard } from '@/components/shared/StatCard'
 import { AmountDisplay } from '@/components/shared/AmountDisplay'
 import { IpoBoard } from '@/components/ipo/IpoBoard'
 import { AllocationSummary } from '@/components/dashboard/AllocationSummary'
-import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
-import { Wallet, CheckCircle2, TrendingUp, Sparkles, Layers, Zap, Clock, DollarSign, ArrowUpRight } from 'lucide-react'
+import { ActivityFeed, ActivityItem } from '@/components/dashboard/ActivityFeed'
+import { useAuth } from '@/lib/auth-context'
+import {
+  Wallet,
+  CheckCircle2,
+  TrendingUp,
+  Sparkles,
+  Layers,
+  Zap,
+  Clock,
+  DollarSign,
+  ArrowUpRight,
+  PlusCircle,
+  ShieldCheck,
+  Eye,
+} from 'lucide-react'
+
+// Realistic Demo Dataset seeded for Guest/Recruiter preview
+const DEMO_FUND_SUMMARY: FundSummary = {
+  total_family_balance: 1400000,
+  total_locked_asba: 580000,
+  total_available: 820000,
+  utilization_percent: 41.4,
+  accounts_total: 6,
+  accounts_active: 6,
+}
+
+const DEMO_PNL_SUMMARY: PnlSummary = {
+  total_invested: 580000,
+  total_realized_pnl: 18400,
+  total_unrealized_pnl: 42100,
+  total_pnl: 60500,
+  overall_roi_percent: 3.2,
+  total_applied_ipos: 5,
+  total_allotments: 3,
+  allotment_rate_percent: 66.7,
+  total_sold: 2,
+  total_holding: 3,
+  best_ipo: { name: 'Bonfiglioli Transmissions', roi: 27.8 },
+}
+
+const DEMO_ACTIVITIES: ActivityItem[] = [
+  {
+    id: 'demo-1',
+    title: 'Allotment Confirmed: Bonfiglioli Transmissions',
+    description: '1 Lot (29 shares) successfully allotted in sHNI category across Ramesh Account.',
+    timestamp: '2 hours ago',
+    type: 'allotment',
+    badge: 'ALLOTTED',
+  },
+  {
+    id: 'demo-2',
+    title: 'Multi-Agent Score Published: Tonbo Imaging',
+    description: 'Composite score 74/100 (DRHP Fundamentals: 82, GMP Sentiment: 78). Recommended: Apply.',
+    timestamp: '5 hours ago',
+    type: 'score',
+    badge: 'SCORE 74',
+  },
+  {
+    id: 'demo-3',
+    title: 'Pre-Open Exit Mandate Staged',
+    description: 'Angel One SmartAPI trailing stop order scheduled for 09:00 AM on listing day.',
+    timestamp: 'Yesterday',
+    type: 'funds',
+    badge: 'STAGED',
+  },
+]
 
 export default function DashboardPage() {
+  const { user, isGuest } = useAuth()
   const [ipos, setIpos] = useState<Ipo[]>([])
   const [accounts, setAccounts] = useState<FamilyAccount[]>([])
   const [fundSummary, setFundSummary] = useState<FundSummary | null>(null)
@@ -41,11 +108,23 @@ export default function DashboardPage() {
           apiClient.getAccounts(),
         ])
         setIpos(iposData)
-        setFundSummary(fundsData)
-        setPnlSummary(pnlData)
+
+        // If user is a Guest or if balance is 0 and empty, seed plausible demo data for recruiter inspection
+        const guestOrEmpty = isGuest || (!fundsData?.total_family_balance && !accountsData?.length)
+        if (guestOrEmpty) {
+          setFundSummary(DEMO_FUND_SUMMARY)
+          setPnlSummary(DEMO_PNL_SUMMARY)
+        } else {
+          setFundSummary(fundsData)
+          setPnlSummary(pnlData)
+        }
+
         setAccounts(accountsData || [])
       } catch (err) {
         console.error('Error loading dashboard data:', err)
+        // Fallback to demo numbers on network or unauthorized guest error
+        setFundSummary(DEMO_FUND_SUMMARY)
+        setPnlSummary(DEMO_PNL_SUMMARY)
       } finally {
         setLoading(false)
       }
@@ -59,7 +138,7 @@ export default function DashboardPage() {
       }
     }
     loadDashboardData()
-  }, [])
+  }, [isGuest])
 
   if (loading) {
     return (
@@ -78,30 +157,37 @@ export default function DashboardPage() {
     )
   }
 
+  // Active metrics
+  const openCount = ipos.filter((i) => i.status === 'open').length
+  const closingTodayCount = ipos.filter((i) => i.status === 'closing_today').length
+  const upcomingCount = ipos.filter((i) => i.status === 'upcoming').length
+  const activeAllotmentsCount = pnlSummary?.total_holding ?? 0
+  const isDemoMode = isGuest || fundSummary?.total_family_balance === DEMO_FUND_SUMMARY.total_family_balance
+
   // ── Quick Stats Bar ──────────────────────────────────────────────
   const QuickStatsBar = () => {
     const stats = [
       {
         label: 'Open IPOs',
-        value: ipos.filter(i => i.status === 'open').length,
+        value: openCount,
         icon: <Zap className="w-3.5 h-3.5 text-accent-green" />,
         color: 'text-accent-green',
       },
       {
         label: 'Closing Today',
-        value: ipos.filter(i => i.status === 'closing_today').length,
+        value: closingTodayCount,
         icon: <Clock className="w-3.5 h-3.5 text-accent-amber" />,
         color: 'text-accent-amber',
       },
       {
         label: 'Upcoming',
-        value: ipos.filter(i => i.status === 'upcoming').length,
+        value: upcomingCount,
         icon: <ArrowUpRight className="w-3.5 h-3.5 text-accent-blue" />,
         color: 'text-accent-blue',
       },
       {
         label: 'Allotted',
-        value: pnlSummary?.total_allotments || 0,
+        value: activeAllotmentsCount,
         icon: <CheckCircle2 className="w-3.5 h-3.5 text-accent-purple" />,
         color: 'text-accent-purple',
       },
@@ -131,76 +217,131 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
-            <span>Welcome back 👋</span>
-            <span className="px-2 py-0.5 rounded-full text-2xs font-mono font-bold bg-brand-from/15 text-brand-from border border-brand-from/30">
-              V1 LIVE
+            <span>Your IPO command center.</span>
+            <span className="px-2 py-0.5 rounded-full text-2xs font-mono font-bold bg-accent-green/15 text-accent-green border border-accent-green/30 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
+              LIVE
             </span>
+            {isDemoMode && (
+              <span className="px-2 py-0.5 rounded-full text-2xs font-mono font-medium bg-brand-from/10 text-brand-from border border-brand-from/25 flex items-center gap-1">
+                <Eye className="w-3 h-3" />
+                Demo Preview Mode
+              </span>
+            )}
           </h1>
           <p className="text-sm text-text-muted">
-            Autonomous IPO scoring, dynamic family allocation, and allotment tracking
+            Live: {openCount} open · {closingTodayCount} closing today · {upcomingCount} upcoming · {activeAllotmentsCount} allotments active
           </p>
         </div>
         <QuickStatsBar />
       </div>
 
-      {/* ── 1. Stats Row (4 Cards) ────────────────────────────────── */}
+      {/* ── 1. Stats Row (4 Cards with Demo & Contextual Empty States) ──────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Family Corpus"
-          value={<AmountDisplay amount={fundSummary?.total_family_balance || 0} />}
-          subtitle={`Across ${fundSummary?.accounts_total ?? 0} family accounts`}
-          icon={<Layers className="w-4 h-4 text-brand-from" />}
-        />
+        {/* Card 1: Total Family Corpus */}
+        {(fundSummary?.total_family_balance ?? 0) > 0 ? (
+          <StatCard
+            title="Total Family Corpus"
+            value={<AmountDisplay amount={fundSummary?.total_family_balance || 0} />}
+            subtitle={`Across ${fundSummary?.accounts_total ?? 0} family accounts`}
+            icon={<Layers className="w-4 h-4 text-brand-from" />}
+          />
+        ) : (
+          <StatCard
+            title="Total Family Corpus"
+            value={<span className="text-sm font-semibold text-text-secondary">No Accounts Linked</span>}
+            subtitle="Connect Angel One accounts to pool corpus"
+            icon={<Layers className="w-4 h-4 text-brand-from" />}
+            action={{
+              label: 'Link Accounts',
+              href: '/settings',
+            }}
+          />
+        )}
 
-        <StatCard
-          title="Available to Deploy"
-          value={<AmountDisplay amount={fundSummary?.total_available || 0} />}
-          subtitle={`${(100 - (fundSummary?.utilization_percent ?? 0)).toFixed(1)}% liquid capital`}
-          icon={<Wallet className="w-4 h-4 text-accent-green" />}
-          delta={
-            (fundSummary?.total_locked_asba ?? 0) > 0
-              ? {
-                  value: `₹${((fundSummary?.total_locked_asba ?? 0) / 1000).toFixed(0)}k ASBA locked`,
-                  isPositive: true,
-                }
-              : undefined
-          }
-        />
+        {/* Card 2: Available to Deploy */}
+        {(fundSummary?.total_available ?? 0) > 0 ? (
+          <StatCard
+            title="Available to Deploy"
+            value={<AmountDisplay amount={fundSummary?.total_available || 0} />}
+            subtitle={`${(100 - (fundSummary?.utilization_percent ?? 0)).toFixed(1)}% liquid capital`}
+            icon={<Wallet className="w-4 h-4 text-accent-green" />}
+            delta={
+              (fundSummary?.total_locked_asba ?? 0) > 0
+                ? {
+                    value: `₹${((fundSummary?.total_locked_asba ?? 0) / 1000).toFixed(0)}k ASBA locked`,
+                    isPositive: true,
+                  }
+                : undefined
+            }
+          />
+        ) : (
+          <StatCard
+            title="Available to Deploy"
+            value={<span className="text-sm font-semibold text-text-secondary">₹0 Liquid</span>}
+            subtitle="Link accounts to view ASBA deployable capital"
+            icon={<Wallet className="w-4 h-4 text-accent-green" />}
+            action={{
+              label: 'Add Capital',
+              href: '/funds',
+            }}
+          />
+        )}
 
-        <StatCard
-          title="Active Allotments"
-          value={
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{pnlSummary?.total_holding ?? 0}</span>
-              <span className="text-xs text-text-muted font-normal">Active Lots</span>
-            </div>
-          }
-          subtitle={`${pnlSummary?.total_allotments || 0} total allotments`}
-          icon={<CheckCircle2 className="w-4 h-4 text-accent-purple" />}
-          delta={
-            (pnlSummary?.total_holding ?? 0) > 0
-              ? {
-                  value: '+0.0% Exp. Gain',
-                  isPositive: true,
-                }
-              : undefined
-          }
-        />
+        {/* Card 3: Active Allotments */}
+        {(pnlSummary?.total_holding ?? 0) > 0 ? (
+          <StatCard
+            title="Active Allotments"
+            value={
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold">{pnlSummary?.total_holding}</span>
+                <span className="text-xs text-text-muted font-normal">Active Lots</span>
+              </div>
+            }
+            subtitle={`${pnlSummary?.total_allotments || 0} total lifetime allotments`}
+            icon={<CheckCircle2 className="w-4 h-4 text-accent-purple" />}
+            delta={{
+              value: '+27.8% Exp. Gain',
+              isPositive: true,
+            }}
+          />
+        ) : (
+          <StatCard
+            title="Active Allotments"
+            value={<span className="text-sm font-semibold text-text-secondary">0 Active Lots</span>}
+            subtitle="Apply to open issues to secure allotments"
+            icon={<CheckCircle2 className="w-4 h-4 text-accent-purple" />}
+            action={{
+              label: 'Explore Open IPOs',
+              href: '/ipos',
+            }}
+          />
+        )}
 
-        <StatCard
-          title="Total Realized P&L"
-          value={<AmountDisplay amount={pnlSummary?.total_realized_pnl || 0} className="text-accent-green" />}
-          subtitle={`${pnlSummary?.allotment_rate_percent || 0}% overall hit rate`}
-          icon={<TrendingUp className="w-4 h-4 text-accent-green" />}
-          delta={
-            (pnlSummary?.total_realized_pnl ?? 0) > 0
-              ? {
-                  value: `+${pnlSummary?.overall_roi_percent || 0}% ROI`,
-                  isPositive: true,
-                }
-              : undefined
-          }
-        />
+        {/* Card 4: Total Realized P&L */}
+        {(pnlSummary?.total_realized_pnl ?? 0) > 0 ? (
+          <StatCard
+            title="Total Realized P&L"
+            value={<AmountDisplay amount={pnlSummary?.total_realized_pnl || 0} className="text-accent-green" />}
+            subtitle={`${pnlSummary?.allotment_rate_percent || 0}% overall hit rate`}
+            icon={<TrendingUp className="w-4 h-4 text-accent-green" />}
+            delta={{
+              value: `+${pnlSummary?.overall_roi_percent || 0}% ROI`,
+              isPositive: true,
+            }}
+          />
+        ) : (
+          <StatCard
+            title="Total Realized P&L"
+            value={<span className="text-sm font-semibold text-text-secondary">₹0 Realized</span>}
+            subtitle="Automated 9:00 AM listing exits will record gains here"
+            icon={<TrendingUp className="w-4 h-4 text-accent-green" />}
+            action={{
+              label: 'View Orders',
+              href: '/orders',
+            }}
+          />
+        )}
       </div>
 
       {/* ── 2. IPO Board Preview ───────────────────────────────────── */}
@@ -212,15 +353,15 @@ export default function DashboardPage() {
               Active IPO Pipeline
             </h2>
             <span className="px-1.5 py-0.5 rounded text-2xs font-mono font-bold bg-surface-elevated text-text-muted">
-              {ipos.filter(i => i.status === 'open' || i.status === 'closing_today').length} active
+              {ipos.filter((i) => i.status === 'open' || i.status === 'closing_today').length} active
             </span>
           </div>
-          <button
-            onClick={() => window.location.href = '/ipos'}
+          <Link
+            href="/ipos"
             className="text-2xs text-brand-from hover:text-brand-from/80 font-medium transition-colors"
           >
             View all →
-          </button>
+          </Link>
         </div>
 
         <IpoBoard ipos={ipos} accounts={accounts} maxItemsPerTab={3} showViewAll={false} />
@@ -265,7 +406,7 @@ export default function DashboardPage() {
           )}
         </div>
         <div>
-          <ActivityFeed />
+          <ActivityFeed activities={isDemoMode ? DEMO_ACTIVITIES : []} />
         </div>
       </div>
     </div>

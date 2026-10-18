@@ -48,7 +48,7 @@ export function Sidebar() {
             KAPITL
           </span>
           <span className="text-[10px] tracking-wider uppercase text-text-muted font-mono">
-            IPO Auto-Invest
+            IPO Intelligence Platform
           </span>
         </div>
       </div>
