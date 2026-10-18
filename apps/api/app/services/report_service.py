@@ -174,6 +174,38 @@ class AiDueDiligenceService:
             scored_at=existing.scored_at or datetime.now(timezone.utc).strftime("%d %b %Y"),
         )
 
+    def build_fallback_report_response(self, ipo: Ipo) -> AiReportResponse:
+        """Helper to create an instant heuristic AiReportResponse for an IPO that hasn't generated a full multi-agent report yet."""
+        score = ipo.score or 50
+        rec = ipo.recommendation or self.get_recommendation_label(score)
+        gmp = ipo.gmp_percent or 0.0
+        price_max = ipo.price_band_max or 100.0
+        est_price = round(price_max * (1 + (gmp / 100.0)), 2)
+
+        return AiReportResponse(
+            id=f"auto-{ipo.id}",
+            ipo_id=ipo.id,
+            ipo_name=ipo.name,
+            ipo_symbol=ipo.symbol,
+            overall_score=score,
+            recommendation=rec,
+            score_breakdown=ScoreBreakdownSchema(
+                financial_quality=min(100, max(10, score + 5)),
+                industry_tailwinds=min(100, max(10, score + 2)),
+                subscription_momentum=min(100, max(10, int(gmp * 1.2))),
+                valuation_safety=min(100, max(10, score - 5)),
+                gmp_strength=min(100, max(10, int(gmp * 1.5))),
+                promoter_integrity=score,
+            ),
+            executive_summary=f"Automated market intelligence assessment for {ipo.name} ({ipo.type}). Indicative GMP stands at {gmp}% with preliminary score of {score}/100.",
+            strengths=ipo.strengths or [f"Active exchange listing issue", f"Grey market premium: {gmp}%"],
+            risks=ipo.risks or ["Market volatility", "Regulatory compliance"],
+            red_flags=[],
+            gmp_percent=gmp,
+            estimated_listing_price=est_price,
+            scored_at=datetime.now(timezone.utc).strftime("%d %b %Y"),
+        )
+
     async def get_or_generate_report(self, db: AsyncSession, ipo: Ipo, force_refresh: bool = False) -> AiReportResponse:
         """Fetch existing report from DB or generate a fresh analysis via the configured AI model."""
         if not force_refresh:

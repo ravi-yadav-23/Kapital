@@ -73,11 +73,17 @@ class IpoDueDiligenceOrchestrator:
         # Execute Allocation strategist with synthesized inputs
         allocation_res = await allocation_agent.strategize(db, ipo_id)
 
+        def _safe_int(val: Any, default: int = 70) -> int:
+            try:
+                return int(float(val))
+            except Exception:
+                return default
+
         # Extract dimension scores
-        fin = int(analysis_res.get("financial_quality_score", 70))
-        val = int(analysis_res.get("valuation_safety_score", 65))
-        gov = int(news_res.get("promoter_integrity_score", 75))
-        ind = int(news_res.get("industry_tailwinds_score", 75))
+        fin = _safe_int(analysis_res.get("financial_quality_score"), 70)
+        val = _safe_int(analysis_res.get("valuation_safety_score"), 65)
+        gov = _safe_int(news_res.get("promoter_integrity_score"), 75)
+        ind = _safe_int(news_res.get("industry_tailwinds_score"), 75)
 
         gmp_pct = float(ipo.get("gmp_percent") or 0.0)
         gmp_s = min(100, max(0, int(gmp_pct * 2.0)))
@@ -92,7 +98,7 @@ class IpoDueDiligenceOrchestrator:
                 item = dict(rf)
                 desc = item.get("description") or item.get("detail") or item.get("flag") or item.get("title") or "Accounting Risk Identified"
                 sev = str(item.get("severity", "MEDIUM")).upper()
-                pen = item.get("penalty_points") or item.get("penalty") or (10 if sev == "HIGH" else 5)
+                pen = _safe_int(item.get("penalty_points") or item.get("penalty"), 10 if sev == "HIGH" else 5)
                 item["title"] = item.get("title") or item.get("type") or "Accounting Risk"
                 item["description"] = desc
                 item["flag"] = desc
@@ -109,7 +115,7 @@ class IpoDueDiligenceOrchestrator:
                 item = dict(gf)
                 desc = item.get("description") or item.get("detail") or item.get("flag") or item.get("title") or "Governance Flag Identified"
                 sev = str(item.get("severity", "MEDIUM")).upper()
-                pen = item.get("penalty_points") or item.get("penalty") or (10 if sev == "HIGH" else 5)
+                pen = _safe_int(item.get("penalty_points") or item.get("penalty"), 10 if sev == "HIGH" else 5)
                 item["title"] = item.get("title") or item.get("type") or "Governance Flag"
                 item["description"] = desc
                 item["flag"] = desc

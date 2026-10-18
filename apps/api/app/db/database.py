@@ -63,10 +63,16 @@ async def init_db():
 
         try:
             async with AsyncSessionLocal() as session:
-                from app.db.seed_data import seed_initial_ipos_and_reports
-                await seed_initial_ipos_and_reports(session)
-        except Exception as seed_err:
-            logger.warning(f"[DB Warning] Could not seed initial IPOs/reports: {seed_err}")
+                from sqlalchemy import select, func
+                from app.models.ipo import Ipo
+                from app.tasks.ipo_tasks import sync_ipos_pipeline
+                res = await session.execute(select(func.count(Ipo.id)))
+                ipo_count = res.scalar() or 0
+                if ipo_count == 0:
+                    logger.info("[DB] Database empty. Running initial live market feed sync...")
+                    await sync_ipos_pipeline(session)
+        except Exception as sync_err:
+            logger.warning(f"[DB Warning] Initial live market sync skipped: {sync_err}")
     except Exception as e:
         logger.warning(f"[DB Warning] Could not sync metadata tables: {e}")
 

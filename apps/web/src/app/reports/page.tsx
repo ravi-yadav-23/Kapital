@@ -285,11 +285,18 @@ export default function ReportsPage() {
             </div>
 
             {/* Status Tabs: Active vs Upcoming vs All */}
+            {/* Status Tabs: Active vs Upcoming vs All */}
             <div className="flex items-center gap-1 p-1 bg-surface-elevated rounded-lg border border-border-subtle text-xs font-semibold">
               {[
-                { id: 'ACTIVE', label: 'Live Active' },
-                { id: 'UPCOMING', label: 'Upcoming' },
-                { id: 'ALL', label: 'All Issues' },
+                {
+                  id: 'ACTIVE',
+                  label: `Live Active (${ipos.filter((i) => i.status === 'open' || i.status === 'closing_today').length})`,
+                },
+                {
+                  id: 'UPCOMING',
+                  label: `Upcoming (${ipos.filter((i) => i.status === 'upcoming').length})`,
+                },
+                { id: 'ALL', label: `All (${ipos.length})` },
               ].map((tab) => (
                 <button
                   key={tab.id}

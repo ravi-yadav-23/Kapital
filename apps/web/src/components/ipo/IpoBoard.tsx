@@ -14,7 +14,7 @@ interface IpoBoardProps {
   showFilters?: boolean
 }
 
-type TabType = 'open' | 'closing_today' | 'upcoming' | 'closed' | 'all'
+type TabType = 'active' | 'closing_today' | 'upcoming' | 'closed' | 'all'
 
 export function IpoBoard({
   ipos,
@@ -23,7 +23,7 @@ export function IpoBoard({
   showViewAll = false,
   showFilters = true,
 }: IpoBoardProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('open')
+  const [activeTab, setActiveTab] = useState<TabType>('active')
   const [isFiltersOpen, setIsFiltersOpen] = useState(showFilters && !maxItemsPerTab)
   const [selectedType, setSelectedType] = useState<string>('ALL')
   const [minScore, setMinScore] = useState<number>(0)
@@ -34,6 +34,7 @@ export function IpoBoard({
   // Tab counts
   const openCount = useMemo(() => ipos.filter((i) => i.status === 'open').length, [ipos])
   const closingCount = useMemo(() => ipos.filter((i) => i.status === 'closing_today').length, [ipos])
+  const activeCount = useMemo(() => openCount + closingCount, [openCount, closingCount])
   const upcomingCount = useMemo(() => ipos.filter((i) => i.status === 'upcoming').length, [ipos])
   const closedCount = useMemo(
     () => ipos.filter((i) => i.status === 'closed' || i.status === 'allotted' || i.status === 'listed').length,
@@ -44,7 +45,7 @@ export function IpoBoard({
   const filteredIpos = useMemo(() => {
     return ipos.filter((ipo) => {
       // 1. Status Tab filter
-      if (activeTab === 'open' && ipo.status !== 'open') return false
+      if (activeTab === 'active' && ipo.status !== 'open' && ipo.status !== 'closing_today') return false
       if (activeTab === 'closing_today' && ipo.status !== 'closing_today') return false
       if (activeTab === 'upcoming' && ipo.status !== 'upcoming') return false
       if (
@@ -93,19 +94,19 @@ export function IpoBoard({
       {/* ── 1. Tab Navigation ──────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Tab: Open Now */}
+          {/* Tab: Live Active (Open & Closing Today) */}
           <button
-            onClick={() => setActiveTab('open')}
+            onClick={() => setActiveTab('active')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'open'
+              activeTab === 'active'
                 ? 'bg-status-open text-status-open-fg border border-accent-green/30 shadow-sm'
                 : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
             }`}
           >
             <span className="dot-pulse" />
-            <span>Open Now</span>
+            <span>Live Active</span>
             <span className="px-1.5 py-0.2 rounded-full text-2xs bg-surface-elevated font-mono">
-              {openCount}
+              {activeCount}
             </span>
           </button>
 

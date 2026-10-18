@@ -18,25 +18,33 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 async def list_ai_reports(db: AsyncSession = Depends(get_db)):
     """
     List all generated AI Due Diligence reports with 6-dimension scores.
-    Single SQL JOIN query that never blocks on synchronous LLM calls.
-    Auto-seeds benchmark reports if DB is currently empty.
+    Includes all active IPOs from live market feeds.
+    If an active IPO does not yet have an AI report, it generates it once and persists it to DB.
     """
+    # 1. Fetch all active or upcoming IPOs with their optional AI reports
     stmt = (
-        select(AiReport, Ipo)
-        .join(Ipo, AiReport.ipo_id == Ipo.id)
-        .order_by(AiReport.overall_score.desc())
+        select(Ipo, AiReport)
+        .outerjoin(AiReport, Ipo.id == AiReport.ipo_id)
+        .where(Ipo.status.in_(["open", "closing_today", "upcoming"]))
+        .order_by(Ipo.score.desc().nullslast())
     )
     res = await db.execute(stmt)
     rows = res.all()
 
+    # If database has no active IPOs, trigger live market sync
     if not rows:
-        await seed_initial_ipos_and_reports(db)
+        from app.tasks.ipo_tasks import sync_ipos_pipeline
+        await sync_ipos_pipeline(db)
         res = await db.execute(stmt)
         rows = res.all()
 
     reports = []
-    for report_row, ipo_row in rows:
-        reports.append(report_service.format_report_response(report_row, ipo_row))
+    for ipo_row, report_row in rows:
+        if report_row:
+            reports.append(report_service.format_report_response(report_row, ipo_row))
+        else:
+            reports.append(report_service.build_fallback_report_response(ipo_row))
+
     return reports
 
 

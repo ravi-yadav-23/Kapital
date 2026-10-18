@@ -110,8 +110,8 @@ class IpoService:
         ipos = result.scalars().all()
 
         if not ipos:
-            from app.db.seed_data import seed_initial_ipos_and_reports
-            await seed_initial_ipos_and_reports(db)
+            from app.tasks.ipo_tasks import sync_ipos_pipeline
+            await sync_ipos_pipeline(db)
             result = await db.execute(stmt)
             ipos = result.scalars().all()
 
@@ -128,8 +128,8 @@ class IpoService:
         ipo = result.scalar_one_or_none()
 
         if not ipo:
-            from app.db.seed_data import seed_initial_ipos_and_reports
-            await seed_initial_ipos_and_reports(db)
+            from app.tasks.ipo_tasks import sync_ipos_pipeline
+            await sync_ipos_pipeline(db)
             result = await db.execute(stmt)
             ipo = result.scalar_one_or_none()
 
