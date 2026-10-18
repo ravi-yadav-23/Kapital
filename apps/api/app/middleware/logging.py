@@ -29,6 +29,22 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 )
             return response
         except Exception as exc:
+            import traceback
+            from starlette.responses import JSONResponse
             duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"{request.method} {path} -> FAILED: {exc} ({duration_ms:.2f}ms)")
-            raise exc
+            tb = traceback.format_exc()
+            logger.error(f"{request.method} {path} -> FAILED: {exc}\n{tb} ({duration_ms:.2f}ms)")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": str(exc),
+                    "type": type(exc).__name__,
+                    "path": path,
+                    "traceback": tb.split("\n"),
+                },
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Credentials": "true",
+                    "X-Process-Time": f"{duration_ms:.2f}ms",
+                },
+            )
