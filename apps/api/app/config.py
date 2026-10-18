@@ -15,13 +15,13 @@ class Settings(BaseSettings):
     app_name: str = "Kapitl API"
     environment: str = "development"
     secret_key: str = _INSECURE_DEFAULT_KEY
-    cors_origins: List[str] = [
+    cors_origins: Any = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://kapital-gamma-nine.vercel.app",
     ]
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", mode="after")
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
             v = v.strip()
@@ -31,7 +31,13 @@ class Settings(BaseSettings):
                 except Exception:
                     pass
             return [x.strip() for x in v.split(",") if x.strip()]
-        return v
+        elif isinstance(v, list):
+            return [str(x).strip() for x in v]
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://kapital-gamma-nine.vercel.app",
+        ]
 
     @model_validator(mode="after")
     def validate_secret_key(self):
