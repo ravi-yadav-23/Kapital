@@ -175,10 +175,10 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
             <div>
               <div className="flex items-center gap-2 text-brand-from text-xs font-semibold uppercase tracking-wider">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>ASBA Capital Allocation & Order Tracker</span>
+                <span>Family Allocation Plan & Order Tracker</span>
               </div>
               <h2 className="text-lg font-bold text-text-primary mt-1">
-                Apply for {ipo.name}
+                Allocation Plan for {ipo.name}
               </h2>
               <div className="flex items-center gap-2 text-2xs text-text-muted font-mono mt-0.5">
                 <span>Cutoff: ₹{cutoffPrice}</span>
