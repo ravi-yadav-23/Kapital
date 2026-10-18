@@ -155,30 +155,41 @@ export default function LoginPage() {
         onLoad={() => setGoogleClientReady(true)}
       />
 
-      <div className="min-h-screen w-full bg-[#080d1a] text-slate-100 flex flex-col justify-center items-center px-4 relative overflow-hidden select-none">
+      <div className="min-h-screen w-full bg-[#0c0a09] text-[#fafaf9] flex flex-col justify-center items-center px-4 relative overflow-hidden select-none">
         {/* Glow gradients in background */}
-        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-[#f59e0b]/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-[#d97706]/10 rounded-full blur-[140px] pointer-events-none" />
+
+        {/* Back to Home link */}
+        <div className="w-full max-w-md z-10 mb-4">
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            className="inline-flex items-center gap-1.5 text-xs text-[#a8a29e] hover:text-[#fafaf9] transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back to Home
+          </button>
+        </div>
 
         {/* Center Container */}
         <div className="w-full max-w-md z-10">
           {/* Logo & Platform Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-4">
-              <Sparkles className="w-3.5 h-3.5" /> Institutional Multi-Account Terminal
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1a1612] border border-[#2d2520] text-[#f59e0b] text-xs font-semibold uppercase tracking-wider mb-4">
+              <Sparkles className="w-3.5 h-3.5" /> IPO Intelligence Platform
             </div>
             <h1 className="text-4xl font-extrabold tracking-tight text-white flex items-center justify-center gap-2">
-              <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#f59e0b] to-[#d97706] bg-clip-text text-transparent font-heading">
                 Kapitl
               </span>
             </h1>
-            <p className="text-sm text-slate-400 mt-2">
-              Personal automated IPO bidding & family corpus management
+            <p className="text-sm text-[#a8a29e] mt-2">
+              Personal IPO automation for serious retail investors.
             </p>
           </div>
 
           {/* Main Card */}
-          <div className="bg-[#0f172a]/80 backdrop-blur-xl border border-slate-800/80 shadow-2xl rounded-2xl p-6 sm:p-8">
+          <div className="bg-[#1a1612]/90 backdrop-blur-xl border border-[#2d2520] shadow-2xl rounded-2xl p-6 sm:p-8">
             {/* Error Banner */}
             {errorMsg && (
               <div className="mb-6 p-4 rounded-xl bg-red-950/40 border border-red-500/30 text-red-200 text-xs flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
@@ -244,9 +255,9 @@ export default function LoginPage() {
 
                 <div className="relative my-6 text-center">
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-800" />
+                    <div className="w-full border-t border-[#2d2520]" />
                   </div>
-                  <span className="relative px-3 bg-[#0f172a] text-[11px] uppercase tracking-wider text-slate-500 font-medium">
+                  <span className="relative px-3 bg-[#1a1612] text-[11px] uppercase tracking-wider text-[#a8a29e] font-medium">
                     or explore preview
                   </span>
                 </div>
@@ -256,25 +267,25 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleGuestEntry}
                   disabled={isLoading}
-                  className="w-full p-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between group text-left cursor-pointer"
+                  className="w-full p-3.5 rounded-xl bg-[#0c0a09] hover:bg-[#251e18] border border-[#2d2520] hover:border-[#f59e0b]/40 transition flex items-center justify-between group text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-[#f59e0b]/10 border border-[#f59e0b]/20 text-[#f59e0b] flex items-center justify-center">
                       <Eye className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="text-xs font-semibold text-slate-200 group-hover:text-white transition flex items-center gap-2">
+                      <div className="text-xs font-semibold text-[#fafaf9] group-hover:text-white transition flex items-center gap-2">
                         Explore as Guest
-                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          Demo
+                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-[#22c55e]/15 text-[#22c55e] border border-[#22c55e]/30 font-medium">
+                          Live Data
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        View IPO features with a blank demo profile
+                      <div className="text-[11px] text-[#a8a29e]">
+                        View real IPO scores, allocation plans & reports
                       </div>
                     </div>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition" />
+                  <ArrowRight className="w-4 h-4 text-[#a8a29e] group-hover:text-[#f59e0b] group-hover:translate-x-0.5 transition" />
                 </button>
               </div>
             )}
