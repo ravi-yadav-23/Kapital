@@ -1,6 +1,6 @@
 from app.models.base import Base, BaseModel
 from app.models.account import FamilyAccount
-from app.models.ipo import Ipo, IpoSchedule
+from app.models.ipo import Ipo, IpoSchedule, IpoAlias
 from app.models.report import AiReport
 from app.models.order import IpoOrder
 from app.models.allotment import Allotment, AsbaLock
@@ -14,6 +14,7 @@ __all__ = [
     "FamilyAccount",
     "Ipo",
     "IpoSchedule",
+    "IpoAlias",
     "AiReport",
     "IpoOrder",
     "Allotment",

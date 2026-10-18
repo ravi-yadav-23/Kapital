@@ -4,12 +4,24 @@ from sqlalchemy import select
 from datetime import datetime, date
 import uuid
 
-from app.models.ipo import Ipo, IpoSchedule
+from app.models.ipo import Ipo, IpoSchedule, IpoAlias
 from app.schemas.ipo import IpoResponse, IpoScheduleSchema
 from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
+import re
 
 # In-memory cache synced from DB for fast read access by optimizer
 MOCK_IPOS_STORE: List[Dict[str, Any]] = []
+
+
+def normalize_entity_name(name: str) -> str:
+    """Normalize company name to canonical stem: lowercase, remove legal suffixes, remove non-alphanumerics."""
+    if not name:
+        return ""
+    # Remove common legal suffixes and words
+    cleaned = re.sub(r'\b(ltd|limited|india|pvt|private|corporation|corp|enterprises|industries)\b', '', name, flags=re.IGNORECASE)
+    # Remove non-alphanumerics
+    cleaned = re.sub(r'[^a-zA-Z0-9]', '', cleaned).lower()
+    return cleaned
 
 
 def _format_date(d: Optional[date]) -> Optional[str]:
@@ -138,10 +150,68 @@ class IpoService:
 
     @staticmethod
     async def upsert_ipo(db: AsyncSession, ipo_dict: Dict[str, Any]) -> Ipo:
-        slug = ipo_dict.get("slug") or ipo_dict.get("symbol", "").lower()
-        stmt = select(Ipo).where((Ipo.slug == slug) | (Ipo.symbol == ipo_dict.get("symbol")))
-        result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
+        """
+        Multi-Tier Entity Resolution Pipeline:
+        - Tier 1: Absolute Match by ISIN or official Symbol
+        - Tier 2: Explicit Database Alias Mapping Table (ipo_aliases)
+        - Tier 3: Canonical Stem Matching & Self-Learning Alias Registration
+        """
+        raw_name = ipo_dict.get("name", "").strip()
+        incoming_slug = ipo_dict.get("slug") or ipo_dict.get("symbol", "").lower()
+        incoming_symbol = ipo_dict.get("symbol")
+        incoming_isin = ipo_dict.get("isin")
+        is_secondary = ipo_dict.get("is_secondary_feed", False)
+        norm_key = normalize_entity_name(raw_name)
+
+        existing: Optional[Ipo] = None
+
+        # ── Tier 1: Absolute Match (ISIN or authentic Symbol) ──────────
+        if incoming_isin:
+            stmt_isin = select(Ipo).where(Ipo.isin == incoming_isin)
+            res_isin = await db.execute(stmt_isin)
+            existing = res_isin.scalar_one_or_none()
+
+        if not existing and incoming_symbol and not is_secondary:
+            stmt_sym = select(Ipo).where(Ipo.symbol == incoming_symbol)
+            res_sym = await db.execute(stmt_sym)
+            existing = res_sym.scalar_one_or_none()
+
+        if not existing and incoming_slug and not is_secondary:
+            stmt_slug = select(Ipo).where(Ipo.slug == incoming_slug)
+            res_slug = await db.execute(stmt_slug)
+            existing = res_slug.scalar_one_or_none()
+
+        # ── Tier 2: Explicit Alias Mapping Table (ipo_aliases) ─────────
+        if not existing and norm_key:
+            stmt_alias = (
+                select(Ipo)
+                .join(IpoAlias, Ipo.id == IpoAlias.ipo_id)
+                .where(IpoAlias.normalized_alias == norm_key)
+            )
+            res_alias = await db.execute(stmt_alias)
+            existing = res_alias.scalar_one_or_none()
+
+        # ── Tier 3: Canonical Stem Auto-Discovery & Self-Learning ──────
+        if not existing and norm_key:
+            res_all = await db.execute(select(Ipo))
+            for cand in res_all.scalars().all():
+                cand_norm = normalize_entity_name(cand.name)
+                if cand_norm and cand_norm == norm_key:
+                    existing = cand
+                    # Auto-register this variation in Tier 2 alias table!
+                    try:
+                        new_alias = IpoAlias(
+                            id=str(uuid.uuid4()),
+                            ipo_id=existing.id,
+                            alias=raw_name,
+                            normalized_alias=norm_key,
+                            source="ipowatch" if is_secondary else "ipoalerts",
+                        )
+                        db.add(new_alias)
+                        await db.flush()
+                    except Exception:
+                        pass
+                    break
 
         def parse_date(val: Any) -> Optional[date]:
             if isinstance(val, date):
@@ -159,8 +229,11 @@ class IpoService:
         refund_dt = parse_date(ipo_dict.get("refund_date"))
         listing_dt = parse_date(ipo_dict.get("listing_date"))
 
+        # ── Merge and Enrich Existing Record ───────────────────────────
         if existing:
-            existing.name = ipo_dict.get("name", existing.name)
+            # Preserve primary authentic official name if secondary feed has shorter name
+            if not is_secondary:
+                existing.name = raw_name
             if ipo_dict.get("status"):
                 existing.status = ipo_dict.get("status")
             if ipo_dict.get("price_band_min") and float(ipo_dict.get("price_band_min")) > 0:
@@ -170,7 +243,6 @@ class IpoService:
 
             # Protect authentic lot size from heuristic/secondary feed overwrite
             incoming_lot = int(ipo_dict.get("lot_size", 0))
-            is_secondary = ipo_dict.get("is_secondary_feed", False)
             if incoming_lot > 0:
                 if existing.lot_size and existing.lot_size > 1 and is_secondary:
                     pass  # Preserve authentic exchange lot size
@@ -186,20 +258,40 @@ class IpoService:
 
             existing.score = ipo_dict.get("score", existing.score)
             existing.recommendation = ipo_dict.get("recommendation", existing.recommendation)
-            existing.gmp_percent = ipo_dict.get("gmp_percent", existing.gmp_percent)
+            if ipo_dict.get("gmp_percent") is not None:
+                existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
 
             for field in ["subscription_retail", "subscription_shni", "subscription_bhni", "subscription_qib", "subscription_total"]:
                 val = ipo_dict.get(field)
                 if val is not None and float(val) > 0:
                     setattr(existing, field, float(val))
+
+            # Ensure this alias is recorded in Tier 2
+            if norm_key:
+                try:
+                    stmt_check = select(IpoAlias).where(IpoAlias.normalized_alias == norm_key)
+                    if not (await db.execute(stmt_check)).scalar_one_or_none():
+                        db.add(IpoAlias(
+                            id=str(uuid.uuid4()),
+                            ipo_id=existing.id,
+                            alias=raw_name,
+                            normalized_alias=norm_key,
+                            source="ipowatch" if is_secondary else "ipoalerts",
+                        ))
+                except Exception:
+                    pass
+
             await db.flush()
             return existing
 
+        # ── Insert Brand New Master Record ─────────────────────────────
+        new_id = ipo_dict.get("id") or str(uuid.uuid4())
         ipo_obj = Ipo(
-            id=ipo_dict.get("id") or str(uuid.uuid4()),
+            id=new_id,
+            isin=incoming_isin,
             symbol=ipo_dict.get("symbol", "IPO"),
-            name=ipo_dict.get("name", "Unknown IPO"),
-            slug=slug,
+            name=raw_name,
+            slug=incoming_slug,
             type=ipo_dict.get("type", "EQ"),
             status=ipo_dict.get("status", "upcoming"),
             logo_url=ipo_dict.get("logo_url"),
@@ -229,6 +321,19 @@ class IpoService:
         db.add(ipo_obj)
         await db.flush()
 
+        # Register primary alias in Tier 2
+        if norm_key:
+            try:
+                db.add(IpoAlias(
+                    id=str(uuid.uuid4()),
+                    ipo_id=ipo_obj.id,
+                    alias=raw_name,
+                    normalized_alias=norm_key,
+                    source="ipoalerts" if not is_secondary else "ipowatch",
+                ))
+            except Exception:
+                pass
+
         # Add schedule events if present
         for item in ipo_dict.get("schedule", []):
             evt_date = parse_date(item.get("date"))
@@ -240,6 +345,7 @@ class IpoService:
                     event_date=evt_date,
                 )
                 db.add(sch)
+
         await db.flush()
         return ipo_obj
 

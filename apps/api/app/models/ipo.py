@@ -5,6 +5,7 @@ from app.models.base import BaseModel
 class Ipo(BaseModel):
     __tablename__ = "ipos"
 
+    isin = Column(String(50), nullable=True, index=True)
     external_id = Column(String(100), nullable=True)
     source = Column(String(50), default="bse")  # bse, nse, chittorgarh
     slug = Column(String(100), unique=True, nullable=False)
@@ -52,6 +53,7 @@ class Ipo(BaseModel):
 
     # Relationships
     schedules = relationship("IpoSchedule", back_populates="ipo", cascade="all, delete-orphan", lazy="selectin")
+    aliases = relationship("IpoAlias", back_populates="ipo", cascade="all, delete-orphan", lazy="selectin")
     orders = relationship("IpoOrder", back_populates="ipo", lazy="selectin")
     allotments = relationship("Allotment", back_populates="ipo", lazy="selectin")
     report = relationship("AiReport", back_populates="ipo", uselist=False, lazy="selectin")
@@ -65,3 +67,14 @@ class IpoSchedule(BaseModel):
     event_date = Column(Date, nullable=False)
 
     ipo = relationship("Ipo", back_populates="schedules")
+
+
+class IpoAlias(BaseModel):
+    __tablename__ = "ipo_aliases"
+
+    ipo_id = Column(String(36), ForeignKey("ipos.id", ondelete="CASCADE"), nullable=False, index=True)
+    alias = Column(String(200), nullable=False)
+    normalized_alias = Column(String(200), nullable=False, unique=True, index=True)
+    source = Column(String(50), default="scraper")  # ipowatch, ipoalerts, bse, nse, manual
+
+    ipo = relationship("Ipo", back_populates="aliases")
