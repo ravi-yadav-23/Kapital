@@ -130,6 +130,9 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                         if not name or len(name) < 2 or "ipo name" in name.lower():
                             continue
 
+                        # Clean out table tag artifacts like "Open", "Upcoming", "Closed" joined without spaces
+                        name = re.sub(r'(Open|Upcoming|Closed|Allotted|Listed)$', '', name, flags=re.IGNORECASE).strip()
+
                         gmp_str = cols[gmp_idx] if gmp_idx < len(cols) else "0"
                         price_str = cols[price_idx] if price_idx < len(cols) else "100"
                         dates = cols[date_idx] if date_idx < len(cols) else ""
@@ -295,6 +298,26 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
     await db.commit()
     logger.info(f"IPO sync complete. Total {synced_count} IPOs upserted into PostgreSQL.")
 
+    # 3. Single-Run AI Reports: Generate AI Due Diligence report once for active IPOs
+    try:
+        from app.models.ipo import Ipo
+        from app.models.report import AiReport
+        from app.services.report_service import report_service
+        from sqlalchemy import select
+
+        stmt_active = select(Ipo).where(Ipo.status.in_(["open", "closing_today", "upcoming"]))
+        res_active = await db.execute(stmt_active)
+        active_ipos = res_active.scalars().all()
+
+        for ipo_item in active_ipos[:8]:
+            stmt_r = select(AiReport).where(AiReport.ipo_id == ipo_item.id)
+            res_r = await db.execute(stmt_r)
+            if not res_r.scalar_one_or_none():
+                logger.info(f"[AI Report] Generating initial one-time report for live IPO {ipo_item.symbol}...")
+                await report_service.get_or_generate_report(db, ipo_item, force_refresh=False)
+    except Exception as e:
+        logger.warning(f"Could not auto-generate one-time AI reports after sync: {e}")
+
     try:
         from app.routers.websocket import broadcast_event
         await broadcast_event("IPOS_SYNCED", {"count": synced_count})
@@ -302,6 +325,7 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
         pass
 
     return synced_count
+
 
 
 async def sync_ipos_task() -> int:
