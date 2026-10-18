@@ -36,6 +36,7 @@ angel_session*
 # Build outputs
 build/
 dist/
+.turbo/
 
 # Logs
 *.log
