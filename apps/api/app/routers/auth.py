@@ -127,111 +127,122 @@ async def google_auth(req: GoogleAuthRequest):
       * If not configured: Generates new TOTP secret & QR code data URL (One-Time Setup).
       * If configured: Returns challenge for 6-digit Google Authenticator code.
     """
-    if not req.credential or not req.credential.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing Google authentication credential.",
-        )
-
-    # 1. Verify token with Google
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                "https://oauth2.googleapis.com/tokeninfo",
-                params={"id_token": req.credential.strip()},
+        if not req.credential or not req.credential.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing Google authentication credential.",
             )
-            if resp.status_code != 200:
+
+        # 1. Verify token with Google
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://oauth2.googleapis.com/tokeninfo",
+                    params={"id_token": req.credential.strip()},
+                )
+                if resp.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid or expired Google token.",
+                    )
+                token_info = resp.json()
+        except httpx.RequestError as e:
+            logger.error(f"Google token verification request failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to reach Google authentication service.",
+            )
+
+        # Validate audience (aud) claim if GOOGLE_CLIENT_ID is configured
+        google_client_id = getattr(settings, "google_client_id", None)
+        if isinstance(google_client_id, str) and google_client_id.strip():
+            token_aud = token_info.get("aud")
+            if token_aud != google_client_id.strip():
+                logger.warning(f"Google token aud mismatch: expected {google_client_id}, got {token_aud}")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid or expired Google token.",
+                    detail="Google token was not issued for this application.",
                 )
-            token_info = resp.json()
-    except httpx.RequestError as e:
-        logger.error(f"Google token verification request failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to reach Google authentication service.",
-        )
 
-    # Validate audience (aud) claim if GOOGLE_CLIENT_ID is configured
-    google_client_id = getattr(settings, "google_client_id", None)
-    if isinstance(google_client_id, str) and google_client_id.strip():
-        token_aud = token_info.get("aud")
-        if token_aud != google_client_id.strip():
-            logger.warning(f"Google token aud mismatch: expected {google_client_id}, got {token_aud}")
+        # Validate email
+        email = token_info.get("email", "").strip().lower()
+        email_verified = str(token_info.get("email_verified", "")).lower() == "true"
+
+        if not email or not email_verified:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Google token was not issued for this application.",
+                detail="Google account email is not verified.",
             )
 
-    # Validate email
-    email = token_info.get("email", "").strip().lower()
-    email_verified = str(token_info.get("email_verified", "")).lower() == "true"
+        # 2. Enforce Strict Email Whitelist (Fail closed)
+        allowed_email = (settings.allowed_email or "").strip().lower()
+        if not allowed_email:
+            logger.error("ALLOWED_EMAIL is not configured on the server.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Server is not configured with an ALLOWED_EMAIL administrator whitelist.",
+            )
+        if email != allowed_email:
+            logger.warning(f"Unauthorized Google login attempt from: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: '{email}' is not authorized to access Kapitl. Only the registered administrator email is permitted.",
+            )
 
-    if not email or not email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google account email is not verified.",
-        )
+        user_name = token_info.get("name", "Kapitl Admin")
 
-    # 2. Enforce Strict Email Whitelist (Fail closed)
-    allowed_email = (settings.allowed_email or "").strip().lower()
-    if not allowed_email:
-        logger.error("ALLOWED_EMAIL is not configured on the server.")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Server is not configured with an ALLOWED_EMAIL administrator whitelist.",
-        )
-    if email != allowed_email:
-        logger.warning(f"Unauthorized Google login attempt from: {email}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied: '{email}' is not authorized to access Kapitl. Only the registered administrator email is permitted.",
-        )
+        # 3. Check TOTP configuration
+        totp_secret = get_admin_totp_secret()
 
-    user_name = token_info.get("name", "Kapitl Admin")
+        if not totp_secret:
+            # First-time setup: Generate new secret and one-time QR code
+            new_secret = pyotp.random_base32()
+            otpauth_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(
+                name=email,
+                issuer_name="Kapitl",
+            )
+            qr_data_url = generate_qr_data_url(otpauth_uri)
 
-    # 3. Check TOTP configuration
-    totp_secret = get_admin_totp_secret()
+            # Temporary token containing pending secret for verification
+            temp_token = create_temp_2fa_token({
+                "email": email,
+                "name": user_name,
+                "pending_secret": new_secret,
+            })
 
-    if not totp_secret:
-        # First-time setup: Generate new secret and one-time QR code
-        new_secret = pyotp.random_base32()
-        otpauth_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(
-            name=email,
-            issuer_name="Kapitl",
-        )
-        qr_data_url = generate_qr_data_url(otpauth_uri)
+            return GoogleAuthResponse(
+                status="SETUP_2FA",
+                temp_token=temp_token,
+                email=email,
+                name=user_name,
+                secret=new_secret,
+                otpauth_uri=otpauth_uri,
+                qr_data_url=qr_data_url,
+            )
 
-        # Temporary token containing pending secret for verification
+        # Returning user: prompt for standard 6-digit code
         temp_token = create_temp_2fa_token({
             "email": email,
             "name": user_name,
-            "pending_secret": new_secret,
         })
 
         return GoogleAuthResponse(
-            status="SETUP_2FA",
+            status="REQUIRE_2FA",
             temp_token=temp_token,
             email=email,
             name=user_name,
-            secret=new_secret,
-            otpauth_uri=otpauth_uri,
-            qr_data_url=qr_data_url,
         )
-
-    # Returning user: prompt for standard 6-digit code
-    temp_token = create_temp_2fa_token({
-        "email": email,
-        "name": user_name,
-    })
-
-    return GoogleAuthResponse(
-        status="REQUIRE_2FA",
-        temp_token=temp_token,
-        email=email,
-        name=user_name,
-    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"google_auth failed: {e}\n{tb}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Google authentication failed: {str(e)}",
+        )
 
 
 @router.post("/verify-totp", response_model=LoginResponse)
@@ -314,26 +325,35 @@ async def guest_login():
     Issues a restricted session token allowing browsing of IPOs, demo analytics,
     and blank dashboard views without access to real broker accounts or live orders.
     """
-    user_info = {
-        "sub": "guest-preview",
-        "username": "Guest Explorer",
-        "email": "guest@kapitl.local",
-        "role": "GUEST",
-        "is_guest": True,
-    }
-    token = create_access_token(user_info)
+    try:
+        user_info = {
+            "sub": "guest-preview",
+            "username": "Guest Explorer",
+            "email": "guest@kapitl.local",
+            "role": "GUEST",
+            "is_guest": True,
+        }
+        token = create_access_token(user_info)
 
-    return LoginResponse(
-        access_token=token,
-        token_type="bearer",
-        user=UserProfileResponse(
-            id=user_info["sub"],
-            username=user_info["username"],
-            email=user_info["email"],
-            role=user_info["role"],
-            is_guest=True,
-        ),
-    )
+        return LoginResponse(
+            access_token=token,
+            token_type="bearer",
+            user=UserProfileResponse(
+                id=user_info["sub"],
+                username=user_info["username"],
+                email=user_info["email"],
+                role=user_info["role"],
+                is_guest=True,
+            ),
+        )
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"guest_login failed: {e}\n{tb}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Guest login failed: {str(e)}",
+        )
 
 
 @router.post("/login", response_model=LoginResponse)

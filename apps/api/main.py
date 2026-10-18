@@ -9,11 +9,12 @@ if str(root_dir) not in sys.path:
 
 try:
     from app.main import app
-except Exception as e:
+except Exception as exc:
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
 
-    err_msg = str(e)
+    err_msg = str(exc)
+    err_type = type(exc).__name__
     tb_str = traceback.format_exc()
     print(f"[FATAL_STARTUP_ERROR] {err_msg}\n{tb_str}", file=sys.stderr)
 
@@ -26,7 +27,7 @@ except Exception as e:
             content={
                 "status": "startup_failed",
                 "error": err_msg,
-                "type": type(e).__name__,
+                "type": err_type,
                 "traceback": tb_str.split("\n"),
             },
             headers={"Access-Control-Allow-Origin": "*"}

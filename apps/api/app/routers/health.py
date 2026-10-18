@@ -1,17 +1,16 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Dict, Any
 
-from app.db.database import get_db
+from app.db.database import AsyncSessionLocal
 from app.db.redis import get_redis_pool
 
 router = APIRouter()
 
 
 @router.get("")
-async def health_check(db: AsyncSession = Depends(get_db)):
+async def health_check():
     """
     Comprehensive system health check.
     Pings primary database and Redis cache.
@@ -23,7 +22,8 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 
     # 1. Database check
     try:
-        await db.execute(text("SELECT 1"))
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"unhealthy: {e}"
         is_healthy = False

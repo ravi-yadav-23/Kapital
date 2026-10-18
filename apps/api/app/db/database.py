@@ -12,22 +12,31 @@ db_url = settings.database_url or ""
 
 if db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+if "sslmode=require" in db_url:
+    db_url = db_url.replace("sslmode=require", "ssl=require")
 
 def _build_engine(url: str):
-    if "supabase" in url or "pooler" in url:
-        return create_async_engine(
-            url,
-            echo=False,
-            pool_pre_ping=True,
-            connect_args={"statement_cache_size": 0, "command_timeout": 3.0, "timeout": 3.0},
-        )
-    elif url.startswith("sqlite"):
-        if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-            # Serverless working directory is read-only; use /tmp
-            url = "sqlite+aiosqlite:////tmp/kapitl_local.db"
-        return create_async_engine(url, echo=False)
-    else:
-        return create_async_engine(url, echo=False, pool_pre_ping=True)
+    try:
+        if "sslmode=require" in url:
+            url = url.replace("sslmode=require", "ssl=require")
+        if "supabase" in url or "pooler" in url:
+            return create_async_engine(
+                url,
+                echo=False,
+                pool_pre_ping=True,
+                connect_args={"statement_cache_size": 0, "command_timeout": 3.0, "timeout": 3.0},
+            )
+        elif url.startswith("sqlite"):
+            if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+                # Serverless working directory is read-only; use /tmp
+                url = "sqlite+aiosqlite:////tmp/kapitl_local.db"
+            return create_async_engine(url, echo=False)
+        else:
+            return create_async_engine(url, echo=False, pool_pre_ping=True)
+    except Exception as e:
+        logger.error(f"[DB Error] Failed to create engine for {url}: {e}. Falling back to SQLite on /tmp")
+        fallback_url = "sqlite+aiosqlite:////tmp/kapitl_local.db"
+        return create_async_engine(fallback_url, echo=False)
 
 engine = _build_engine(db_url)
 AsyncSessionLocal = async_sessionmaker(
