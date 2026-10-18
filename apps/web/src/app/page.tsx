@@ -25,6 +25,7 @@ import {
   Activity,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { LiveArchitectureSimulator } from '@/components/landing/LiveArchitectureSimulator'
 
 export default function LandingPage() {
   const router = useRouter()
@@ -412,6 +413,11 @@ export default function LandingPage() {
                 Angel One SmartAPI integration fires target exit orders with zero manual intervention.
               </div>
             </div>
+          </div>
+
+          {/* Live System Lifecycle Architecture Simulator */}
+          <div className="mt-14">
+            <LiveArchitectureSimulator />
           </div>
         </div>
       </section>
