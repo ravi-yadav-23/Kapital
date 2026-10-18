@@ -28,9 +28,9 @@ const FAQS: FaqItem[] = [
   {
     category: 'SYSTEM ARCHITECTURE',
     icon: DollarSign,
-    question: 'How does Kapitl keep AI model inference costs under ₹2/month?',
+    question: 'How does Kapitl keep AI analysis costs under ₹200/month?',
     answer:
-      'Rather than streaming entire 400-page DRHP PDFs through expensive frontier LLMs on every query, Kapitl employs an intelligent hybrid pipeline: Python-based PyPDF/LlamaIndex chunks and filters key financial tables, auditor notes, and peer comps first. Only targeted high-signal extracts are passed to Gemini 2.5 Flash and Claude 3.5 with strict prompt caching, keeping monthly inference under ₹2 per active user.',
+      'Rather than streaming entire 400-page DRHP PDFs through expensive frontier LLMs on every query, Kapitl employs an intelligent hybrid pipeline: Python-based PyPDF/LlamaIndex chunks and filters key financial tables, auditor notes, and peer comps first. Only targeted high-signal extracts are passed to Gemini 2.5 Flash and Claude 3.5 with strict prompt caching, keeping monthly AI operating costs under ₹200 per active user.',
   },
   {
     category: 'AUTOMATION & BROKERS',

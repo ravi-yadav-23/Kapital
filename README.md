@@ -75,7 +75,7 @@ graph TD
 
 - **Multi-Tier Deduplication & Alias Learning**: Built an intelligent two-tier identity resolver to handle irregular symbol name discrepancies across market scrapers (Tier 1: ISIN / Symbol hash match; Tier 2: database alias mapping table with auto-learning stem registration).
 - **PuLP Mixed-Integer Linear Programming (MILP)**: Replaced naive equal-split heuristics with an algorithmic constraint solver that models SEBI allotment probability curves, maximizing expected value across pooled family Demat accounts while guaranteeing zero duplicate PAN penalties.
-- **Micro-Cost Multi-Agent Analysis (< ₹2/mo)**: Engineered prompt caching, multi-stage LLM batching, and shared report caching so that thorough 400-page DRHP due diligence runs autonomously at near-zero inference cost.
+- **Cost-Optimized Multi-Agent Analysis (~₹200/mo)**: Engineered prompt caching, multi-stage LLM batching, and shared report caching so that thorough 400-page DRHP due diligence runs autonomously at minimal operating cost.
 - **SEBI ASBA Regulatory Compliance**: Designed the workflow around mandatory Indian banking rules: funds remain locked in the user's savings account earning interest under ASBA until allotment confirmation, before automated SmartAPI listing-day exits trigger.
 - **Option A Warm Amber/Dark Design System**: Replaced generic navy fintech styling with a warm slate/amber palette (`#0c0a09` base, `#1a1612` surface, `#f59e0b` primary accent) paired with `DM Sans` headings for high-impact recruiter readability.
 

@@ -350,10 +350,10 @@ export default function LandingPage() {
             </div>
             <div className="p-4">
               <div className="font-heading text-3xl sm:text-4xl font-extrabold text-[#f59e0b] tracking-tight">
-                &lt; ₹2 / mo
+                ₹200 / mo
               </div>
               <div className="text-xs text-[#a8a29e] uppercase font-mono tracking-wider mt-1.5">
-                AI Inference Cost
+                Monthly AI Cost
               </div>
             </div>
             <div className="p-4">
