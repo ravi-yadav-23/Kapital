@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import date
+from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 
 class IpoScheduleSchema(BaseModel):
     event: str
@@ -39,6 +40,9 @@ class IpoBase(BaseModel):
 class IpoResponse(IpoBase):
     id: str
     schedule: List[IpoScheduleSchema] = []
+    score_breakdown: Optional[ScoreBreakdownSchema] = None
+    red_flags: List[RedFlagSchema] = []
 
     class Config:
         from_attributes = True
+

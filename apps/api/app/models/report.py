@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Float, Integer, ForeignKey, JSON, Text
+from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
 class AiReport(BaseModel):
@@ -33,3 +34,5 @@ class AiReport(BaseModel):
     ofs_percentage = Column(Float, nullable=True)  # Offer For Sale % vs Fresh Issue
     
     scored_at = Column(String(50), nullable=True)
+
+    ipo = relationship("Ipo", back_populates="report")

@@ -54,6 +54,7 @@ class Ipo(BaseModel):
     schedules = relationship("IpoSchedule", back_populates="ipo", cascade="all, delete-orphan", lazy="selectin")
     orders = relationship("IpoOrder", back_populates="ipo", lazy="selectin")
     allotments = relationship("Allotment", back_populates="ipo", lazy="selectin")
+    report = relationship("AiReport", back_populates="ipo", uselist=False, lazy="selectin")
 
 
 class IpoSchedule(BaseModel):

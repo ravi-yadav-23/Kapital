@@ -60,6 +60,13 @@ async def init_db():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info(f"[DB] All tables verified and ready ({engine.url.drivername})")
+
+        try:
+            async with AsyncSessionLocal() as session:
+                from app.db.seed_data import seed_initial_ipos_and_reports
+                await seed_initial_ipos_and_reports(session)
+        except Exception as seed_err:
+            logger.warning(f"[DB Warning] Could not seed initial IPOs/reports: {seed_err}")
     except Exception as e:
         logger.warning(f"[DB Warning] Could not sync metadata tables: {e}")
 

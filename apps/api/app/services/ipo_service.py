@@ -6,6 +6,7 @@ import uuid
 
 from app.models.ipo import Ipo, IpoSchedule
 from app.schemas.ipo import IpoResponse, IpoScheduleSchema
+from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 
 # In-memory cache synced from DB for fast read access by optimizer
 MOCK_IPOS_STORE: List[Dict[str, Any]] = []
@@ -20,6 +21,20 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         IpoScheduleSchema(event=s.event, date=_format_date(s.event_date) or "")
         for s in (ipo.schedules or [])
     ]
+    score_breakdown = None
+    red_flags = []
+    if getattr(ipo, "report", None):
+        rep = ipo.report
+        score_breakdown = ScoreBreakdownSchema(
+            financial_quality=rep.score_financial_quality or 0,
+            industry_tailwinds=rep.score_industry_tailwinds or 0,
+            subscription_momentum=rep.score_subscription_momentum or 0,
+            valuation_safety=rep.score_valuation_safety or 0,
+            gmp_strength=rep.score_gmp_strength or 0,
+            promoter_integrity=rep.score_promoter_integrity or 0,
+        )
+        red_flags = [RedFlagSchema(**rf) if isinstance(rf, dict) else rf for rf in (rep.red_flags or [])]
+
     return IpoResponse(
         id=ipo.id,
         symbol=ipo.symbol,
@@ -51,6 +66,8 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         subscription_qib=ipo.subscription_qib or 0.0,
         subscription_total=ipo.subscription_total or 0.0,
         schedule=schedules,
+        score_breakdown=score_breakdown,
+        red_flags=red_flags,
     )
 
 
@@ -92,6 +109,12 @@ class IpoService:
         result = await db.execute(stmt)
         ipos = result.scalars().all()
 
+        if not ipos:
+            from app.db.seed_data import seed_initial_ipos_and_reports
+            await seed_initial_ipos_and_reports(db)
+            result = await db.execute(stmt)
+            ipos = result.scalars().all()
+
         # Keep in-memory cache refreshed for optimizer
         MOCK_IPOS_STORE.clear()
         MOCK_IPOS_STORE.extend(_model_to_dict(i) for i in ipos)
@@ -100,10 +123,18 @@ class IpoService:
 
     @staticmethod
     async def get_ipo_by_id(db: AsyncSession, ipo_id: str) -> Optional[IpoResponse]:
-        stmt = select(Ipo).where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id))
+        stmt = select(Ipo).where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id) | (Ipo.symbol == ipo_id.upper()))
         result = await db.execute(stmt)
         ipo = result.scalar_one_or_none()
+
+        if not ipo:
+            from app.db.seed_data import seed_initial_ipos_and_reports
+            await seed_initial_ipos_and_reports(db)
+            result = await db.execute(stmt)
+            ipo = result.scalar_one_or_none()
+
         return _model_to_response(ipo) if ipo else None
+
 
     @staticmethod
     async def upsert_ipo(db: AsyncSession, ipo_dict: Dict[str, Any]) -> Ipo:
