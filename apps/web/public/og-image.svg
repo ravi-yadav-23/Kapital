@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c0a09"/>
+      <stop offset="100%" stop-color="#1a1612"/>
+    </linearGradient>
+    <linearGradient id="k_gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="80%" cy="20%" r="50%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#0c0a09" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Outer Border Frame -->
+  <rect x="24" y="24" width="1152" height="582" rx="20" fill="none" stroke="#2d2520" stroke-width="2"/>
+
+  <!-- Logo Mark -->
+  <g transform="translate(80, 80)">
+    <rect width="56" height="56" rx="16" fill="url(#k_gold)"/>
+    <path d="M20 14V42M20 28L36 14M24 23.5L39 42" stroke="#0c0a09" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="74" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="800" fill="#fafaf9">Kapitl</text>
+    <text x="74" y="50" font-family="monospace" font-size="13" font-weight="600" fill="#a8a29e" letter-spacing="2">IPO INTELLIGENCE PLATFORM</text>
+  </g>
+
+  <!-- Badge -->
+  <g transform="translate(80, 180)">
+    <rect width="480" height="36" rx="18" fill="#1a1612" stroke="#2d2520" stroke-width="1"/>
+    <circle cx="22" cy="18" r="5" fill="#22c55e"/>
+    <text x="36" y="23" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="600" fill="#f59e0b">AUTONOMOUS MULTI-AGENT DUE DILIGENCE &amp; ALLOCATION</text>
+  </g>
+
+  <!-- Headline -->
+  <text x="80" y="285" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="56" font-weight="900" fill="#fafaf9" letter-spacing="-1">
+    Stop guessing which <tspan fill="#f59e0b">IPO to apply</tspan> to.
+  </text>
+
+  <!-- Subheadline -->
+  <text x="80" y="345" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="400" fill="#a8a29e">
+    Scores every IPO with AI, allocates family capital mathematically across SEBI categories,
+  </text>
+  <text x="80" y="378" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="400" fill="#a8a29e">
+    and manages the entire application workflow autonomously.
+  </text>
+
+  <!-- Live Stats Strip -->
+  <g transform="translate(80, 430)">
+    <rect width="1040" height="74" rx="16" fill="#14100d" stroke="#2d2520" stroke-width="1.5"/>
+    
+    <g transform="translate(40, 44)">
+      <text font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="800" fill="#fafaf9">12+</text>
+      <text y="-22" font-family="monospace" font-size="11" fill="#a8a29e" letter-spacing="1">IPOS TRACKED</text>
+    </g>
+
+    <line x1="260" y1="16" x2="260" y2="58" stroke="#2d2520" stroke-width="1"/>
+
+    <g transform="translate(300, 44)">
+      <text font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="800" fill="#22c55e">5 Open</text>
+      <text y="-22" font-family="monospace" font-size="11" fill="#a8a29e" letter-spacing="1">ACCEPTING BIDS</text>
+    </g>
+
+    <line x1="520" y1="16" x2="520" y2="58" stroke="#2d2520" stroke-width="1"/>
+
+    <g transform="translate(560, 44)">
+      <text font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="800" fill="#f59e0b">&lt; ₹2 / mo</text>
+      <text y="-22" font-family="monospace" font-size="11" fill="#a8a29e" letter-spacing="1">AI INFERENCE COST</text>
+    </g>
+
+    <line x1="780" y1="16" x2="780" y2="58" stroke="#2d2520" stroke-width="1"/>
+
+    <g transform="translate(820, 44)">
+      <text font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="800" fill="#fafaf9">10 Accounts</text>
+      <text y="-22" font-family="monospace" font-size="11" fill="#a8a29e" letter-spacing="1">FAMILY MULTI-PAN</text>
+    </g>
+  </g>
+
+  <!-- Footer attribution -->
+  <g transform="translate(80, 560)">
+    <text font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="15" fill="#a8a29e">
+      Built by <tspan fill="#fafaf9" font-weight="700">Ravi Yadav</tspan> • B.Tech CSE • Lovely Professional University
+    </text>
+    <text x="1040" text-anchor="end" font-family="monospace" font-size="14" font-weight="600" fill="#f59e0b">
+      https://kapital-gamma-nine.vercel.app
+    </text>
+  </g>
+</svg>

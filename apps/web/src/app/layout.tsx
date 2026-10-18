@@ -40,12 +40,21 @@ export const metadata: Metadata = {
     siteName: 'Kapitl',
     locale: 'en_IN',
     type: 'website',
+    images: [
+      {
+        url: '/og-image.svg',
+        width: 1200,
+        height: 630,
+        alt: 'Kapitl — IPO Intelligence Platform',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Kapitl — IPO Intelligence Platform',
     description:
       'Autonomous IPO scoring, dynamic family allocation, and allotment tracking for Indian retail investors.',
+    images: ['/og-image.svg'],
   },
   icons: {
     icon: '/favicon.svg',
