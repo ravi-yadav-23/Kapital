@@ -25,32 +25,17 @@ import {
   Activity,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { MarketTickerBar } from '@/components/landing/MarketTickerBar'
+import { HeroEcosystemVisual } from '@/components/landing/HeroEcosystemVisual'
+import { LiveProfitAllocationCalculator } from '@/components/landing/LiveProfitAllocationCalculator'
 import { LiveArchitectureSimulator } from '@/components/landing/LiveArchitectureSimulator'
+import { ComparisonSection } from '@/components/landing/ComparisonSection'
+import { FaqSection } from '@/components/landing/FaqSection'
 
 export default function LandingPage() {
   const router = useRouter()
   const { loginAsGuest, isAuthenticated } = useAuth()
   const [isGuestLoading, setIsGuestLoading] = useState(false)
-  const [activeGaugeScore, setActiveGaugeScore] = useState(0)
-
-  // Animated score gauge effect on load
-  useEffect(() => {
-    let current = 0
-    const target = 74
-    const step = () => {
-      current += 2
-      if (current >= target) {
-        setActiveGaugeScore(target)
-      } else {
-        setActiveGaugeScore(current)
-        requestAnimationFrame(step)
-      }
-    }
-    const timer = setTimeout(() => {
-      requestAnimationFrame(step)
-    }, 400)
-    return () => clearTimeout(timer)
-  }, [])
 
   const handleGuestExplore = async () => {
     setIsGuestLoading(true)
@@ -91,10 +76,12 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8 text-sm text-[#a8a29e]">
+          <nav className="hidden lg:flex items-center gap-7 text-sm text-[#a8a29e]">
+            <a href="#calculator" className="hover:text-[#f59e0b] transition">Profit Calculator</a>
             <a href="#problem" className="hover:text-[#fafaf9] transition">The Problem</a>
             <a href="#how-it-works" className="hover:text-[#fafaf9] transition">How It Works</a>
-            <a href="#stats" className="hover:text-[#fafaf9] transition">Live Trackers</a>
+            <a href="#comparison" className="hover:text-[#fafaf9] transition">Vs Brokers</a>
+            <a href="#faq" className="hover:text-[#fafaf9] transition">FAQ</a>
             <a
               href="https://github.com/ravi-yadav-23/Kapital"
               target="_blank"
@@ -128,6 +115,9 @@ export default function LandingPage() {
           </div>
         </div>
       </header>
+
+      {/* Real-time Market & IPO Ticker Marquee */}
+      <MarketTickerBar />
 
       {/* SECTION 1: HERO */}
       <section className="relative pt-20 pb-24 md:pt-28 md:pb-32 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
@@ -180,105 +170,9 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Hero Right Visual: Live Animated Card with Gauge */}
-          <div className="lg:col-span-5 flex justify-center">
-            <div className="w-full max-w-md bg-[#1a1612]/90 backdrop-blur-xl border border-[#2d2520] rounded-2xl p-6 shadow-2xl relative group hover:border-[#f59e0b]/40 transition duration-300">
-              {/* Card Header */}
-              <div className="flex items-start justify-between border-b border-[#2d2520] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#f59e0b]/15 text-[#f59e0b] font-medium border border-[#f59e0b]/30">
-                      MAINBOARD
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#22c55e]/15 text-[#22c55e] font-medium border border-[#22c55e]/30 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-ping" />
-                      APPLY
-                    </span>
-                  </div>
-                  <h3 className="font-heading text-xl font-bold text-[#fafaf9] mt-2">
-                    Bonfiglioli Transmissions
-                  </h3>
-                  <p className="text-xs text-[#a8a29e]">NSE/BSE • ₹480 - ₹510 / share</p>
-                </div>
-
-                {/* Score Gauge */}
-                <div className="relative w-16 h-16 flex items-center justify-center">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    <path
-                      className="text-[#2d2520]"
-                      strokeWidth="3.5"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                    <path
-                      className="text-[#f59e0b] transition-all duration-1000 ease-out"
-                      strokeDasharray={`${activeGaugeScore}, 100`}
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <span className="font-heading font-extrabold text-sm text-[#fafaf9]">
-                      {activeGaugeScore}
-                    </span>
-                    <span className="text-[9px] text-[#a8a29e] uppercase font-mono">/100</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Metrics Grid */}
-              <div className="grid grid-cols-3 gap-3 my-4">
-                <div className="bg-[#0c0a09]/80 rounded-xl p-3 border border-[#2d2520]">
-                  <span className="text-[10px] text-[#a8a29e] uppercase tracking-wider block">GMP</span>
-                  <span className="font-heading font-bold text-sm text-[#22c55e]">+₹142 (27.8%)</span>
-                </div>
-                <div className="bg-[#0c0a09]/80 rounded-xl p-3 border border-[#2d2520]">
-                  <span className="text-[10px] text-[#a8a29e] uppercase tracking-wider block">Subscription</span>
-                  <span className="font-heading font-bold text-sm text-[#fafaf9]">18.4x QIB</span>
-                </div>
-                <div className="bg-[#0c0a09]/80 rounded-xl p-3 border border-[#2d2520]">
-                  <span className="text-[10px] text-[#a8a29e] uppercase tracking-wider block">Lot Size</span>
-                  <span className="font-heading font-bold text-sm text-[#fafaf9]">29 Shares</span>
-                </div>
-              </div>
-
-              {/* Multi-Agent Breakdown Teaser */}
-              <div className="space-y-2 pt-2 border-t border-[#2d2520]">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#a8a29e] flex items-center gap-1.5">
-                    <BrainCircuit className="w-3.5 h-3.5 text-[#f59e0b]" /> Fundamental (DRHP)
-                  </span>
-                  <span className="font-medium text-[#fafaf9]">82 / 100</span>
-                </div>
-                <div className="w-full bg-[#0c0a09] h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-[#f59e0b] h-full rounded-full" style={{ width: '82%' }} />
-                </div>
-
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-[#a8a29e] flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-[#22c55e]" /> Valuation & Peer PE
-                  </span>
-                  <span className="font-medium text-[#fafaf9]">78 / 100</span>
-                </div>
-                <div className="w-full bg-[#0c0a09] h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-[#22c55e] h-full rounded-full" style={{ width: '78%' }} />
-                </div>
-              </div>
-
-              {/* Card Footer Action */}
-              <div className="mt-5 pt-3 border-t border-[#2d2520] flex items-center justify-between">
-                <span className="text-[11px] text-[#a8a29e] font-mono">
-                  Allocated across 4 accounts
-                </span>
-                <span className="text-xs font-semibold text-[#f59e0b] flex items-center gap-1 group-hover:translate-x-1 transition">
-                  View Allocation Plan <ChevronRight className="w-3.5 h-3.5" />
-                </span>
-              </div>
-            </div>
+          {/* Hero Right Visual: Live Animated Card with Gauge & Dynamic Topology */}
+          <div className="lg:col-span-5 flex justify-center w-full">
+            <HeroEcosystemVisual />
           </div>
         </div>
       </section>
@@ -347,6 +241,13 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* SECTION: INTERACTIVE ALLOCATION & PROFIT SIMULATOR */}
+      <section id="calculator" className="py-20 border-t border-[#2d2520] bg-[#14100c]/40 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <LiveProfitAllocationCalculator />
         </div>
       </section>
 
@@ -422,6 +323,11 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* SECTION: COMPARISON */}
+      <div id="comparison">
+        <ComparisonSection />
+      </div>
+
       {/* SECTION 4: LIVE STATS BAR */}
       <section id="stats" className="py-14 border-y border-[#2d2520] bg-[#1a1612]/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -461,6 +367,11 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* SECTION: FAQ */}
+      <div id="faq">
+        <FaqSection />
+      </div>
 
       {/* SECTION 5: CTA FOOTER & RECRUITER INFO */}
       <footer className="py-20 bg-[#0c0a09] border-t border-[#2d2520] relative">

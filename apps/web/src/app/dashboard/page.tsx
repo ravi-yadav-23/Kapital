@@ -23,7 +23,9 @@ import {
   PlusCircle,
   ShieldCheck,
   Eye,
+  Sliders,
 } from 'lucide-react'
+import { LiveProfitAllocationCalculator } from '@/components/landing/LiveProfitAllocationCalculator'
 
 // Realistic Demo Dataset seeded for Guest/Recruiter preview
 const DEMO_FUND_SUMMARY: FundSummary = {
@@ -85,6 +87,7 @@ export default function DashboardPage() {
   const [plan, setPlan] = useState<AllocationPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingPlan, setLoadingPlan] = useState(false)
+  const [showSimulator, setShowSimulator] = useState(false)
 
   const handleCalculatePlan = async (force = false) => {
     setLoadingPlan(true)
@@ -367,7 +370,40 @@ export default function DashboardPage() {
         <IpoBoard ipos={ipos} accounts={accounts} maxItemsPerTab={3} showViewAll={false} />
       </section>
 
-      {/* ── 3. Two-Column Lower Grid ───────────────────────────────── */}
+      {/* ── 3. Interactive Profit & Allocation Simulator Sandbox ───── */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-surface-elevated/40 border border-border-subtle rounded-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-brand-from/15 border border-brand-from/30 flex items-center justify-center text-brand-from">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">
+                Family Capital & Profit Simulator
+              </h3>
+              <p className="text-2xs text-text-muted">
+                Simulate your corpus allocation and expected listing gains before placing real ASBA bids
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowSimulator(!showSimulator)}
+            className="self-start sm:self-auto text-xs font-semibold px-3.5 py-2 rounded-xl bg-surface-card border border-border-default hover:border-brand-from/50 text-text-primary transition flex items-center gap-2 cursor-pointer shadow-sm"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-brand-from" />
+            {showSimulator ? 'Close Simulator' : 'Open Profit Calculator'}
+          </button>
+        </div>
+
+        {showSimulator && (
+          <div className="animate-fade-in">
+            <LiveProfitAllocationCalculator />
+          </div>
+        )}
+      </section>
+
+      {/* ── 4. Two-Column Lower Grid ───────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           {plan ? (
