@@ -20,8 +20,14 @@ export function useWebSocket(onMessage?: MessageHandler) {
   const handlerRef = useRef<MessageHandler | undefined>(onMessage)
   handlerRef.current = onMessage
 
+  const retryCountRef = useRef(0)
+  const maxRetries = 3
+
   const connect = useCallback(() => {
     if (typeof window === 'undefined') return
+
+    // If serverless environment without explicit WS server, don't keep hammering
+    if (retryCountRef.current >= maxRetries) return
 
     // Build the WebSocket URL robustly using the URL API instead of fragile regex.
     // NEXT_PUBLIC_WS_URL takes priority (explicit ws:// URL).
@@ -52,6 +58,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
 
       ws.onopen = () => {
         setIsConnected(true)
+        retryCountRef.current = 0
       }
 
       ws.onmessage = (event) => {
@@ -69,20 +76,27 @@ export function useWebSocket(onMessage?: MessageHandler) {
       ws.onclose = () => {
         setIsConnected(false)
         wsRef.current = null
-        // Reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect()
-        }, 3000)
+        if (retryCountRef.current < maxRetries) {
+          retryCountRef.current += 1
+          const delay = Math.min(3000 * Math.pow(1.5, retryCountRef.current), 15000)
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect()
+          }, delay)
+        }
       }
 
       ws.onerror = () => {
-        ws.close()
+        try {
+          ws.close()
+        } catch {}
       }
     } catch {
-      // Reconnect after 5 seconds if initial connection fails
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect()
-      }, 5000)
+      if (retryCountRef.current < maxRetries) {
+        retryCountRef.current += 1
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect()
+        }, 5000)
+      }
     }
   }, [])
 

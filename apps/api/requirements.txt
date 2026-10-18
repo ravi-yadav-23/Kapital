@@ -48,6 +48,9 @@ pulp==2.9.0
 python-dotenv==1.0.1
 tenacity==9.0.0      # Retry logic for API calls
 structlog==24.4.0
+qrcode>=7.4.2
+pillow>=10.4.0
+beautifulsoup4>=4.12.0
 
 # Dev / test
 pytest==8.3.0

@@ -25,37 +25,53 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Local persistent secret storage path for when not provided in .env
 TOTP_STORE_FILE = Path(__file__).resolve().parent.parent.parent / ".totp_secret"
+TOTP_TMP_FILE = Path("/tmp/.totp_secret")
+_in_memory_totp_secret: Optional[str] = None
 
 
 def get_admin_totp_secret() -> Optional[str]:
-    """Retrieve existing TOTP secret from settings or persistent local file."""
+    """Retrieve existing TOTP secret from settings, in-memory cache, or persistent files."""
+    global _in_memory_totp_secret
     if settings.admin_totp_secret and settings.admin_totp_secret.strip():
         return settings.admin_totp_secret.strip()
-    if TOTP_STORE_FILE.exists():
-        try:
-            val = TOTP_STORE_FILE.read_text().strip()
-            if val:
-                return val
-        except Exception as e:
-            logger.warning(f"Could not read TOTP store file: {e}")
+    if _in_memory_totp_secret:
+        return _in_memory_totp_secret
+    for path in [TOTP_STORE_FILE, TOTP_TMP_FILE]:
+        if path.exists():
+            try:
+                val = path.read_text().strip()
+                if val:
+                    _in_memory_totp_secret = val
+                    return val
+            except Exception as e:
+                logger.warning(f"Could not read TOTP store file {path}: {e}")
     return None
 
 
 def save_admin_totp_secret(secret: str) -> None:
     """Save newly verified TOTP secret."""
-    try:
-        TOTP_STORE_FILE.write_text(secret.strip())
-    except Exception as e:
-        logger.error(f"Failed to persist TOTP secret: {e}")
+    global _in_memory_totp_secret
+    _in_memory_totp_secret = secret.strip()
+    for path in [TOTP_TMP_FILE, TOTP_STORE_FILE]:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(secret.strip())
+            return
+        except Exception as e:
+            logger.warning(f"Could not persist TOTP secret to {path}: {e}")
 
 
 def generate_qr_data_url(otpauth_uri: str) -> str:
     """Generates a base64 PNG data URL of the QR code for instant display."""
-    img = qrcode.make(otpauth_uri)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode()
-    return f"data:image/png;base64,{b64}"
+    try:
+        img = qrcode.make(otpauth_uri)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        return f"data:image/png;base64,{b64}"
+    except Exception as e:
+        logger.warning(f"QR code image generation failed (fallback): {e}")
+        return ""
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────

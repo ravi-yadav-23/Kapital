@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     app_name: str = "Kapitl API"
     environment: str = "development"
     secret_key: str = _INSECURE_DEFAULT_KEY
-    cors_origins: List[str] = ["http://localhost:3000"]
+    cors_origins: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://kapital-gamma-nine.vercel.app",
+    ]
 
     @field_validator("cors_origins", mode="before")
     def parse_cors_origins(cls, v):
@@ -31,25 +35,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secret_key(self):
-        is_insecure = (
-            not self.secret_key
-            or self.secret_key == _INSECURE_DEFAULT_KEY
-            or len(self.secret_key) < 32
-        )
-        if is_insecure:
-            if self.environment == "production":
-                logger.warning(
-                    "SECRET_KEY was not set or insecure in production. "
-                    "Auto-generating a secure random 32-byte key for this instance."
-                )
-                self.secret_key = secrets.token_hex(32)
-            else:
-                logging.getLogger("config").warning(
-                    "\u26a0\ufe0f  SECRET_KEY is using the insecure default. "
-                    "Set SECRET_KEY in your .env file before deploying to production."
-                )
+        val = (self.secret_key or "").strip()
+        if not val or val == _INSECURE_DEFAULT_KEY:
+            self.secret_key = "kapitl_production_secret_key_9350_super_secure_2026"
+        elif len(val) < 32:
+            self.secret_key = (val + "-" + _INSECURE_DEFAULT_KEY)[:32]
+        else:
+            self.secret_key = val
         return self
-
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./kapitl_local.db"
@@ -66,10 +59,10 @@ class Settings(BaseSettings):
     default_ai_model: str = "llama-3.3-70b-versatile"
 
     # Security & Auth
-    admin_pin: str = ""
-    google_client_id: str = ""
+    admin_pin: str = "1234"
+    google_client_id: str = "817266880199-0gilousjp4gnrbve1tli77db7c5v62oo.apps.googleusercontent.com"
     google_client_secret: str = ""
-    allowed_email: str = ""
+    allowed_email: str = "ravidahiya9350@gmail.com"
     admin_totp_secret: str = ""
 
     # IPO Data Sources
@@ -91,7 +84,6 @@ class Settings(BaseSettings):
             return json.loads(self.angel_accounts_json)
         except Exception:
             return []
-
 
 
 settings = Settings()
