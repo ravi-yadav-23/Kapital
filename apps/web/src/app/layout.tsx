@@ -18,8 +18,40 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: 'Kapitl — IPO Intelligence Platform',
-  description: 'Personal IPO investment automation — scoring, fund management, allotment tracking, pre-listing sell.',
-  keywords: ['IPO', 'investment', 'Angel One', 'allotment', 'GMP', 'DRHP', 'Kapitl'],
+  description:
+    'Stop guessing which IPO to apply to. Kapitl scores every IPO with AI, allocates your family’s capital mathematically, and manages the entire application workflow autonomously.',
+  keywords: [
+    'IPO',
+    'IPO GMP',
+    'SEBI IPO Allocation',
+    'IPO Allotment Status',
+    'Angel One SmartAPI',
+    'DRHP AI Analysis',
+    'Kapitl',
+    'Indian Stock Market',
+  ],
+  authors: [{ name: 'Ravi Yadav' }],
+  metadataBase: new URL('https://kapital-gamma-nine.vercel.app'),
+  openGraph: {
+    title: 'Kapitl — IPO Intelligence Platform',
+    description:
+      'Scores every Indian IPO 0-100 with AI, allocates family capital mathematically across SEBI categories, and executes listing-day exits.',
+    url: 'https://kapital-gamma-nine.vercel.app',
+    siteName: 'Kapitl',
+    locale: 'en_IN',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Kapitl — IPO Intelligence Platform',
+    description:
+      'Autonomous IPO scoring, dynamic family allocation, and allotment tracking for Indian retail investors.',
+  },
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({

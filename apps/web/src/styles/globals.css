@@ -438,11 +438,17 @@
 }
 
 .main-content {
-  margin-left: var(--sidebar-w);
+  margin-left: 0;
   flex: 1;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .main-content {
+    margin-left: var(--sidebar-w);
+  }
 }
 
 .topbar {

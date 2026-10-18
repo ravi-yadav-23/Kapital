@@ -81,9 +81,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     return null
   }
 
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
+
   return (
     <div className="main-layout">
-      <Sidebar />
+      <Sidebar
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
+      />
       <div className="main-content flex flex-col">
         {/* Guest Mode Notice Banner */}
         {isGuest && (
@@ -111,7 +116,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         )}
 
-        <Topbar />
+        <Topbar onMenuClick={() => setIsMobileSidebarOpen(true)} />
         <main className="page-content animate-fade-in flex-1">{children}</main>
       </div>
 

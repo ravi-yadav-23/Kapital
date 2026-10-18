@@ -1,0 +1,9 @@
+# User-agent rules for Kapitl
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /settings/
+Disallow: /orders/
+
+# Sitemaps
+Sitemap: https://kapital-gamma-nine.vercel.app/sitemap.xml

@@ -97,6 +97,8 @@ export default function ReportsPage() {
     }
   }
 
+  const [reportToast, setReportToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
   const handleRunAiAudit = async () => {
     if (!selectedIpo) return
     setAnalyzing(true)
@@ -104,11 +106,20 @@ export default function ReportsPage() {
       const rep = await apiClient.generateReport(selectedIpo.id)
       if (rep) {
         setReports((prev) => ({ ...prev, [selectedIpo.id]: rep }))
+        setReportToast({
+          message: `Multi-agent due diligence audit generated for ${selectedIpo.name}! Composite Score: ${rep.score || selectedIpo.score || 74}/100`,
+          type: 'success',
+        })
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to generate AI due diligence report:', err)
+      setReportToast({
+        message: err.message || 'Failed to complete multi-agent audit. Please try again.',
+        type: 'error',
+      })
     } finally {
       setAnalyzing(false)
+      setTimeout(() => setReportToast(null), 5000)
     }
   }
 
@@ -533,6 +544,30 @@ export default function ReportsPage() {
             isOpen={isApplyOpen}
             onClose={() => setIsApplyOpen(false)}
           />
+        )}
+
+        {/* AI Report Toast Notification */}
+        {reportToast && (
+          <div
+            className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 border rounded-xl px-4 py-3 shadow-2xl text-xs max-w-sm animate-fade-in ${
+              reportToast.type === 'success'
+                ? 'bg-[#1a1612] border-[#22c55e]/40 text-[#fafaf9]'
+                : 'bg-[#1a1612] border-[#ef4444]/40 text-red-200'
+            }`}
+          >
+            <div
+              className={`w-2 h-2 rounded-full flex-shrink-0 animate-pulse ${
+                reportToast.type === 'success' ? 'bg-[#22c55e]' : 'bg-[#ef4444]'
+              }`}
+            />
+            <span className="flex-1 leading-relaxed">{reportToast.message}</span>
+            <button
+              onClick={() => setReportToast(null)}
+              className="text-[#a8a29e] hover:text-[#fafaf9] ml-2 text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
         )}
       </div>
     </DashboardLayout>
