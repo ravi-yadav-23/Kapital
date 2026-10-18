@@ -85,8 +85,8 @@ function OrderStatusBadge({ status }: { status: OrderStatus }) {
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<IpoOrder[]>([])
-  const [loading, setLoading] = useState(true)
+  const [orders, setOrders] = useState<IpoOrder[]>(() => apiClient.getCachedOrders() || [])
+  const [loading, setLoading] = useState(() => (apiClient.getCachedOrders()?.length ?? 0) === 0)
   const [status, setStatus] = useState<'ALL' | OrderStatus>('ALL')
   const [account, setAccount] = useState('ALL')
   const [ipo, setIpo] = useState('ALL')

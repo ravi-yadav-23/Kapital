@@ -80,12 +80,28 @@ const DEMO_ACTIVITIES: ActivityItem[] = [
 
 export default function DashboardPage() {
   const { user, isGuest } = useAuth()
-  const [ipos, setIpos] = useState<Ipo[]>([])
-  const [accounts, setAccounts] = useState<FamilyAccount[]>([])
-  const [fundSummary, setFundSummary] = useState<FundSummary | null>(null)
-  const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(null)
+
+  // Initialize immediately from in-memory cache or demo fallback so tab switching has 0ms loading lag
+  const [ipos, setIpos] = useState<Ipo[]>(() => apiClient.getCachedIpos() || [])
+  const [accounts, setAccounts] = useState<FamilyAccount[]>(() => apiClient.getCachedAccounts() || [])
+  const [fundSummary, setFundSummary] = useState<FundSummary | null>(() => {
+    const cached = apiClient.getCachedFundSummary()
+    if (cached) return cached
+    return isGuest ? DEMO_FUND_SUMMARY : null
+  })
+  const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(() => {
+    const cached = apiClient.getCachedPnlSummary()
+    if (cached) return cached
+    return isGuest ? DEMO_PNL_SUMMARY : null
+  })
   const [plan, setPlan] = useState<AllocationPlan | null>(null)
-  const [loading, setLoading] = useState(true)
+
+  // If we already have cached/guest fund summary or cached IPOs, skip skeleton loading entirely
+  const [loading, setLoading] = useState<boolean>(() => {
+    const hasIpos = (apiClient.getCachedIpos()?.length ?? 0) > 0
+    const hasFunds = apiClient.getCachedFundSummary() !== null || isGuest
+    return !(hasIpos || hasFunds)
+  })
   const [loadingPlan, setLoadingPlan] = useState(false)
   const [showSimulator, setShowSimulator] = useState(false)
 
@@ -102,6 +118,8 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    let isMounted = true
+
     async function loadDashboardData() {
       try {
         const [iposData, fundsData, pnlData, accountsData] = await Promise.all([
@@ -110,6 +128,9 @@ export default function DashboardPage() {
           apiClient.getPnlSummary(),
           apiClient.getAccounts(),
         ])
+
+        if (!isMounted) return
+
         setIpos(iposData)
 
         // If user is a Guest or if balance is 0 and empty, seed plausible demo data for recruiter inspection
@@ -125,22 +146,29 @@ export default function DashboardPage() {
         setAccounts(accountsData || [])
       } catch (err) {
         console.error('Error loading dashboard data:', err)
-        // Fallback to demo numbers on network or unauthorized guest error
+        if (!isMounted) return
         setFundSummary(DEMO_FUND_SUMMARY)
         setPnlSummary(DEMO_PNL_SUMMARY)
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
 
       // Check for cached plan or fetch without blocking page render
       try {
         const planData = await apiClient.getAllocationPlan(false)
-        setPlan(planData)
+        if (isMounted) setPlan(planData)
       } catch (err) {
         console.warn('Deferred allocation plan load:', err)
       }
     }
+
     loadDashboardData()
+
+    return () => {
+      isMounted = false
+    }
   }, [isGuest])
 
   if (loading) {

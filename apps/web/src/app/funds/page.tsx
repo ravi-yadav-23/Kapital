@@ -13,11 +13,11 @@ import { AddAccountModal } from '@/components/accounts/AddAccountModal'
 import { Wallet, ShieldCheck, UserCheck, Plus, Sparkles, Lock } from 'lucide-react'
 
 export default function FundsPage() {
-  const [accounts, setAccounts] = useState<FamilyAccount[]>([])
-  const [fundSummary, setFundSummary] = useState<FundSummary | null>(null)
+  const [accounts, setAccounts] = useState<FamilyAccount[]>(() => apiClient.getCachedAccounts() || [])
+  const [fundSummary, setFundSummary] = useState<FundSummary | null>(() => apiClient.getCachedFundSummary())
   const [plan, setPlan] = useState<AllocationPlan | null>(null)
   const [locks, setLocks] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !apiClient.getCachedFundSummary() && (apiClient.getCachedAccounts()?.length ?? 0) === 0)
   const [isAddOpen, setIsAddOpen] = useState(false)
 
   useEffect(() => {

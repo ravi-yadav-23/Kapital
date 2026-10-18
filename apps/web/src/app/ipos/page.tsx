@@ -8,9 +8,9 @@ import { IpoBoard } from '@/components/ipo/IpoBoard'
 import { TrendingUp, Layers, Flame, Sparkles, RefreshCw } from 'lucide-react'
 
 export default function IposPage() {
-  const [ipos, setIpos] = useState<Ipo[]>([])
-  const [accounts, setAccounts] = useState<FamilyAccount[]>([])
-  const [loading, setLoading] = useState(true)
+  const [ipos, setIpos] = useState<Ipo[]>(() => apiClient.getCachedIpos() || [])
+  const [accounts, setAccounts] = useState<FamilyAccount[]>(() => apiClient.getCachedAccounts() || [])
+  const [loading, setLoading] = useState(() => (apiClient.getCachedIpos()?.length ?? 0) === 0)
   const [syncing, setSyncing] = useState(false)
 
   const fetchData = async () => {

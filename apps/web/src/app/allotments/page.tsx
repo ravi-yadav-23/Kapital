@@ -10,9 +10,9 @@ import { AllotmentGrid } from '@/components/allotments/AllotmentGrid'
 import { CheckCircle2, DollarSign, Clock, TrendingUp } from 'lucide-react'
 
 export default function AllotmentsPage() {
-  const [allotments, setAllotments] = useState<Allotment[]>([])
-  const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [allotments, setAllotments] = useState<Allotment[]>(() => apiClient.getCachedAllotments() || [])
+  const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(() => apiClient.getCachedPnlSummary())
+  const [loading, setLoading] = useState(() => (apiClient.getCachedAllotments()?.length ?? 0) === 0 && !apiClient.getCachedPnlSummary())
 
   useEffect(() => {
     Promise.all([apiClient.getAllotments(), apiClient.getPnlSummary()]).then(
