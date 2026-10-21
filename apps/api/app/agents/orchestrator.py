@@ -129,21 +129,65 @@ class IpoDueDiligenceOrchestrator:
 
         penalties = sum(rf.get("penalty_points", 0) for rf in all_red_flags)
         overall_score = self.compute_weighted_score(fin, ind, sub_m, val, gmp_s, gov, penalties)
-        recommendation = self.get_recommendation(overall_score)
 
         price_max = float(ipo.get("price_band_max") or 100.0)
         est_listing_price = round(price_max * (1 + (gmp_pct / 100.0)), 2)
         scored_at = datetime.now(timezone.utc).strftime("%d %b %Y")
 
-        summary_narrative = (
-            f"{ipo['name']} exhibits a fundamental score of {overall_score}/100 with a '{recommendation}' recommendation. "
-            f"Financial quality scored {fin}/100 and valuation safety scored {val}/100. "
-            f"Market sentiment is {news_res.get('market_buzz_rating', 'MODERATE')} with current GMP at {gmp_pct}%. "
-            f"Optimal allocation strategy: {allocation_res.get('recommended_primary_category', 'RETAIL')} bidding."
+        from app.utils.text_utils import clean_text, clean_text_list
+        from app.utils.sector_fallbacks import get_sector_fallback
+
+        sector_data = get_sector_fallback(
+            name=ipo.get("name", ""),
+            industry=ipo.get("type", ""),
+            about=ipo.get("about", "")
         )
 
-        strengths = analysis_res.get("strengths_summary", ipo.get("strengths", []))
-        risks = analysis_res.get("concerns_summary", ipo.get("risks", []))
+        # Fix 3: Check if AI analysis failed (e.g. no API key configured)
+        is_analysis_failed = (
+            analysis_res.get("analysis_failed", False)
+            or news_res.get("analysis_failed", False)
+            or allocation_res.get("analysis_failed", False)
+        )
+
+        if is_analysis_failed:
+            recommendation = "PENDING"
+            summary_source = "template_fallback"
+            summary_narrative = (
+                "AI analysis unavailable — no API key configured. Sector-based estimate — AI analysis not run."
+            )
+        else:
+            recommendation = self.get_recommendation(overall_score)
+            analyst_verdict = clean_text(analysis_res.get("analyst_verdict", ""))
+            sentiment_summary = clean_text(news_res.get("sentiment_summary", ""))
+
+            # Fix 4: Dynamic executive summary based on analyst verdict and sentiment
+            if len(analyst_verdict) > 50:
+                summary_source = "ai_generated"
+                if sentiment_summary:
+                    summary_narrative = f"{analyst_verdict} {sentiment_summary}"
+                else:
+                    summary_narrative = analyst_verdict
+            elif sentiment_summary and len(sentiment_summary) > 50:
+                summary_source = "ai_generated"
+                summary_narrative = sentiment_summary
+            else:
+                summary_source = "template_fallback"
+                summary_narrative = (
+                    f"{ipo['name']} exhibits a fundamental score of {overall_score}/100 with a '{recommendation}' recommendation. "
+                    f"Financial quality scored {fin}/100 and valuation safety scored {val}/100. "
+                    f"Market sentiment is {news_res.get('market_buzz_rating', 'MODERATE')} with current GMP at {gmp_pct}%. "
+                    f"Optimal allocation strategy: {allocation_res.get('recommended_primary_category', 'RETAIL')} bidding."
+                )
+
+        summary_narrative = clean_text(summary_narrative)
+
+        # Fix 5: Sector-aware heuristic fallback for strengths and risks
+        raw_strengths = analysis_res.get("strengths_summary") or ipo.get("strengths") or sector_data["strengths"]
+        raw_risks = analysis_res.get("concerns_summary") or ipo.get("risks") or sector_data["risks"]
+
+        strengths = clean_text_list(raw_strengths)
+        risks = clean_text_list(raw_risks)
 
         # Persist report to database
         stmt = select(AiReport).where(AiReport.ipo_id == ipo["id"])
@@ -154,6 +198,7 @@ class IpoDueDiligenceOrchestrator:
             report_row.overall_score = overall_score
             report_row.recommendation = recommendation
             report_row.executive_summary = summary_narrative
+            report_row.summary_source = summary_source
             report_row.score_financial_quality = fin
             report_row.score_industry_tailwinds = ind
             report_row.score_subscription_momentum = sub_m
@@ -173,6 +218,7 @@ class IpoDueDiligenceOrchestrator:
                 overall_score=overall_score,
                 recommendation=recommendation,
                 executive_summary=summary_narrative,
+                summary_source=summary_source,
                 score_financial_quality=fin,
                 score_industry_tailwinds=ind,
                 score_subscription_momentum=sub_m,
@@ -208,6 +254,7 @@ class IpoDueDiligenceOrchestrator:
             overall_score=report_row.overall_score,
             recommendation=report_row.recommendation,
             executive_summary=report_row.executive_summary,
+            summary_source=report_row.summary_source,
             score_breakdown=ScoreBreakdownSchema(
                 financial_quality=report_row.score_financial_quality,
                 industry_tailwinds=report_row.score_industry_tailwinds,

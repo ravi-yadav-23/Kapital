@@ -13,6 +13,9 @@ Evaluate:
 2. Valuation Safety (0-100): Reasonable pricing relative to industry peer multiples, runway for listing gains.
 3. Accounting / Red Flags: Related party transactions, contingent liabilities, aggressive OFS vs Fresh Issue.
 
+CRITICAL INSTRUCTION FOR SPARSE OR MISSING DATA:
+If the provided company data is sparse, generic, or missing — DO NOT echo back the placeholder text. Instead, use your pre-trained knowledge of this specific company and its sector to supply real analysis. For example: if analyzing Paras Healthcare, discuss actual metrics like ARPOB (Average Revenue Per Occupied Bed), bed occupancy rates, North India regional concentration risk, Ayushman Bharat government tariff exposure, and doctor attrition. If analyzing a tech IPO, discuss ARR growth, CAC/LTV ratio, and churn. Always provide sector-specific, company-specific analysis. Generic phrases like ‘Strong market demand’ or ‘General market risk’ are not acceptable outputs.
+
 Output MUST be a JSON object with this exact structure:
 {
   "financial_quality_score": <int 0-100>,

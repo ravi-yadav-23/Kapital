@@ -22,6 +22,7 @@ class AiReport(BaseModel):
 
     # Narrative Breakdown & AI Findings
     executive_summary = Column(Text, nullable=True)
+    summary_source = Column(String(50), default="ai_generated", nullable=True)
     strengths = Column(JSON, default=list)
     risks = Column(JSON, default=list)
     red_flags = Column(JSON, default=list)  # List of objects: [{title, severity: 'HIGH'|'MEDIUM'|'LOW', description, penalty_points}]

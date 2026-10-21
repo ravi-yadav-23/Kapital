@@ -52,7 +52,7 @@ FAMILY PORTFOLIO CAPACITY:
 """
 
         res = await self.call_llm(ALLOCATION_AGENT_SYSTEM, user_prompt, ai_cfg)
-        if res:
+        if res and not res.get("analysis_failed"):
             return res
 
         # Algorithmic fallback

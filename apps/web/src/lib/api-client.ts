@@ -93,7 +93,7 @@ function getAuthHeaders(): HeadersInit {
   return headers
 }
 
-async function authFetch(url: string, init?: RequestInit, timeoutMs = 3500): Promise<Response> {
+async function authFetch(url: string, init?: RequestInit, timeoutMs = 10000): Promise<Response> {
   const authHeaders = getAuthHeaders()
   const headers = {
     ...authHeaders,
@@ -188,24 +188,38 @@ export const apiClient = {
   },
 
   async getIpoById(id: string): Promise<Ipo | null> {
+    const mockFallback =
+      MOCK_IPOS.find(
+        (ipo) =>
+          ipo.id === id ||
+          ipo.slug === id ||
+          ipo.symbol?.toLowerCase() === id.toLowerCase()
+      ) || null
+
     if (USE_MOCK_DATA) {
-      return MOCK_IPOS.find((ipo) => ipo.id === id || ipo.slug === id) || null
+      return mockFallback
     }
     const cacheKey = `ipo:${id}`
     const cached = getCached<Ipo>(cacheKey)
     if (cached) return cached
 
-    const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
-    if (res.status === 404) return null
-    const data = await handleResponse(res, null as any)
-    if (data) setCached(cacheKey, data)
-    return data
+    try {
+      const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
+      if (res.status === 404) {
+        return mockFallback
+      }
+      const data = await handleResponse(res, mockFallback)
+      if (data) setCached(cacheKey, data)
+      return data || mockFallback
+    } catch {
+      return mockFallback
+    }
   },
 
   async syncIpos(): Promise<{ success: boolean; message: string }> {
     const res = await authFetch(`${API_BASE_URL}/ipos/sync`, {
       method: 'POST',
-    })
+    }, 30000)
     return handleResponse(res, { success: true, message: 'Sync complete' })
   },
 
@@ -494,7 +508,7 @@ export const apiClient = {
   async generateReport(id: string): Promise<AiReport> {
     const res = await authFetch(`${API_BASE_URL}/reports/${id}/generate`, {
       method: 'POST',
-    })
+    }, 45000)
     return handleResponse(res, null as any)
   },
 

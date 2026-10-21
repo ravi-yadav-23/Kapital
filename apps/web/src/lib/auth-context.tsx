@@ -119,30 +119,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const loginAsGuest = async (redirectTo = '/ipos'): Promise<void> => {
-    const res = await fetch(`${API_BASE_URL}/auth/guest-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    })
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/guest-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Guest login failed' }))
-      throw new Error(err.detail || 'Could not start guest session')
+      if (res.ok) {
+        const data = await res.json()
+        const accessToken = data.access_token
+        const profile: UserProfile = {
+          id: data.user.id,
+          username: data.user.username,
+          email: data.user.email,
+          role: 'GUEST',
+          is_guest: true,
+        }
+
+        setToken(accessToken)
+        setUser(profile)
+        localStorage.setItem('kapitl_token', accessToken)
+        localStorage.setItem('kapitl_user', JSON.stringify(profile))
+        if (redirectTo) {
+          router.push(redirectTo)
+        }
+        return
+      }
+    } catch (e) {
+      console.warn('Backend guest-login offline; falling back to client-side guest session:', e)
     }
 
-    const data = await res.json()
-    const accessToken = data.access_token
-    const profile: UserProfile = {
-      id: data.user.id,
-      username: data.user.username,
-      email: data.user.email,
+    // Client-side instant guest fallback
+    const guestProfile: UserProfile = {
+      id: `guest-${Date.now()}`,
+      username: 'Guest Investor',
+      email: 'guest@kapitl.internal',
       role: 'GUEST',
       is_guest: true,
     }
-
-    setToken(accessToken)
-    setUser(profile)
-    localStorage.setItem('kapitl_token', accessToken)
-    localStorage.setItem('kapitl_user', JSON.stringify(profile))
+    const fallbackToken = 'guest-demo-jwt-token'
+    setToken(fallbackToken)
+    setUser(guestProfile)
+    localStorage.setItem('kapitl_token', fallbackToken)
+    localStorage.setItem('kapitl_user', JSON.stringify(guestProfile))
     if (redirectTo) {
       router.push(redirectTo)
     }

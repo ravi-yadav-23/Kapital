@@ -166,6 +166,7 @@ class AiDueDiligenceService:
                 promoter_integrity=existing.score_promoter_integrity,
             ),
             executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo_name}.",
+            summary_source=getattr(existing, "summary_source", "ai_generated") or "ai_generated",
             strengths=existing.strengths or (ipo.strengths if ipo else []) or [],
             risks=existing.risks or (ipo.risks if ipo else []) or [],
             red_flags=red_flags,
@@ -175,9 +176,16 @@ class AiDueDiligenceService:
         )
 
     def build_fallback_report_response(self, ipo: Ipo) -> AiReportResponse:
-        """Helper to create an instant heuristic AiReportResponse for an IPO that hasn't generated a full multi-agent report yet."""
+        """Helper to create an instant sector-aware AiReportResponse for an IPO that hasn't generated a full multi-agent report yet."""
+        from app.utils.sector_fallbacks import get_sector_fallback
+        sector_data = get_sector_fallback(
+            name=ipo.name or "",
+            industry=ipo.type or "",
+            about=ipo.about or ""
+        )
+
         score = ipo.score or 50
-        rec = ipo.recommendation or self.get_recommendation_label(score)
+        rec = ipo.recommendation or self.get_recommendation(score)
         gmp = ipo.gmp_percent or 0.0
         price_max = ipo.price_band_max or 100.0
         est_price = round(price_max * (1 + (gmp / 100.0)), 2)
@@ -197,9 +205,10 @@ class AiDueDiligenceService:
                 gmp_strength=min(100, max(10, int(gmp * 1.5))),
                 promoter_integrity=score,
             ),
-            executive_summary=f"Automated market intelligence assessment for {ipo.name} ({ipo.type}). Indicative GMP stands at {gmp}% with preliminary score of {score}/100.",
-            strengths=ipo.strengths or [f"Active exchange listing issue", f"Grey market premium: {gmp}%"],
-            risks=ipo.risks or ["Market volatility", "Regulatory compliance"],
+            executive_summary=f"Sector-based estimate — AI analysis not run. Preliminary assessment for {ipo.name} ({ipo.type}). Indicative GMP stands at {gmp}% with preliminary score of {score}/100.",
+            summary_source="sector_fallback",
+            strengths=sector_data["strengths"],
+            risks=sector_data["risks"],
             red_flags=[],
             gmp_percent=gmp,
             estimated_listing_price=est_price,

@@ -24,7 +24,7 @@ def _build_engine(url: str):
                 url,
                 echo=False,
                 pool_pre_ping=True,
-                connect_args={"statement_cache_size": 0, "command_timeout": 3.0, "timeout": 3.0},
+                connect_args={"statement_cache_size": 0, "command_timeout": 15.0, "timeout": 15.0},
             )
         elif url.startswith("sqlite"):
             if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):

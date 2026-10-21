@@ -22,6 +22,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { formatDate } from '@/lib/formatters'
+import { stripHtml } from '@/lib/utils'
 
 export default function ReportsPage() {
   const [ipos, setIpos] = useState<Ipo[]>([])
@@ -492,46 +493,80 @@ export default function ReportsPage() {
               {/* Red Flag Audit Report */}
               <RedFlagList redFlags={currentReport?.red_flags || []} />
 
-              {/* Executive Summary */}
-              <div className="space-y-2 text-xs">
-                <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-brand-from" />
-                  <span>Executive Summary</span>
-                </h3>
-                <p className="text-text-secondary leading-relaxed bg-surface-elevated/40 p-3.5 rounded-xl border border-border-subtle">
-                  {currentReport?.executive_summary || selectedIpo.about || 'Awaiting multi-agent due diligence audit.'}
-                </p>
-              </div>
+              {/* Executive Summary & Details */}
+              {(() => {
+                const isSectorFallback =
+                  currentReport?.summary_source === 'sector_fallback' ||
+                  currentReport?.recommendation === 'PENDING' ||
+                  currentReport?.executive_summary?.includes('Sector-based estimate') ||
+                  currentReport?.executive_summary?.includes('AI analysis unavailable')
 
-              {/* Financial and Operating Strengths */}
-              <div className="space-y-2 text-xs">
-                <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-accent-green" />
-                  <span>Financial and Operating Strengths</span>
-                </h3>
-                <div className="p-3.5 rounded-xl border border-border-subtle space-y-2 bg-surface-elevated/20">
-                  <ul className="space-y-1.5 text-text-secondary list-disc list-inside">
-                    {(currentReport?.strengths?.length ? currentReport.strengths : selectedIpo.strengths || []).map((s, i) => (
-                      <li key={i} className="leading-relaxed">{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+                return (
+                  <>
+                    {/* Executive Summary */}
+                    <div className="space-y-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-bold text-text-primary flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-brand-from" />
+                          <span>Executive Summary</span>
+                        </h3>
+                        {isSectorFallback && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-amber/15 text-accent-amber border border-accent-amber/30">
+                            Sector-based estimate — AI analysis not run
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-text-secondary leading-relaxed bg-surface-elevated/40 p-3.5 rounded-xl border border-border-subtle">
+                        {stripHtml(currentReport?.executive_summary) || stripHtml(selectedIpo.about) || 'Awaiting multi-agent due diligence audit.'}
+                      </p>
+                    </div>
 
-              {/* Key Risks & Watchlist */}
-              <div className="space-y-2 text-xs">
-                <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-accent-amber" />
-                  <span>Key Risks & Watchlist</span>
-                </h3>
-                <div className="p-3.5 rounded-xl border border-border-subtle space-y-2 bg-surface-elevated/20">
-                  <ul className="space-y-1.5 text-text-secondary list-disc list-inside">
-                    {(currentReport?.risks?.length ? currentReport.risks : selectedIpo.risks || []).map((r, i) => (
-                      <li key={i} className="leading-relaxed">{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+                    {/* Financial and Operating Strengths */}
+                    <div className="space-y-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-bold text-text-primary flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-accent-green" />
+                          <span>Financial and Operating Strengths</span>
+                        </h3>
+                        {isSectorFallback && (
+                          <span className="text-[10px] text-text-muted font-mono">
+                            Sector-based baseline
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-3.5 rounded-xl border border-border-subtle space-y-2 bg-surface-elevated/20">
+                        <ul className="space-y-1.5 text-text-secondary list-disc list-inside">
+                          {(currentReport?.strengths?.length ? currentReport.strengths : selectedIpo.strengths || []).map((s, i) => (
+                            <li key={i} className="leading-relaxed">{stripHtml(s)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Key Risks & Watchlist */}
+                    <div className="space-y-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-bold text-text-primary flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-accent-amber" />
+                          <span>Key Risks & Watchlist</span>
+                        </h3>
+                        {isSectorFallback && (
+                          <span className="text-[10px] text-text-muted font-mono">
+                            Sector-based baseline
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-3.5 rounded-xl border border-border-subtle space-y-2 bg-surface-elevated/20">
+                        <ul className="space-y-1.5 text-text-secondary list-disc list-inside">
+                          {(currentReport?.risks?.length ? currentReport.risks : selectedIpo.risks || []).map((r, i) => (
+                            <li key={i} className="leading-relaxed">{stripHtml(r)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           </div>
         </div>

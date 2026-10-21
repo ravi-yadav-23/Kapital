@@ -7,6 +7,7 @@ import uuid
 from app.models.ipo import Ipo, IpoSchedule, IpoAlias
 from app.schemas.ipo import IpoResponse, IpoScheduleSchema
 from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
+from app.utils.text_utils import clean_text, clean_text_list
 import re
 
 # In-memory cache synced from DB for fast read access by optimizer
@@ -122,10 +123,13 @@ class IpoService:
         ipos = result.scalars().all()
 
         if not ipos:
-            from app.tasks.ipo_tasks import sync_ipos_pipeline
-            await sync_ipos_pipeline(db)
-            result = await db.execute(stmt)
-            ipos = result.scalars().all()
+            from sqlalchemy import func
+            total_ipos = await db.scalar(select(func.count(Ipo.id)))
+            if not total_ipos:
+                from app.tasks.ipo_tasks import sync_ipos_pipeline
+                await sync_ipos_pipeline(db)
+                result = await db.execute(stmt)
+                ipos = result.scalars().all()
 
         # Keep in-memory cache refreshed for optimizer
         MOCK_IPOS_STORE.clear()
@@ -140,10 +144,13 @@ class IpoService:
         ipo = result.scalar_one_or_none()
 
         if not ipo:
-            from app.tasks.ipo_tasks import sync_ipos_pipeline
-            await sync_ipos_pipeline(db)
-            result = await db.execute(stmt)
-            ipo = result.scalar_one_or_none()
+            from sqlalchemy import func
+            total_ipos = await db.scalar(select(func.count(Ipo.id)))
+            if not total_ipos:
+                from app.tasks.ipo_tasks import sync_ipos_pipeline
+                await sync_ipos_pipeline(db)
+                result = await db.execute(stmt)
+                ipo = result.scalar_one_or_none()
 
         return _model_to_response(ipo) if ipo else None
 
@@ -281,6 +288,15 @@ class IpoService:
                 except Exception:
                     pass
 
+            if ipo_dict.get("about"):
+                cleaned_about = clean_text(ipo_dict.get("about"))
+                if cleaned_about:
+                    existing.about = cleaned_about
+            if ipo_dict.get("strengths"):
+                existing.strengths = clean_text_list(ipo_dict.get("strengths"))
+            if ipo_dict.get("risks"):
+                existing.risks = clean_text_list(ipo_dict.get("risks"))
+
             await db.flush()
             return existing
 
@@ -299,16 +315,16 @@ class IpoService:
             price_band_max=float(ipo_dict.get("price_band_max", 0.0)),
             lot_size=int(ipo_dict.get("lot_size", 1)),
             min_investment=float(ipo_dict.get("min_investment", 0.0)),
-            issue_size=ipo_dict.get("issue_size"),
+            issue_size=clean_text(ipo_dict.get("issue_size")),
             issue_size_cr=ipo_dict.get("issue_size_cr"),
             issue_open_date=open_dt,
             issue_close_date=close_dt,
             allotment_date=allot_dt,
             refund_date=refund_dt,
             listing_date=listing_dt,
-            about=ipo_dict.get("about"),
-            strengths=ipo_dict.get("strengths") or [],
-            risks=ipo_dict.get("risks") or [],
+            about=clean_text(ipo_dict.get("about")),
+            strengths=clean_text_list(ipo_dict.get("strengths") or []),
+            risks=clean_text_list(ipo_dict.get("risks") or []),
             score=ipo_dict.get("score"),
             recommendation=ipo_dict.get("recommendation"),
             gmp_percent=ipo_dict.get("gmp_percent"),

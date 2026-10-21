@@ -72,6 +72,7 @@ class AiReportResponse(BaseModel):
     recommendation: str
     score_breakdown: ScoreBreakdownSchema
     executive_summary: Optional[str] = None
+    summary_source: Optional[str] = "ai_generated"
     strengths: List[str] = []
     risks: List[str] = []
     red_flags: List[RedFlagSchema] = []

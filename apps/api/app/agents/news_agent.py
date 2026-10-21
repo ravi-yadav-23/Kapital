@@ -48,7 +48,7 @@ ISSUE PROFILE:
 """
 
         res = await self.call_llm(NEWS_AGENT_SYSTEM, user_prompt, ai_cfg)
-        if res:
+        if res and not res.get("analysis_failed"):
             for k in ["promoter_integrity_score", "industry_tailwinds_score"]:
                 if k in res:
                     try:
@@ -67,12 +67,14 @@ ISSUE PROFILE:
         buzz = "VERY_HIGH" if gmp >= 40 else "HIGH" if gmp >= 20 else "MODERATE" if gmp >= 5 else "SUBDUED"
 
         return {
+            "analysis_failed": True,
+            "error": res.get("error") if isinstance(res, dict) else "AI analysis unavailable",
             "promoter_integrity_score": promoter_score,
             "industry_tailwinds_score": tailwinds_score,
             "market_buzz_rating": buzz,
             "governance_flags": [],
-            "anchor_quality_verdict": "Standard institutional participation expected.",
-            "sentiment_summary": f"Market appetite is {buzz.lower().replace('_', ' ')} with current GMP around {gmp}%.",
+            "anchor_quality_verdict": "Sector-based baseline.",
+            "sentiment_summary": "",
         }
 
 

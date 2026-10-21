@@ -77,8 +77,11 @@ class BaseAgent:
         api_key = ai_cfg.get("api_key", "")
 
         if not api_key:
-            self.logger.warning(f"No API key for {provider}. Falling back to rule-based logic.")
-            return None
+            self.logger.error(f"AI analysis unavailable — no API key configured for provider '{provider}'.")
+            return {
+                "error": f"AI analysis unavailable — no API key configured for {provider}",
+                "analysis_failed": True,
+            }
 
         full_system = f"{self.backstory}\n\nRole: {self.role}\nGoal: {self.goal}\n\n{system_instruction}"
 
@@ -123,4 +126,7 @@ class BaseAgent:
 
         except Exception as e:
             self.logger.error(f"Execution failure on {provider} ({model}): {e}")
-            return None
+            return {
+                "error": f"AI analysis unavailable — execution failed on {provider}: {e}",
+                "analysis_failed": True,
+            }

@@ -32,5 +32,6 @@ async def test_allocation_agent_fallback(db_session: AsyncSession, seed_data):
 async def test_orchestrator_due_diligence(db_session: AsyncSession, seed_data):
     report = await orchestrator.run_full_due_diligence(db_session, "ipo-test-1")
     assert 0 < report.overall_score <= 100
-    assert report.recommendation in ["STRONG_APPLY", "MODERATE_APPLY", "WATCH", "AVOID"]
+    assert report.recommendation in ["STRONG_APPLY", "MODERATE_APPLY", "WATCH", "AVOID", "PENDING"]
     assert report.score_breakdown.financial_quality > 0
+    assert report.summary_source in ["ai_generated", "template_fallback", "sector_fallback"]

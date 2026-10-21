@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.ipo_service import ipo_service
+from app.utils.text_utils import clean_text, clean_text_list
 
 logger = logging.getLogger("ipo_tasks")
 
@@ -183,7 +184,7 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                         
                         ipos.append({
                             'symbol': clean_sym,
-                            'name': name,
+                            'name': clean_text(name),
                             'slug': slug,
                             'type': ipo_type,
                             'status': status,
@@ -194,9 +195,9 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                             'issue_size_cr': 0.0,
                             'issue_open_date': open_d_str,
                             'issue_close_date': close_d_str,
-                            'about': f"{name} ({ipo_type}) issue on Indian exchanges with price band Rs {min_p}-{max_p} and active GMP of {gmp_pct}%.",
-                            'strengths': ['Strong market demand' if gmp_pct > 0 else 'Exchange-tracked IPO', f'Indicative GMP: {gmp_pct}%'],
-                            'risks': ['General market risk', 'Working capital requirements'],
+                            'about': clean_text(f"{name} ({ipo_type}) issue on Indian exchanges with price band Rs {min_p}-{max_p} and active GMP of {gmp_pct}%."),
+                            'strengths': clean_text_list(['Strong market demand' if gmp_pct > 0 else 'Exchange-tracked IPO', f'Indicative GMP: {gmp_pct}%']),
+                            'risks': clean_text_list(['General market risk', 'Working capital requirements']),
                             'score': score,
                             'recommendation': rec,
                             'gmp_percent': gmp_pct,
@@ -252,8 +253,8 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
                     })
 
                 ipo_dict = {
-                    "symbol": raw.get("symbol", "IPO"),
-                    "name": raw.get("name", "IPO Issue"),
+                    "symbol": clean_text(raw.get("symbol", "IPO")),
+                    "name": clean_text(raw.get("name", "IPO Issue")),
                     "slug": raw.get("slug", raw.get("symbol", "").lower()),
                     "type": raw.get("type", "EQ"),
                     "status": raw.get("status", status),
@@ -262,14 +263,14 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
                     "price_band_max": max_p,
                     "lot_size": lot_sz,
                     "min_investment": min_inv,
-                    "issue_size": raw.get("issueSize"),
+                    "issue_size": clean_text(raw.get("issueSize")),
                     "issue_size_cr": issue_cr,
                     "issue_open_date": raw.get("startDate"),
                     "issue_close_date": raw.get("endDate"),
                     "listing_date": raw.get("listingDate"),
-                    "about": raw.get("about"),
-                    "strengths": raw.get("strengths", []),
-                    "risks": raw.get("risks", []),
+                    "about": clean_text(raw.get("about")),
+                    "strengths": clean_text_list(raw.get("strengths", [])),
+                    "risks": clean_text_list(raw.get("risks", [])),
                     "score": score,
                     "recommendation": rec,
                     "gmp_percent": gmp,

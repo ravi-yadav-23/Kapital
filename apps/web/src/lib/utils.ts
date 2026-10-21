@@ -131,3 +131,19 @@ export function pluralize(word: string, count: number, plural?: string): string 
   if (count === 1) return word
   return plural || word + 's'
 }
+
+/**
+ * Strips HTML tags, TinyMCE bookmark spans, non-breaking spaces, and zero-width chars
+ */
+export function stripHtml(str?: string | null): string {
+  if (!str) return ''
+  return str
+    .replace(/<span[^>]*data-mce-type=[^>]*>.*?<\/span>/gi, '')
+    .replace(/<span[^>]*class=["']?[^"']*mce_SELRES_[^"']*["']?[^>]*>.*?<\/span>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#xFEFF;/gi, '')
+    .replace(/[\ufeff\u200b\u200c\u200d\xa0]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}

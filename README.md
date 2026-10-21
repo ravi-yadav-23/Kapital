@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ KAPITL (कॅपिटल)
+# ⚡ KAPITL 
 
 ### Production-Grade Autonomous Multi-Account IPO Intelligence, MILP Capital Allocation & Listing Execution Engine
 

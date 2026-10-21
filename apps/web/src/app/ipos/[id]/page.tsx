@@ -40,13 +40,22 @@ export default function IpoDetailPage() {
 
   useEffect(() => {
     if (id) {
-      Promise.all([apiClient.getIpoById(id), apiClient.getAccounts()]).then(
-        ([ipoData, accsData]) => {
+      setLoading(true)
+      Promise.all([
+        apiClient.getIpoById(id).catch(() => null),
+        apiClient.getAccounts().catch(() => []),
+      ])
+        .then(([ipoData, accsData]) => {
           setIpo(ipoData)
-          setAccounts(accsData)
+          setAccounts(accsData || [])
+        })
+        .catch((err) => {
+          console.warn('[IPO Detail] Error loading IPO:', err)
+          setIpo(null)
+        })
+        .finally(() => {
           setLoading(false)
-        }
-      )
+        })
     }
   }, [id])
 
@@ -208,10 +217,10 @@ export default function IpoDetailPage() {
             </div>
           </div>
 
-          {/* ── Right Column (1 Span): Sticky Action Card, Price & Schedule ── */}
+          {/* ── Right Column (1 Span): Action Card, Price & Schedule ── */}
           <div className="space-y-6">
-            {/* Sticky Apply & Action Card */}
-            <div className="card bg-surface-card z-10 space-y-4 sticky top-20 border-brand-from/30 shadow-xl shadow-brand-from/5">
+            {/* Apply & Action Card */}
+            <div className="card bg-surface-card space-y-4 border-brand-from/30 shadow-xl shadow-brand-from/5">
               <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-text-primary">
                   <Sparkles className="w-4 h-4 text-brand-from" />
