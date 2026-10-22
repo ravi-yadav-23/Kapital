@@ -82,6 +82,18 @@ function setCached<T>(key: string, data: T) {
   memoryCache.set(key, { data, timestamp: Date.now() })
 }
 
+function clearCache(keyPrefix?: string) {
+  if (!keyPrefix) {
+    memoryCache.clear()
+    return
+  }
+  for (const key of Array.from(memoryCache.keys())) {
+    if (key.startsWith(keyPrefix)) {
+      memoryCache.delete(key)
+    }
+  }
+}
+
 function getAuthHeaders(): HeadersInit {
   const headers: Record<string, string> = {}
   if (typeof window !== 'undefined') {
@@ -161,6 +173,9 @@ export const apiClient = {
   },
   getCachedOrders(): IpoOrder[] | null {
     return getCached<IpoOrder[]>('orders:all', 300_000)
+  },
+  clearCache(keyPrefix?: string): void {
+    clearCache(keyPrefix)
   },
 
   // ── IPOs ──────────────────────────────────────────────────────────────────

@@ -68,6 +68,9 @@ export function useWebSocket(onMessage?: MessageHandler) {
           if (handlerRef.current) {
             handlerRef.current(parsed)
           }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('kapitl:ws-event', { detail: parsed }))
+          }
         } catch {
           // Non-JSON message ignored
         }
@@ -119,4 +122,29 @@ export function useWebSocket(onMessage?: MessageHandler) {
   }, [connect])
 
   return { isConnected, lastMessage, sendMessage }
+}
+
+export function useWebSocketEvent(
+  eventTypeOrTypes: string | string[],
+  onEvent: (msg: WebSocketMessage) => void
+) {
+  const callbackRef = useRef(onEvent)
+  callbackRef.current = onEvent
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<WebSocketMessage>
+      const msg = customEvent.detail
+      if (!msg) return
+      const types = Array.isArray(eventTypeOrTypes) ? eventTypeOrTypes : [eventTypeOrTypes]
+      if (types.includes('*') || types.includes(msg.type)) {
+        callbackRef.current(msg)
+      }
+    }
+    window.addEventListener('kapitl:ws-event', handler)
+    return () => {
+      window.removeEventListener('kapitl:ws-event', handler)
+    }
+  }, [eventTypeOrTypes])
 }

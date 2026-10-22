@@ -6,6 +6,7 @@ import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { useAuth } from '@/lib/auth-context'
 import { useWebSocket, WebSocketMessage } from '@/lib/hooks/useWebSocket'
+import { apiClient } from '@/lib/api-client'
 import { Eye, Loader2 } from 'lucide-react'
 
 interface DashboardLayoutProps {
@@ -48,6 +49,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
 
   const handleWsMessage = useCallback((msg: WebSocketMessage) => {
+    // Invalidate client-side memory cache according to event category
+    if (msg.type === 'IPOS_SYNCED') {
+      apiClient.clearCache('ipos')
+    } else if (msg.type === 'ORDER_PLACED' || msg.type === 'ORDER_FILLED' || msg.type === 'ORDER_FAILED') {
+      apiClient.clearCache('orders')
+      apiClient.clearCache('funds')
+    } else if (msg.type === 'ALLOTMENT_DETECTED' || msg.type === 'SELL_EXECUTED') {
+      apiClient.clearCache('allotments')
+      apiClient.clearCache('orders')
+      apiClient.clearCache('funds')
+    }
+
     // Suppress heartbeats; surface all other events
     const label = WS_EVENT_LABELS[msg.type]
     if (label === undefined) {

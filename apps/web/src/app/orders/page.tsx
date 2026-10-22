@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
+import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { IpoOrder, OrderStatus } from '@/types'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { formatINR, formatDateTime } from '@/lib/formatters'
@@ -93,12 +94,20 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | '7D' | '30D'>('ALL')
 
-  useEffect(() => {
+  const fetchOrders = useCallback(() => {
     apiClient.getOrders().then((data) => {
       setOrders(data)
       setLoading(false)
     })
   }, [])
+
+  useEffect(() => {
+    fetchOrders()
+  }, [fetchOrders])
+
+  useWebSocketEvent(['ORDER_PLACED', 'ORDER_FILLED', 'ORDER_FAILED', 'ALLOTMENT_DETECTED'], () => {
+    fetchOrders()
+  })
 
   const handleCancelOrder = async (orderId: string) => {
     try {

@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import { FamilyAccount, FundSummary, AllocationPlan } from '@/types'
+import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { StatCard } from '@/components/shared/StatCard'
 import { AmountDisplay } from '@/components/shared/AmountDisplay'
 import { AccountsTable } from '@/components/accounts/AccountsTable'
@@ -20,7 +21,7 @@ export default function FundsPage() {
   const [loading, setLoading] = useState(() => !apiClient.getCachedFundSummary() && (apiClient.getCachedAccounts()?.length ?? 0) === 0)
   const [isAddOpen, setIsAddOpen] = useState(false)
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     Promise.all([
       apiClient.getAccounts(),
       apiClient.getFundSummary(),
@@ -40,6 +41,14 @@ export default function FundsPage() {
         setLoading(false)
       })
   }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  useWebSocketEvent(['ORDER_PLACED', 'ORDER_FILLED', 'ALLOTMENT_DETECTED', 'SELL_EXECUTED'], () => {
+    loadData()
+  })
 
 
   const handleAddAccount = async (newAcc: Partial<FamilyAccount>) => {

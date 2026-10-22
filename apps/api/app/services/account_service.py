@@ -12,12 +12,21 @@ _accounts_cache: List[dict] = []
 MOCK_ACCOUNTS_STORE = _accounts_cache  # backward-compat alias — remove after callers updated
 
 
-def _invalidate_cache(angel_client_id: str) -> None:
-    """Remove a specific account from the in-memory cache by client_id.
+def _invalidate_accounts_cache() -> None:
+    """Clear the in-memory cache so subsequent reads reload fresh balances from DB."""
+    global _accounts_cache
+    _accounts_cache.clear()
+
+
+def _invalidate_cache(angel_client_id: Optional[str] = None) -> None:
+    """Remove a specific account or clear in-memory cache.
     Called after any write that changes account balances or preferences,
     so the optimizer always reads current data from the DB on the next request."""
     global _accounts_cache
-    _accounts_cache[:] = [a for a in _accounts_cache if a.get("angel_client_id") != angel_client_id]
+    if angel_client_id:
+        _accounts_cache[:] = [a for a in _accounts_cache if a.get("angel_client_id") != angel_client_id]
+    else:
+        _accounts_cache.clear()
 
 
 def _model_to_response(acc: FamilyAccount) -> AccountResponse:
@@ -120,6 +129,7 @@ class AccountService:
         db.add(acc)
         await db.flush()   # write to DB within transaction
         await db.refresh(acc)
+        _invalidate_accounts_cache()
         return _model_to_response(acc)
 
     @staticmethod
@@ -192,7 +202,7 @@ class AccountService:
 
         await db.flush()
         await db.refresh(acc)
-        _invalidate_cache(acc.angel_client_id)  # force re-read on next optimizer call
+        _invalidate_accounts_cache()  # force re-read on next optimizer call
         return _model_to_response(acc)
 
     @staticmethod
@@ -208,6 +218,7 @@ class AccountService:
             )
         )
         await db.flush()
+        _invalidate_accounts_cache()
 
     @staticmethod
     async def sync_live_balance(db: AsyncSession, client_id: str) -> Optional[AccountResponse]:
@@ -237,7 +248,7 @@ class AccountService:
             await db.refresh(acc)
 
             # Invalidate stale cache entry so optimizer reads live balance
-            _invalidate_cache(client_id)
+            _invalidate_accounts_cache()
 
             return _model_to_response(acc)
         except Exception as e:

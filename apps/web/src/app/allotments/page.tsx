@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import { Allotment, PnlSummary } from '@/types'
+import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { StatCard } from '@/components/shared/StatCard'
 import { AmountDisplay } from '@/components/shared/AmountDisplay'
 import { AllotmentGrid } from '@/components/allotments/AllotmentGrid'
@@ -14,7 +15,7 @@ export default function AllotmentsPage() {
   const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(() => apiClient.getCachedPnlSummary())
   const [loading, setLoading] = useState(() => (apiClient.getCachedAllotments()?.length ?? 0) === 0 && !apiClient.getCachedPnlSummary())
 
-  useEffect(() => {
+  const refreshData = useCallback(() => {
     Promise.all([apiClient.getAllotments(), apiClient.getPnlSummary()]).then(
       ([allotData, pnlData]) => {
         setAllotments(allotData)
@@ -23,6 +24,14 @@ export default function AllotmentsPage() {
       }
     )
   }, [])
+
+  useEffect(() => {
+    refreshData()
+  }, [refreshData])
+
+  useWebSocketEvent(['ALLOTMENT_DETECTED', 'SELL_EXECUTED'], () => {
+    refreshData()
+  })
 
   const activeAllotments = allotments.filter((a) => a.status === 'ACTIVE')
   const soldAllotments = allotments.filter((a) => a.status === 'SOLD')

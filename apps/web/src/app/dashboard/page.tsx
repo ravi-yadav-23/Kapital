@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api-client'
+import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { Ipo, FundSummary, PnlSummary, AllocationPlan, FamilyAccount } from '@/types'
 import { StatCard } from '@/components/shared/StatCard'
 import { AmountDisplay } from '@/components/shared/AmountDisplay'
@@ -99,60 +100,53 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => {
-    let isMounted = true
+  const loadDashboardData = useCallback(async () => {
+    try {
+      const [iposData, fundsData, pnlData, accountsData] = await Promise.all([
+        apiClient.getIpos(),
+        apiClient.getFundSummary(),
+        apiClient.getPnlSummary(),
+        apiClient.getAccounts(),
+      ])
 
-    async function loadDashboardData() {
-      try {
-        const [iposData, fundsData, pnlData, accountsData] = await Promise.all([
-          apiClient.getIpos(),
-          apiClient.getFundSummary(),
-          apiClient.getPnlSummary(),
-          apiClient.getAccounts(),
-        ])
+      setIpos(iposData)
 
-        if (!isMounted) return
-
-        setIpos(iposData)
-
-        // If user is a Guest or if balance is 0 and empty, seed plausible demo data for recruiter inspection
-        const guestOrEmpty = isGuest || (!fundsData?.total_family_balance && !accountsData?.length)
-        if (guestOrEmpty) {
-          setFundSummary(DEMO_FUND_SUMMARY)
-          setPnlSummary(DEMO_PNL_SUMMARY)
-          setAccounts(DEMO_ACCOUNTS)
-        } else {
-          setFundSummary(fundsData)
-          setPnlSummary(pnlData)
-          setAccounts(accountsData || [])
-        }
-      } catch (err) {
-        console.error('Error loading dashboard data:', err)
-        if (!isMounted) return
+      // If user is a Guest or if balance is 0 and empty, seed plausible demo data for recruiter inspection
+      const guestOrEmpty = isGuest || (!fundsData?.total_family_balance && !accountsData?.length)
+      if (guestOrEmpty) {
         setFundSummary(DEMO_FUND_SUMMARY)
         setPnlSummary(DEMO_PNL_SUMMARY)
         setAccounts(DEMO_ACCOUNTS)
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
+      } else {
+        setFundSummary(fundsData)
+        setPnlSummary(pnlData)
+        setAccounts(accountsData || [])
       }
-
-      // Check for cached plan or fetch without blocking page render
-      try {
-        const planData = await apiClient.getAllocationPlan(false)
-        if (isMounted) setPlan(planData)
-      } catch (err) {
-        console.warn('Deferred allocation plan load:', err)
-      }
+    } catch (err) {
+      console.error('Error loading dashboard data:', err)
+      setFundSummary(DEMO_FUND_SUMMARY)
+      setPnlSummary(DEMO_PNL_SUMMARY)
+      setAccounts(DEMO_ACCOUNTS)
+    } finally {
+      setLoading(false)
     }
 
-    loadDashboardData()
-
-    return () => {
-      isMounted = false
+    // Check for cached plan or fetch without blocking page render
+    try {
+      const planData = await apiClient.getAllocationPlan(false)
+      setPlan(planData)
+    } catch (err) {
+      console.warn('Deferred allocation plan load:', err)
     }
   }, [isGuest])
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [loadDashboardData])
+
+  useWebSocketEvent(['IPOS_SYNCED', 'ORDER_PLACED', 'ORDER_FILLED', 'ALLOTMENT_DETECTED', 'SELL_EXECUTED'], () => {
+    loadDashboardData()
+  })
 
   if (loading) {
     return (

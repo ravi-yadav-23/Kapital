@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import { Ipo, FamilyAccount } from '@/types'
 import { IpoBoard } from '@/components/ipo/IpoBoard'
+import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { TrendingUp, Layers, Flame, Sparkles, RefreshCw } from 'lucide-react'
 
 export default function IposPage() {
@@ -13,7 +14,7 @@ export default function IposPage() {
   const [loading, setLoading] = useState(() => (apiClient.getCachedIpos()?.length ?? 0) === 0)
   const [syncing, setSyncing] = useState(false)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [iposData, accountsData] = await Promise.all([
         apiClient.getIpos(),
@@ -26,11 +27,16 @@ export default function IposPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
+
+  // Real-time live update when server broadcasts new sync
+  useWebSocketEvent('IPOS_SYNCED', () => {
+    fetchData()
+  })
 
   const handleSyncMarket = async () => {
     setSyncing(true)
