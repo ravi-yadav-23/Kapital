@@ -204,8 +204,11 @@ export const apiClient = {
     if (cached) {
       // Revalidate in background without blocking caller
       authFetch(`${API_BASE_URL}/ipos${status && status !== 'all' ? `?status=${status}` : ''}`)
-        .then((res) => handleResponse(res, cached))
-        .then((fresh) => setCached(cacheKey, fresh))
+        .then((res) => {
+          if (res.ok) {
+            return res.json().then((fresh) => setCached(cacheKey, fresh))
+          }
+        })
         .catch(() => {})
       return cached
     }
@@ -213,7 +216,9 @@ export const apiClient = {
     const query = status && status !== 'all' ? `?status=${status}` : ''
     const res = await authFetch(`${API_BASE_URL}/ipos${query}`)
     const data = await handleResponse(res, MOCK_IPOS)
-    setCached(cacheKey, data)
+    if (res.ok) {
+      setCached(cacheKey, data)
+    }
     return data
   },
 
