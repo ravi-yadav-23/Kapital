@@ -52,3 +52,14 @@ async def generate_nightly_ipo_dossiers(db: AsyncSession, max_batch: int = 5) ->
 
     logger.info(f"Nightly IPO due diligence run complete. Generated {generated_count} new dossiers.")
     return generated_count
+
+
+async def generate_nightly_reports(max_batch: int = 5) -> int:
+    """
+    Self-managed session wrapper for Celery and external workers.
+    Runs generate_nightly_ipo_dossiers inside its own database session.
+    """
+    from app.db.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        return await generate_nightly_ipo_dossiers(db, max_batch=max_batch)
+
