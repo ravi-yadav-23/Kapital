@@ -47,6 +47,14 @@ async def reconcile_family_funds() -> Dict[str, Any]:
             total_reconciled_locked += actual_locked
 
         await db.commit()
+        if reconciled_accounts > 0:
+            from app.services.account_service import _invalidate_accounts_cache
+            _invalidate_accounts_cache()
+            try:
+                from app.routers.websocket import broadcast_event
+                await broadcast_event("ASBA_LOCKS_SWEPT", {"accounts_adjusted": reconciled_accounts})
+            except Exception:
+                pass
 
     logger.info(
         f"Nightly fund audit completed: {len(accounts)} accounts audited, "

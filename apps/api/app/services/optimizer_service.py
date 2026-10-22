@@ -52,7 +52,30 @@ class AllocationOptimizer:
             return cls._solve_greedy(active_accounts, active_ipos)
 
     @staticmethod
+    def _compute_lot_cost_and_lots(ipo: Dict[str, Any]) -> tuple[float, float, int, int]:
+        """
+        Returns (lot_cost, min_inv, shni_lots, bhni_lots).
+        Safely computes sHNI (> ₹2L) and bHNI (> ₹10L) lot counts based on actual lot cost.
+        """
+        min_inv = float(ipo.get("min_investment") or 0.0)
+        lot_size = float(ipo.get("lot_size") or 0.0)
+        price_max = float(ipo.get("price_band_max") or 0.0)
+        lot_cost = lot_size * price_max if lot_size > 0 and price_max > 0 else min_inv
+        if lot_cost < 1000.0:
+            lot_cost = min_inv if min_inv >= 1000.0 else 15000.0
+        if min_inv < 1000.0:
+            min_inv = lot_cost
+
+        # sHNI requires strictly > ₹200,000
+        shni_lots = int(200000.0 / lot_cost) + 1
+        # bHNI requires strictly > ₹1,000,000
+        bhni_lots = int(1000000.0 / lot_cost) + 1
+
+        return lot_cost, min_inv, shni_lots, bhni_lots
+
+    @classmethod
     def _solve_with_pulp(
+        cls,
         active_accounts: List[Dict[str, Any]],
         active_ipos: List[Dict[str, Any]],
     ) -> AllocationPlanResponse:
@@ -72,19 +95,14 @@ class AllocationOptimizer:
             a_id = acc["id"]
             for ipo in active_ipos:
                 i_id = ipo["id"]
-                min_inv = ipo.get("min_investment", 15000)
-                lot_size = ipo.get("lot_size", 1)
-                price_max = ipo.get("price_band_max", 100)
-                lot_cost = lot_size * price_max if lot_size and price_max else min_inv
+                lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(ipo)
                 score = ipo.get("score", 50) or 50
                 gmp_pct = ipo.get("gmp_percent", 15.0) or 15.0
 
                 retail_weight = (min_inv * (gmp_pct / 100.0) * (score / 100.0)) * 0.35
-                shni_lots = max(14, int(200000 / lot_cost) + 1)
                 shni_capital = shni_lots * lot_cost
                 shni_weight = (shni_capital * (gmp_pct / 100.0) * (score / 100.0)) * 0.25
 
-                bhni_lots = max(68, int(1000000 / lot_cost) + 1)
                 bhni_capital = bhni_lots * lot_cost
                 bhni_weight = (bhni_capital * (gmp_pct / 100.0) * (score / 100.0)) * 0.40
 
@@ -116,15 +134,8 @@ class AllocationOptimizer:
 
             for ipo in active_ipos:
                 i_id = ipo["id"]
-                min_inv = ipo.get("min_investment", 15000)
-                lot_size = ipo.get("lot_size", 1)
-                price_max = ipo.get("price_band_max", 100)
-                lot_cost = lot_size * price_max if lot_size and price_max else min_inv
-
-                shni_lots = max(14, int(200000 / lot_cost) + 1)
+                lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(ipo)
                 shni_capital = shni_lots * lot_cost
-
-                bhni_lots = max(68, int(1000000 / lot_cost) + 1)
                 bhni_capital = bhni_lots * lot_cost
 
                 account_expenditures.append(min_inv * decision_vars[(a_id, i_id, "RETAIL")])
@@ -152,13 +163,10 @@ class AllocationOptimizer:
             a_id = acc["id"]
             for ipo in active_ipos:
                 i_id = ipo["id"]
-                lot_size = ipo.get("lot_size", 1)
-                price_max = ipo.get("price_band_max", 100)
-                lot_cost = lot_size * price_max if lot_size and price_max else ipo.get("min_investment", 15000)
+                lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(ipo)
                 gmp_pct = ipo.get("gmp_percent", 20.0) or 20.0
 
                 if pulp.value(decision_vars[(a_id, i_id, "bHNI")]) == 1:
-                    bhni_lots = max(68, int(1000000 / lot_cost) + 1)
                     amount = bhni_lots * lot_cost
                     total_deployed += amount
                     entries.append(
@@ -174,7 +182,6 @@ class AllocationOptimizer:
                         )
                     )
                 elif pulp.value(decision_vars[(a_id, i_id, "sHNI")]) == 1:
-                    shni_lots = max(14, int(200000 / lot_cost) + 1)
                     amount = shni_lots * lot_cost
                     total_deployed += amount
                     entries.append(
@@ -190,7 +197,7 @@ class AllocationOptimizer:
                         )
                     )
                 elif pulp.value(decision_vars[(a_id, i_id, "RETAIL")]) == 1:
-                    amount = ipo.get("min_investment", 15000)
+                    amount = min_inv
                     total_deployed += amount
                     entries.append(
                         AllocationEntrySchema(
@@ -215,8 +222,9 @@ class AllocationOptimizer:
             asba_lock_overlaps_detected=0,
         )
 
-    @staticmethod
+    @classmethod
     def _solve_greedy(
+        cls,
         active_accounts: List[Dict[str, Any]],
         active_ipos: List[Dict[str, Any]],
     ) -> AllocationPlanResponse:
@@ -231,16 +239,9 @@ class AllocationOptimizer:
             if not target_ipo:
                 break
 
-            lot_size = target_ipo.get("lot_size", 1)
-            price_max = target_ipo.get("price_band_max", 100)
-            lot_cost = lot_size * price_max if lot_size and price_max else target_ipo.get("min_investment", 15000)
-            min_inv = target_ipo.get("min_investment", 15000)
+            lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
             gmp_pct = target_ipo.get("gmp_percent", 20.0) or 20.0
-
-            shni_lots = max(14, int(200000 / lot_cost) + 1)
             shni_cost = shni_lots * lot_cost
-
-            bhni_lots = max(68, int(1000000 / lot_cost) + 1)
             bhni_cost = bhni_lots * lot_cost
 
             if pref_cat == "bHNI" and avail >= bhni_cost:

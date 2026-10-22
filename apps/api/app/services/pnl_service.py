@@ -75,6 +75,17 @@ class PnlService:
             f"[PnL] Recorded: {allotment.ipo_symbol} — "
             f"{shares} shares @ ₹{exit_price} | Net P&L ₹{net_pnl} ({roi}%)"
         )
+        try:
+            from app.routers.websocket import broadcast_event
+            await broadcast_event("SELL_EXECUTED", {
+                "allotment_id": allotment.id,
+                "ipo_symbol": allotment.ipo_symbol,
+                "exit_price": exit_price,
+                "net_pnl": net_pnl,
+                "roi_percent": roi,
+            })
+        except Exception:
+            pass
         return record
 
     @staticmethod

@@ -101,3 +101,22 @@ async def test_order_creation_duplicate_pan_rejection(db_session: AsyncSession):
     # Duplicate bid for same account & IPO fails under SEBI single PAN rule
     with pytest.raises(ValueError, match="An active application already exists"):
         await order_service.create_order(db_session, req)
+
+
+def test_optimizer_lot_cost_computation_edge_cases():
+    """Verify that AllocationOptimizer handles zero lot cost safely and computes accurate sHNI/bHNI counts."""
+    from app.services.optimizer_service import AllocationOptimizer
+
+    # 1. Zero/missing lot cost defaults safely without ZeroDivisionError
+    lot_cost, min_inv, shni_lots, bhni_lots = AllocationOptimizer._compute_lot_cost_and_lots({"lot_size": 0, "price_band_max": 0})
+    assert lot_cost == 15000.0
+    assert min_inv == 15000.0
+    assert shni_lots == 14  # int(200000 / 15000) + 1 = 14
+    assert bhni_lots == 67  # int(1000000 / 15000) + 1 = 67
+
+    # 2. Large SME IPO lot cost (₹1,20,000 per lot)
+    lot_cost_sme, _, shni_sme, bhni_sme = AllocationOptimizer._compute_lot_cost_and_lots({"min_investment": 120000.0, "lot_size": 1000, "price_band_max": 120.0})
+    assert lot_cost_sme == 120000.0
+    assert shni_sme == 2  # 2 lots * 120,000 = 240,000 (> 200,000, within 10L sHNI limit)
+    assert bhni_sme == 9  # 9 lots * 120,000 = 1,080,000 (> 10L bHNI limit)
+
