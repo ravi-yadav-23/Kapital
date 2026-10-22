@@ -71,26 +71,64 @@ const DEFAULT_TTL_MS = 60_000 // 60 seconds
 
 function getCached<T>(key: string, maxAgeMs = DEFAULT_TTL_MS): T | null {
   const entry = memoryCache.get(key)
-  if (!entry) return null
-  if (Date.now() - entry.timestamp > maxAgeMs) {
-    return null
+  if (entry && Date.now() - entry.timestamp <= maxAgeMs) {
+    return entry.data as T
   }
-  return entry.data as T
+  // Secondary persistent SWR cache across page reloads
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem(`kapitl_swr_${key}`)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Date.now() - parsed.timestamp <= maxAgeMs) {
+          memoryCache.set(key, parsed)
+          return parsed.data as T
+        }
+      }
+    } catch {}
+  }
+  return null
 }
 
 function setCached<T>(key: string, data: T) {
-  memoryCache.set(key, { data, timestamp: Date.now() })
+  const entry = { data, timestamp: Date.now() }
+  memoryCache.set(key, entry)
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem(`kapitl_swr_${key}`, JSON.stringify(entry))
+    } catch {}
+  }
 }
 
 function clearCache(keyPrefix?: string) {
   if (!keyPrefix) {
     memoryCache.clear()
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove = []
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i)
+          if (k && k.startsWith('kapitl_swr_')) keysToRemove.push(k)
+        }
+        keysToRemove.forEach((k) => sessionStorage.removeItem(k))
+      } catch {}
+    }
     return
   }
   for (const key of Array.from(memoryCache.keys())) {
     if (key.startsWith(keyPrefix)) {
       memoryCache.delete(key)
     }
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const keysToRemove = []
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i)
+        if (k && k.startsWith(`kapitl_swr_${keyPrefix}`)) keysToRemove.push(k)
+      }
+      keysToRemove.forEach((k) => sessionStorage.removeItem(k))
+    } catch {}
   }
 }
 
@@ -201,25 +239,26 @@ export const apiClient = {
     }
     const cacheKey = `ipos:${status || 'all'}`
     const cached = getCached<Ipo[]>(cacheKey)
-    if (cached) {
-      // Revalidate in background without blocking caller
-      authFetch(`${API_BASE_URL}/ipos${status && status !== 'all' ? `?status=${status}` : ''}`)
-        .then((res) => {
-          if (res.ok) {
-            return res.json().then((fresh) => setCached(cacheKey, fresh))
-          }
-        })
-        .catch(() => {})
+
+    const query = status && status !== 'all' ? `?status=${status}` : ''
+    const fetchPromise = authFetch(`${API_BASE_URL}/ipos${query}`)
+      .then(async (res) => {
+        if (res.ok) {
+          const fresh: Ipo[] = await res.json()
+          setCached(cacheKey, fresh)
+          return fresh
+        }
+        return cached || []
+      })
+      .catch(() => cached || [])
+
+    // SWR: return cached immediately if present, revalidate in background
+    if (cached && cached.length > 0) {
+      fetchPromise.catch(() => {})
       return cached
     }
 
-    const query = status && status !== 'all' ? `?status=${status}` : ''
-    const res = await authFetch(`${API_BASE_URL}/ipos${query}`)
-    const data = await handleResponse(res, MOCK_IPOS)
-    if (res.ok) {
-      setCached(cacheKey, data)
-    }
-    return data
+    return await fetchPromise
   },
 
   async getIpoById(id: string): Promise<Ipo | null> {
@@ -350,18 +389,38 @@ export const apiClient = {
     }
     const cacheKey = 'funds:summary'
     const cached = getCached<FundSummary>(cacheKey)
+
+    const fetchPromise = authFetch(`${API_BASE_URL}/funds/summary`)
+      .then(async (res) => {
+        if (res.ok) {
+          const fresh: FundSummary = await res.json()
+          setCached(cacheKey, fresh)
+          return fresh
+        }
+        return cached || {
+          total_family_balance: 0,
+          total_available: 0,
+          total_locked_asba: 0,
+          utilization_percent: 0,
+          accounts_active: 0,
+          accounts_total: 0,
+        }
+      })
+      .catch(() => cached || {
+        total_family_balance: 0,
+        total_available: 0,
+        total_locked_asba: 0,
+        utilization_percent: 0,
+        accounts_active: 0,
+        accounts_total: 0,
+      })
+
     if (cached) {
-      authFetch(`${API_BASE_URL}/funds/summary`)
-        .then((res) => handleResponse(res, cached))
-        .then((fresh) => setCached(cacheKey, fresh))
-        .catch(() => {})
+      fetchPromise.catch(() => {})
       return cached
     }
-    const res = await authFetch(`${API_BASE_URL}/funds/summary`)
-    const data = await handleResponse(res, MOCK_FUND_SUMMARY)
-    const result = data && data.total_family_balance > 0 ? data : MOCK_FUND_SUMMARY
-    setCached(cacheKey, result)
-    return result
+
+    return await fetchPromise
   },
 
   async getAllocationPlan(forceRefresh = false): Promise<AllocationPlan> {
@@ -420,8 +479,11 @@ export const apiClient = {
       return MOCK_ASBA_LOCKS
     }
     const res = await authFetch(`${API_BASE_URL}/funds/locks`)
-    const data = await handleResponse(res, MOCK_ASBA_LOCKS)
-    return (data && data.length > 0) ? data : MOCK_ASBA_LOCKS
+    if (res.ok) {
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    }
+    return []
   },
 
   // ── Allotments ────────────────────────────────────────────────────────────
@@ -584,7 +646,11 @@ export const apiClient = {
       return MOCK_REPORTS
     }
     const res = await authFetch(`${API_BASE_URL}/reports`)
-    return handleResponse(res, MOCK_REPORTS)
+    if (res.ok) {
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    }
+    return []
   },
 
   async getReportById(id: string): Promise<AiReport | null> {

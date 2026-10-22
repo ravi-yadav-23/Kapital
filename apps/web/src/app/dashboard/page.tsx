@@ -111,9 +111,7 @@ export default function DashboardPage() {
 
       setIpos(iposData)
 
-      // If user is a Guest or if balance is 0 and empty, seed plausible demo data for recruiter inspection
-      const guestOrEmpty = isGuest || (!fundsData?.total_family_balance && !accountsData?.length)
-      if (guestOrEmpty) {
+      if (isGuest) {
         setFundSummary(DEMO_FUND_SUMMARY)
         setPnlSummary(DEMO_PNL_SUMMARY)
         setAccounts(DEMO_ACCOUNTS)
@@ -124,9 +122,11 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err)
-      setFundSummary(DEMO_FUND_SUMMARY)
-      setPnlSummary(DEMO_PNL_SUMMARY)
-      setAccounts(DEMO_ACCOUNTS)
+      if (isGuest) {
+        setFundSummary(DEMO_FUND_SUMMARY)
+        setPnlSummary(DEMO_PNL_SUMMARY)
+        setAccounts(DEMO_ACCOUNTS)
+      }
     } finally {
       setLoading(false)
     }

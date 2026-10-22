@@ -19,7 +19,7 @@ async def list_ipos(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch active, closing today, upcoming, and closed IPO issues with AI scores & subscription rates from PostgreSQL."""
-    response.headers["Cache-Control"] = "public, max-age=60"
+    response.headers["Cache-Control"] = "public, max-age=30, s-maxage=60, stale-while-revalidate=600"
     return await ipo_service.get_all_ipos(
         db=db,
         status=status,
@@ -29,8 +29,9 @@ async def list_ipos(
     )
 
 @router.get("/{ipo_id}", response_model=IpoResponse)
-async def get_ipo_details(ipo_id: str, db: AsyncSession = Depends(get_db)):
+async def get_ipo_details(ipo_id: str, response: Response, db: AsyncSession = Depends(get_db)):
     """Get full details of a specific IPO issue by ID or slug."""
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=120, stale-while-revalidate=600"
     ipo = await ipo_service.get_ipo_by_id(db, ipo_id)
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO issue not found")
