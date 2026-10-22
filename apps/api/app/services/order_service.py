@@ -60,6 +60,8 @@ class OrderService:
         # Fetch account from DB
         acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == data.account_id))
         acc = acc_res.scalar_one_or_none()
+        if not acc:
+            raise ValueError(f"Demat account with ID '{data.account_id}' not found.")
 
         # Fetch IPO from DB
         ipo_res = await db.execute(select(Ipo).where(Ipo.id == data.ipo_id))
@@ -75,11 +77,34 @@ class OrderService:
                 f"between {ipo.issue_open_date} and {ipo.issue_close_date}."
             )
 
-        acc_name = acc.name if acc else "Family Member"
-        ipo_name = ipo.name
         lot_sz = ipo.lot_size or 1
         shares = data.lots * lot_sz
         amount = shares * data.bid_price
+
+        # Check duplicate active applications under same account/PAN
+        dup_stmt = select(IpoOrder).where(
+            (IpoOrder.account_id == data.account_id)
+            & (IpoOrder.ipo_id == data.ipo_id)
+            & (IpoOrder.status.in_(["PENDING", "SUBMITTED", "CONFIRMED", "APPLIED", "ALLOTTED"]))
+        )
+        dup_res = await db.execute(dup_stmt)
+        existing_bid = dup_res.scalar_one_or_none()
+        if existing_bid:
+            raise ValueError(
+                f"An active application already exists for '{acc.name}' in '{ipo.name}' (Status: {existing_bid.status}). "
+                "SEBI rules prohibit multiple applications under the same PAN."
+            )
+
+        # Validate sufficient liquid balance
+        avail = acc.available_liquid_balance or 0.0
+        if avail < amount:
+            raise ValueError(
+                f"Insufficient liquid balance in account '{acc.name}'. "
+                f"Available: ₹{avail:,.2f}, Required for {data.lots} lot(s): ₹{amount:,.2f}."
+            )
+
+        acc_name = acc.name
+        ipo_name = ipo.name
 
         # Record manual IPO application intent & reserve ASBA capital
         order_obj = IpoOrder(
@@ -102,12 +127,10 @@ class OrderService:
         )
         db.add(order_obj)
 
-        if acc:
-            acc.total_bids_placed = (acc.total_bids_placed or 0) + 1
-            # Lock the ASBA balance
-            acc.locked_asba_balance = (acc.locked_asba_balance or 0.0) + amount
-            if acc.available_liquid_balance:
-                acc.available_liquid_balance = max(0.0, acc.available_liquid_balance - amount)
+        acc.total_bids_placed = (acc.total_bids_placed or 0) + 1
+        # Lock the ASBA balance
+        acc.locked_asba_balance = (acc.locked_asba_balance or 0.0) + amount
+        acc.available_liquid_balance = max(0.0, avail - amount)
 
         # Create persistent ASBA lock record for timeline tracking
         rel_dt = None
@@ -134,6 +157,9 @@ class OrderService:
 
         await db.commit()
         await db.refresh(order_obj)
+
+        from app.services.account_service import _invalidate_accounts_cache
+        _invalidate_accounts_cache()
 
         try:
             await broadcast_event("ORDER_PLACED", {
@@ -206,6 +232,9 @@ class OrderService:
         order_obj.mandate_status = "REVOKED"
         await db.commit()
 
+        from app.services.account_service import _invalidate_accounts_cache
+        _invalidate_accounts_cache()
+
         try:
             await broadcast_event("ORDER_CANCELLED", {
                 "order_id": order_id,
@@ -246,6 +275,10 @@ class OrderService:
 
         await db.delete(order_obj)
         await db.commit()
+
+        from app.services.account_service import _invalidate_accounts_cache
+        _invalidate_accounts_cache()
+
         return {"success": True, "deleted_order_id": order_id}
 
     @staticmethod
@@ -284,6 +317,8 @@ class OrderService:
             order_obj.status = "NOT_ALLOTTED"
             order_obj.mandate_status = "UNBLOCKED"
             await db.commit()
+            from app.services.account_service import _invalidate_accounts_cache
+            _invalidate_accounts_cache()
             return {"success": True, "status": "NOT_ALLOTTED", "message": "ASBA lock released back to liquid balance."}
 
         elif result.upper() == "ALLOTTED":
@@ -319,6 +354,8 @@ class OrderService:
                 acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
 
             await db.commit()
+            from app.services.account_service import _invalidate_accounts_cache
+            _invalidate_accounts_cache()
             try:
                 await broadcast_event("ALLOTMENT_RESULT", {
                     "order_id": order_id,
