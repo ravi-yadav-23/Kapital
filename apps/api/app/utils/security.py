@@ -10,7 +10,9 @@ logger = logging.getLogger("security")
 # Derive consistent 32-byte Fernet key from secret_key
 _secret = (settings.secret_key or "").strip()
 if not _secret or len(_secret) < 16:
-    _secret = "kapitl_production_secret_key_9350_super_secure_2026"
+    raise ValueError(
+        "Invalid SECRET_KEY: A secure key of at least 16 characters must be configured in settings."
+    )
 _raw_hash = hashlib.sha256(_secret.encode()).digest()
 _FERNET_KEY = base64.urlsafe_b64encode(_raw_hash)
 _cipher = Fernet(_FERNET_KEY)

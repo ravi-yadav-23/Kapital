@@ -42,12 +42,15 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_secret_key(self):
         val = (self.secret_key or "").strip()
-        if not val or val == _INSECURE_DEFAULT_KEY:
-            self.secret_key = "kapitl_production_secret_key_9350_super_secure_2026"
-        elif len(val) < 32:
-            self.secret_key = (val + "-" + _INSECURE_DEFAULT_KEY)[:32]
-        else:
-            self.secret_key = val
+        if self.environment == "production":
+            if not val or val == _INSECURE_DEFAULT_KEY:
+                raise ValueError(
+                    "In production, SECRET_KEY must be set to a strong, private secret (cannot be empty or default)."
+                )
+            if len(val) < 32:
+                raise ValueError("In production, SECRET_KEY must be at least 32 characters.")
+        elif not val:
+            self.secret_key = _INSECURE_DEFAULT_KEY
         return self
 
     # Database
