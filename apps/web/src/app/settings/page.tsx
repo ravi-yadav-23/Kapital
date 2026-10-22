@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const [emailAlerts, setEmailAlerts] = useState(false)
   const [isRefreshingAuth, setIsRefreshingAuth] = useState(false)
   const [savedToast, setSavedToast] = useState(false)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
   const [testAlertSent, setTestAlertSent] = useState(false)
   const [accountsCount, setAccountsCount] = useState<number>(1)
 
@@ -82,9 +83,11 @@ export default function SettingsPage() {
         },
       })
       setSavedToast(true)
-      setTimeout(() => setSavedToast(false), 2000)
-    } catch (err) {
+      setTimeout(() => setSavedToast(false), 2500)
+    } catch (err: any) {
       console.error('Failed to save preferences:', err)
+      setErrorToast(err.message || 'Failed to persist preferences to database.')
+      setTimeout(() => setErrorToast(null), 4000)
     }
   }
 
@@ -94,10 +97,14 @@ export default function SettingsPage() {
       await apiClient.syncAllAccounts()
       const accs = await apiClient.getAccounts()
       if (accs) setAccountsCount(accs.length)
+      setSavedToast(true)
+      setTimeout(() => setSavedToast(false), 2500)
+    } catch (err: any) {
+      console.error('Failed to sync accounts:', err)
+      setErrorToast(err.message || 'Failed to authenticate Angel One demat accounts.')
+      setTimeout(() => setErrorToast(null), 4000)
     } finally {
       setIsRefreshingAuth(false)
-      setSavedToast(true)
-      setTimeout(() => setSavedToast(false), 2000)
     }
   }
 
@@ -120,12 +127,20 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          {savedToast && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-green/15 text-accent-green border border-accent-green/30 text-xs font-semibold animate-fade-in">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Preferences Saved!</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {savedToast && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-green/15 text-accent-green border border-accent-green/30 text-xs font-semibold animate-fade-in">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Preferences Saved!</span>
+              </div>
+            )}
+            {errorToast && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-red/15 text-accent-red border border-accent-red/30 text-xs font-semibold animate-fade-in">
+                <Lock className="w-4 h-4" />
+                <span>{errorToast}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-2 gap-6">

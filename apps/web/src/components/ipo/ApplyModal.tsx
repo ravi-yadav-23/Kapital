@@ -16,7 +16,7 @@ interface ApplyModalProps {
 
 export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) {
   const [category, setCategory] = useState<AccountCategory>('RETAIL')
-  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([accounts[0]?.id || ''])
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
   const [lots, setLots] = useState<number>(1)
   const [upiVpa, setUpiVpa] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -25,13 +25,25 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
 
   useEffect(() => {
     if (isOpen) {
-      apiClient.getSettings().then((st: any) => {
-        if (st?.default_upi_vpa) {
-          setUpiVpa(st.default_upi_vpa)
-        }
-      }).catch(() => {})
+      const active = accounts.filter((a) => a.is_active !== false)
+      if (active.length > 0) {
+        setSelectedAccountIds([active[0].id])
+      } else if (accounts.length > 0) {
+        setSelectedAccountIds([accounts[0].id])
+      } else {
+        setSelectedAccountIds([])
+      }
+
+      apiClient
+        .getSettings()
+        .then((st: any) => {
+          if (st?.default_upi_vpa) {
+            setUpiVpa(st.default_upi_vpa)
+          }
+        })
+        .catch(() => {})
     }
-  }, [isOpen])
+  }, [isOpen, accounts])
 
   if (!isOpen) return null
 
@@ -44,6 +56,12 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
   const sharesPerApplication = lots * lotSize
   const amountPerAccount = sharesPerApplication * cutoffPrice
   const totalAmount = amountPerAccount * selectedAccountIds.length
+
+  const isRetailOver = category === 'RETAIL' && amountPerAccount > 200000
+  const isShniUnder = category === 'SHNI' && amountPerAccount <= 200000
+  const isShniOver = category === 'SHNI' && amountPerAccount > 1000000
+  const isBhniUnder = category === 'BHNI' && amountPerAccount <= 1000000
+  const hasCategoryViolation = isRetailOver || isShniUnder || isShniOver || isBhniUnder
 
   const handleCategoryChange = (cat: AccountCategory) => {
     setCategory(cat)
@@ -73,28 +91,99 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
     }
 
     const finalUpi = upiVpa.trim()
-    if (!finalUpi) {
-      setErrorMessage('Please provide a UPI VPA (e.g. mobile@upi or username@bank) for the ASBA mandate.')
+    if (!finalUpi || !finalUpi.includes('@') || finalUpi.startsWith('@') || finalUpi.endsWith('@')) {
+      setErrorMessage('Please provide a valid UPI VPA handle (e.g. mobile@upi or username@bank) for the ASBA mandate.')
+      return
+    }
+
+    const validAccountIds = selectedAccountIds.filter(Boolean)
+    if (validAccountIds.length === 0) {
+      setErrorMessage('Please select at least one family demat account to apply.')
+      return
+    }
+
+    // Category check
+    if (isRetailOver) {
+      setErrorMessage(`Retail application amount (${formatINR(amountPerAccount)}) exceeds the SEBI ceiling of ₹2,00,000. Please reduce lots or switch to sHNI.`)
+      return
+    }
+    if (isShniUnder || isShniOver) {
+      setErrorMessage(`sHNI application amount (${formatINR(amountPerAccount)}) must be between ₹2,00,001 and ₹10,00,000.`)
+      return
+    }
+    if (isBhniUnder) {
+      setErrorMessage(`bHNI application amount (${formatINR(amountPerAccount)}) must exceed ₹10,00,000.`)
+      return
+    }
+
+    // Liquid balance check
+    const insufficient = accounts.filter(
+      (a) => validAccountIds.includes(a.id) && (a.available_balance || 0) < amountPerAccount
+    )
+    if (insufficient.length > 0) {
+      setErrorMessage(
+        `Insufficient liquid balance in: ${insufficient
+          .map((a) => `${a.name} (Avail: ${formatINR(a.available_balance || 0)})`)
+          .join(', ')}. Required: ${formatINR(amountPerAccount)} per account.`
+      )
       return
     }
 
     setIsSubmitting(true)
     setErrorMessage(null)
 
+    const succeeded: string[] = []
+    const failed: { name: string; reason: string }[] = []
+
     try {
-      for (const accountId of selectedAccountIds) {
-        await apiClient.applyOrder({
-          account_id: accountId,
-          ipo_id: ipo.id,
-          category: category,
-          lots: lots,
-          bid_price: cutoffPrice,
-          upi_vpa: finalUpi,
-        })
+      for (const accountId of validAccountIds) {
+        const acc = accounts.find((a) => a.id === accountId)
+        const accName = acc?.name || accountId
+        try {
+          await apiClient.applyOrder({
+            account_id: accountId,
+            ipo_id: ipo.id,
+            category: category,
+            lots: lots,
+            bid_price: cutoffPrice,
+            upi_vpa: finalUpi,
+          })
+          succeeded.push(accName)
+        } catch (err: any) {
+          failed.push({
+            name: accName,
+            reason: err.message || 'Failed to stage order',
+          })
+        }
       }
-      setIsSuccess(true)
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to place order via Angel One SmartAPI')
+
+      if (failed.length === 0) {
+        setIsSuccess(true)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('ipo:event', {
+              detail: { type: 'ORDER_PLACED', payload: { ipo_name: ipo.name, count: succeeded.length } },
+            })
+          )
+        }
+      } else if (succeeded.length > 0) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('ipo:event', {
+              detail: { type: 'ORDER_PLACED', payload: { ipo_name: ipo.name, count: succeeded.length } },
+            })
+          )
+        }
+        setErrorMessage(
+          `Partially succeeded for: ${succeeded.join(', ')}. Failed for: ${failed
+            .map((f) => `${f.name} (${f.reason})`)
+            .join('; ')}`
+        )
+      } else {
+        setErrorMessage(
+          failed.map((f) => `${f.name}: ${f.reason}`).join(' | ') || 'Failed to place orders.'
+        )
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -267,20 +356,24 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                 {accounts.map((acc) => {
                   const isSelected = selectedAccountIds.includes(acc.id)
                   const hasSufficient = acc.available_balance >= amountPerAccount
+                  const isActive = acc.is_active !== false
 
                   return (
                     <label
                       key={acc.id}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all ${
-                        isSelected
-                          ? 'bg-surface-elevated border-brand-from/50 text-text-primary'
-                          : 'bg-surface-elevated/30 border-border-subtle text-text-secondary hover:bg-surface-elevated/60'
+                      className={`flex items-center justify-between p-2.5 rounded-lg border transition-all ${
+                        !isActive
+                          ? 'opacity-50 cursor-not-allowed bg-surface-elevated/20 border-border-subtle'
+                          : isSelected
+                          ? 'bg-surface-elevated border-brand-from/50 text-text-primary cursor-pointer'
+                          : 'bg-surface-elevated/30 border-border-subtle text-text-secondary hover:bg-surface-elevated/60 cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
                         <input
                           type="checkbox"
                           checked={isSelected}
+                          disabled={!isActive}
                           onChange={() => toggleAccount(acc.id)}
                           className="w-4 h-4 rounded border-border-strong text-brand-from focus:ring-0"
                         />
@@ -290,6 +383,11 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                             <span className="text-[10px] text-text-muted font-normal">
                               ({acc.relation})
                             </span>
+                            {!isActive && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-surface-elevated text-text-muted border border-border-subtle">
+                                Inactive
+                              </span>
+                            )}
                           </div>
                           <div className="text-[10px] font-mono text-text-muted">
                             {acc.angel_client_id}
@@ -350,6 +448,19 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                 </div>
               </div>
 
+              {/* SEBI Category Guideline Banner */}
+              {hasCategoryViolation && (
+                <div className="p-2 rounded bg-accent-amber/10 border border-accent-amber/30 text-2xs text-accent-amber flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    {isRetailOver && `Exceeds SEBI Retail limit (₹2,00,000). Max ${Math.floor(200000 / (lotSize * cutoffPrice))} lots.`}
+                    {isShniUnder && `sHNI requires > ₹2,00,000. Min ${Math.ceil(200001 / (lotSize * cutoffPrice))} lots.`}
+                    {isShniOver && `sHNI cannot exceed ₹10,00,000. Switch to bHNI.`}
+                    {isBhniUnder && `bHNI requires > ₹10,00,000. Min ${Math.ceil(1000001 / (lotSize * cutoffPrice))} lots.`}
+                  </span>
+                </div>
+              )}
+
               {/* Total Calculation breakdown */}
               <div className="pt-2 border-t border-border-subtle flex justify-between items-center text-xs">
                 <span className="text-text-muted">
@@ -390,9 +501,9 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
               <button
                 type="button"
                 onClick={handleApply}
-                disabled={selectedAccountIds.length === 0 || isSubmitting || !isBiddingOpen}
+                disabled={selectedAccountIds.length === 0 || isSubmitting || !isBiddingOpen || hasCategoryViolation}
                 className={`btn flex-1 justify-center gap-2 ${
-                  !isBiddingOpen
+                  !isBiddingOpen || hasCategoryViolation
                     ? 'btn-ghost opacity-60 cursor-not-allowed text-text-muted'
                     : 'btn-primary'
                 }`}

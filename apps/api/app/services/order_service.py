@@ -81,6 +81,22 @@ class OrderService:
         shares = data.lots * lot_sz
         amount = shares * data.bid_price
 
+        # Validate SEBI category threshold
+        cat_upper = (data.category or "RETAIL").upper()
+        if cat_upper == "RETAIL" and amount > 200_000.0:
+            raise ValueError(
+                f"Retail application amount (₹{amount:,.2f}) exceeds SEBI Retail ceiling of ₹2,00,000. "
+                f"Please reduce lots or switch to sHNI (₹2L - ₹10L)."
+            )
+        elif cat_upper == "SHNI" and (amount <= 200_000.0 or amount > 1_000_000.0):
+            raise ValueError(
+                f"sHNI (Small HNI) application amount (₹{amount:,.2f}) must be between ₹2,00,001 and ₹10,00,000."
+            )
+        elif cat_upper == "BHNI" and amount <= 1_000_000.0:
+            raise ValueError(
+                f"bHNI (Big HNI) application amount (₹{amount:,.2f}) must exceed ₹10,00,000."
+            )
+
         # Check duplicate active applications under same account/PAN
         dup_stmt = select(IpoOrder).where(
             (IpoOrder.account_id == data.account_id)

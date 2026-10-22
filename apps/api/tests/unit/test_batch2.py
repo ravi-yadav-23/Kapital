@@ -120,3 +120,72 @@ def test_optimizer_lot_cost_computation_edge_cases():
     assert shni_sme == 2  # 2 lots * 120,000 = 240,000 (> 200,000, within 10L sHNI limit)
     assert bhni_sme == 9  # 9 lots * 120,000 = 1,080,000 (> 10L bHNI limit)
 
+
+@pytest.mark.asyncio
+async def test_order_creation_sebi_category_limits(db_session: AsyncSession):
+    """Test that SEBI category bounds (Retail <= 2L, sHNI 2L-10L, bHNI > 10L) are enforced."""
+    acc = FamilyAccount(
+        id="acc-cat-test-1",
+        name="Category Tester",
+        relation="Self",
+        angel_client_id="R991122",
+        total_demat_balance=2000000.0,
+        available_liquid_balance=2000000.0,
+        locked_asba_balance=0.0,
+        is_active=True,
+    )
+    ipo = Ipo(
+        id="ipo-cat-test-1",
+        symbol="CATTEST",
+        name="Category Test Ltd",
+        slug="cattest",
+        type="EQ",
+        status="open",
+        price_band_min=100.0,
+        price_band_max=100.0,
+        lot_size=100,
+        min_investment=10000.0,
+        issue_open_date=date.today(),
+        issue_close_date=date.today() + timedelta(days=2),
+    )
+    db_session.add(acc)
+    db_session.add(ipo)
+    await db_session.commit()
+
+    # 1. Retail exceeding ₹2,00,000 (21 lots * 100 * 100 = ₹2,10,000)
+    req_retail_over = OrderCreate(
+        account_id="acc-cat-test-1",
+        ipo_id="ipo-cat-test-1",
+        category="RETAIL",
+        lots=21,
+        bid_price=100.0,
+        upi_vpa="tester@upi",
+    )
+    with pytest.raises(ValueError, match="exceeds SEBI Retail ceiling of ₹2,00,000"):
+        await order_service.create_order(db_session, req_retail_over)
+
+    # 2. sHNI under ₹2,00,000 (10 lots * 100 * 100 = ₹1,00,000)
+    req_shni_under = OrderCreate(
+        account_id="acc-cat-test-1",
+        ipo_id="ipo-cat-test-1",
+        category="SHNI",
+        lots=10,
+        bid_price=100.0,
+        upi_vpa="tester@upi",
+    )
+    with pytest.raises(ValueError, match="must be between ₹2,00,001 and ₹10,00,000"):
+        await order_service.create_order(db_session, req_shni_under)
+
+    # 3. bHNI under ₹10,00,000 (50 lots * 100 * 100 = ₹5,00,000)
+    req_bhni_under = OrderCreate(
+        account_id="acc-cat-test-1",
+        ipo_id="ipo-cat-test-1",
+        category="BHNI",
+        lots=50,
+        bid_price=100.0,
+        upi_vpa="tester@upi",
+    )
+    with pytest.raises(ValueError, match="must exceed ₹10,00,000"):
+        await order_service.create_order(db_session, req_bhni_under)
+
+

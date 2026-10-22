@@ -186,7 +186,9 @@ export default function IpoDetailPage() {
                   Business Overview & Operations
                 </h3>
               </div>
-              <p className="text-xs text-text-secondary leading-relaxed">{ipo.about}</p>
+              <p className="text-xs text-text-secondary leading-relaxed">
+                {ipo.about || 'Detailed business operations and DRHP draft prospectus information pending synchronisation.'}
+              </p>
             </div>
 
             {/* Key Strengths & Risks */}
@@ -197,9 +199,12 @@ export default function IpoDetailPage() {
                   <span>Key Strengths & Growth Drivers</span>
                 </div>
                 <ul className="space-y-2 text-2xs text-text-secondary list-disc list-inside">
-                  {ipo.strengths.map((s, i) => (
+                  {(ipo.strengths || []).map((s, i) => (
                     <li key={i} className="leading-snug">{s}</li>
                   ))}
+                  {(!ipo.strengths || ipo.strengths.length === 0) && (
+                    <li className="list-none text-text-muted italic">No key strengths documented in prospectus.</li>
+                  )}
                 </ul>
               </div>
 
@@ -209,9 +214,12 @@ export default function IpoDetailPage() {
                   <span>Risk Factors & Constraints</span>
                 </div>
                 <ul className="space-y-2 text-2xs text-text-secondary list-disc list-inside">
-                  {ipo.risks.map((r, i) => (
+                  {(ipo.risks || []).map((r, i) => (
                     <li key={i} className="leading-snug">{r}</li>
                   ))}
+                  {(!ipo.risks || ipo.risks.length === 0) && (
+                    <li className="list-none text-text-muted italic">No specific risk factors flagged.</li>
+                  )}
                 </ul>
               </div>
             </div>

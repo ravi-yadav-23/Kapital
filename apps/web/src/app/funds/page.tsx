@@ -60,6 +60,8 @@ export default function FundsPage() {
   })
 
 
+  const [errorToast, setErrorToast] = useState<string | null>(null)
+
   const handleAddAccount = async (newAcc: Partial<FamilyAccount>) => {
     try {
       const created = await apiClient.createAccount({
@@ -79,25 +81,10 @@ export default function FundsPage() {
       setFundSummary(funds)
       setPlan(p)
       setLocks(lcks || [])
-    } catch {
-      const accWithId: FamilyAccount = {
-        id: `acc-${Date.now()}`,
-        name: newAcc.name || 'New Member',
-        relation: newAcc.relation || 'Self',
-        angel_client_id: newAcc.angel_client_id || 'ANGEL_NEW',
-        is_active: true,
-        total_balance: newAcc.total_balance || 0,
-        available_balance: newAcc.available_balance || 0,
-        locked_balance: 0,
-        preferred_category: newAcc.preferred_category || 'RETAIL',
-        max_single_ipo_pct: newAcc.max_single_ipo_pct || 80,
-        total_applied_ipos: 0,
-        total_allotments: 0,
-        allotment_rate: 0,
-        total_realized_pnl: 0,
-        created_at: new Date().toISOString(),
-      }
-      setAccounts((prev) => [...prev, accWithId])
+    } catch (err: any) {
+      console.error('Failed to register account:', err)
+      setErrorToast(err.message || 'Failed to create demat account.')
+      setTimeout(() => setErrorToast(null), 5000)
     }
   }
 
@@ -131,13 +118,20 @@ export default function FundsPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setIsAddOpen(true)}
-            className="btn btn-primary btn-sm gap-1.5 shadow-md shadow-brand-from/20"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Demat Account</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {errorToast && (
+              <div className="px-3 py-1.5 rounded-lg bg-accent-red/15 text-accent-red border border-accent-red/30 text-xs font-semibold animate-fade-in">
+                {errorToast}
+              </div>
+            )}
+            <button
+              onClick={() => setIsAddOpen(true)}
+              className="btn btn-primary btn-sm gap-1.5 shadow-md shadow-brand-from/20"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Demat Account</span>
+            </button>
+          </div>
         </div>
 
         {/* ── 1. Stats Row ─────────────────────────────────────────────────── */}
