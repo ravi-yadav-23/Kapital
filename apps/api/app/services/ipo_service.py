@@ -10,8 +10,6 @@ from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 from app.utils.text_utils import clean_text, clean_text_list
 import re
 
-# In-memory cache synced from DB for fast read access by optimizer
-MOCK_IPOS_STORE: List[Dict[str, Any]] = []
 
 
 def normalize_entity_name(name: str) -> str:
@@ -84,10 +82,6 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
     )
 
 
-def _model_to_dict(ipo: Ipo) -> Dict[str, Any]:
-    res = _model_to_response(ipo)
-    data = res.model_dump()
-    return data
 
 
 class IpoService:
@@ -131,9 +125,6 @@ class IpoService:
                 result = await db.execute(stmt)
                 ipos = result.scalars().all()
 
-        # Keep in-memory cache refreshed for optimizer
-        MOCK_IPOS_STORE.clear()
-        MOCK_IPOS_STORE.extend(_model_to_dict(i) for i in ipos)
 
         return [_model_to_response(i) for i in ipos]
 

@@ -7,9 +7,6 @@ from app.models.allotment import Allotment, AsbaLock
 from app.schemas.allotment import AllotmentResponse, StageSellRequest, AsbaLockResponse
 from app.services.angel_service import angel_service
 
-MOCK_ALLOTMENTS_STORE: List[Dict[str, Any]] = []
-MOCK_ASBA_LOCKS: List[Dict[str, Any]] = []
-
 
 def _format_date(d: Optional[date]) -> Optional[str]:
     return d.isoformat() if d else None
