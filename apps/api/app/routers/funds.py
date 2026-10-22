@@ -171,7 +171,7 @@ async def run_pulp_optimization(
     db_accounts = await account_service.get_all_accounts(db)
     db_ipos = await ipo_service.get_all_ipos(db)
 
-    is_guest = user and user.get("is_guest")
+    is_guest = not user or user.get("is_guest")
     if is_guest or not db_accounts:
         accounts_data = [
             {"id": "demo-1", "name": "Ramesh Yadav", "relation": "Self", "angel_client_id": "DEMO_01", "available_liquid_balance": 300000.0, "preferred_category": "SHNI", "is_active": True},
