@@ -36,6 +36,27 @@ async def sync_expired_asba_locks(db: AsyncSession) -> int:
         except Exception as e:
             logger.error(f"Failed to release expired lock {lock.id}: {e}")
 
-    await db.commit()
+    if released_count > 0:
+        await db.commit()
+        from app.services.account_service import _invalidate_accounts_cache
+        _invalidate_accounts_cache()
+        try:
+            from app.routers.websocket import broadcast_event
+            await broadcast_event("ASBA_LOCKS_SWEPT", {"released_count": released_count})
+        except Exception:
+            pass
+    else:
+        await db.commit()
+
     logger.info(f"Expired ASBA lock sweep complete. Released {released_count} locks.")
     return released_count
+
+
+async def clean_expired_asba_locks() -> int:
+    """
+    Self-managed DB session wrapper for the Celery worker task asba_sweep_celery.
+    """
+    from app.db.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        return await sync_expired_asba_locks(db)
+

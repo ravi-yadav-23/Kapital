@@ -127,14 +127,14 @@ class AllotmentService:
         If shares are credited in demat, marks order as ALLOTTED and stages holdings for listing day.
         If listing date has passed by > 1 day and no shares credited, automatically marks NOT_ALLOTTED and releases ASBA locked funds.
         """
-        from app.models.order import Order
+        from app.models.order import IpoOrder
         from app.models.ipo import Ipo
         from app.models.account import FamilyAccount
         from app.services.order_service import order_service
         from datetime import date, timedelta
 
         today = date.today()
-        stmt = select(Order).where(Order.status.in_(["SUBMITTED", "CONFIRMED", "APPLIED"]))
+        stmt = select(IpoOrder).where(IpoOrder.status.in_(["SUBMITTED", "CONFIRMED", "APPLIED"]))
         res = await db.execute(stmt)
         orders = res.scalars().all()
 

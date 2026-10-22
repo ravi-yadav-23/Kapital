@@ -240,14 +240,18 @@ class AngelOneSmartApiService:
                     return {
                         "net": net_balance,
                         "availablecash": available_cash,
+                        "available_cash": available_cash,
                         "collateral": float(rms_data.get("collateral", 0.0)),
                     }
                 else:
                     logger.warning(f"[{client_id}] RMS limit fetch returned: {data.get('message')}")
-                    return {"net": 0.0, "availablecash": 0.0}
+                    return {"net": 0.0, "availablecash": 0.0, "available_cash": 0.0}
         except Exception as e:
             logger.error(f"[{client_id}] Failed to fetch RMS limits: {e}")
-            return {"net": 0.0, "availablecash": 0.0}
+            return {"net": 0.0, "availablecash": 0.0, "available_cash": 0.0}
+
+    # Backward-compatible alias
+    get_rms_funds = get_rms_limits
 
     async def get_all_holdings(self, client_id: str, api_key: Optional[str] = None) -> List[Dict[str, Any]]:
         """

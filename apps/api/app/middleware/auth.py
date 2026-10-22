@@ -33,7 +33,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def _get_secret_key() -> str:
     key = (settings.secret_key or "").strip()
     if not key or len(key) < 16:
-        return "kapitl_production_secret_key_9350_super_secure_2026"
+        raise ValueError(
+            "Invalid SECRET_KEY: A secure key of at least 16 characters must be configured in settings."
+        )
     return key
 
 

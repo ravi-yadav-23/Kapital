@@ -238,9 +238,9 @@ class AccountService:
         try:
             from app.utils.security import decrypt_credential
             real_key = decrypt_credential(acc.angel_api_key)
-            rms = await angel_service.get_rms_funds(client_id=client_id, api_key=real_key)
-            net = rms.get("net", 0.0)
-            avail = rms.get("available_cash", 0.0) or rms.get("available_margin", 0.0)
+            rms = await angel_service.get_rms_limits(client_id=client_id, api_key=real_key)
+            net = float(rms.get("net", 0.0))
+            avail = float(rms.get("availablecash") or rms.get("available_cash") or rms.get("available_margin") or 0.0)
 
             acc.total_demat_balance = net
             acc.available_liquid_balance = avail
@@ -252,7 +252,7 @@ class AccountService:
 
             return _model_to_response(acc)
         except Exception as e:
-            # If RMS fails, keep current DB balances
+            logger.error(f"[{client_id}] RMS balance sync failed: {e}")
             return _model_to_response(acc)
 
 
