@@ -424,7 +424,7 @@ export const apiClient = {
   },
 
   async getAllocationPlan(forceRefresh = false): Promise<AllocationPlan> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return MOCK_ALLOCATION_PLAN
     }
     const CACHE_KEY = 'kapitl_alloc_plan'
@@ -435,9 +435,13 @@ export const apiClient = {
         const cached = sessionStorage.getItem(CACHE_KEY)
         if (cached) {
           const { data, timestamp } = JSON.parse(cached)
-          if (Date.now() - timestamp < CACHE_TTL) {
+          const hasStaleIpo = data?.entries?.some((e: any) =>
+            e.ipo_name?.toLowerCase().includes('zetwerk')
+          )
+          if (!hasStaleIpo && Date.now() - timestamp < CACHE_TTL) {
             return data
           }
+          sessionStorage.removeItem(CACHE_KEY)
         }
       } catch {
         // Ignore cache parsing errors
@@ -447,7 +451,7 @@ export const apiClient = {
     const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
       method: 'POST',
     })
-    const data = await handleResponse<any>(res, null)
+    const data = await handleResponse<any>(res, isGuestSession() ? MOCK_ALLOCATION_PLAN : null)
     const result: AllocationPlan = {
       plan_id: data?.plan_id || `plan-${Date.now()}`,
       generated_at: data?.generated_at || new Date().toISOString(),
@@ -463,7 +467,7 @@ export const apiClient = {
         : [],
     }
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && result.entries.length > 0) {
       try {
         sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: result, timestamp: Date.now() }))
       } catch {

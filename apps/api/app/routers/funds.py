@@ -165,24 +165,35 @@ async def sync_all_accounts_balance(
 @router.post("/optimize", response_model=AllocationPlanResponse)
 async def run_pulp_optimization(
     db: AsyncSession = Depends(get_db),
-    admin: dict = Depends(require_admin),
+    user: Optional[dict] = Depends(get_current_user_optional),
 ):
     """Execute PuLP MILP solver to compute optimal capital distribution using real accounts and active IPOs."""
     db_accounts = await account_service.get_all_accounts(db)
     db_ipos = await ipo_service.get_all_ipos(db)
 
-    accounts_data = [
-        {
-            "id": a.id,
-            "name": a.name,
-            "relation": a.relation,
-            "angel_client_id": a.angel_client_id,
-            "available_liquid_balance": a.available_balance,
-            "preferred_category": a.preferred_category or "RETAIL",
-            "is_active": a.is_active,
-        }
-        for a in db_accounts
-    ]
+    is_guest = user and user.get("is_guest")
+    if is_guest or not db_accounts:
+        accounts_data = [
+            {"id": "demo-1", "name": "Ramesh Yadav", "relation": "Self", "angel_client_id": "DEMO_01", "available_liquid_balance": 300000.0, "preferred_category": "SHNI", "is_active": True},
+            {"id": "demo-2", "name": "Sunita Yadav", "relation": "Spouse", "angel_client_id": "DEMO_02", "available_liquid_balance": 150000.0, "preferred_category": "RETAIL", "is_active": True},
+            {"id": "demo-3", "name": "Vikram Yadav", "relation": "Brother", "angel_client_id": "DEMO_03", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
+            {"id": "demo-4", "name": "Kavita Yadav", "relation": "Sister", "angel_client_id": "DEMO_04", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
+            {"id": "demo-5", "name": "Om Prakash Yadav", "relation": "Father", "angel_client_id": "DEMO_05", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
+            {"id": "demo-6", "name": "Shanti Devi", "relation": "Mother", "angel_client_id": "DEMO_06", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
+        ]
+    else:
+        accounts_data = [
+            {
+                "id": a.id,
+                "name": a.name,
+                "relation": a.relation,
+                "angel_client_id": a.angel_client_id,
+                "available_liquid_balance": a.available_balance,
+                "preferred_category": a.preferred_category or "RETAIL",
+                "is_active": a.is_active,
+            }
+            for a in db_accounts
+        ]
 
     ipos_data = [
         {
@@ -191,6 +202,7 @@ async def run_pulp_optimization(
             "symbol": ipo.symbol,
             "status": ipo.status,
             "issue_type": getattr(ipo, "type", "EQ"),
+            "issue_close_date": str(ipo.issue_close_date) if ipo.issue_close_date else None,
             "lot_size": ipo.lot_size or 1,
             "price_band_min": ipo.price_band_min or 100.0,
             "price_band_max": ipo.price_band_max or 100.0,

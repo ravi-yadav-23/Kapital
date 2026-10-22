@@ -22,8 +22,22 @@ class AllocationOptimizer:
         ipos: List[Dict[str, Any]],
         max_exposure_pct: float = 80.0,
     ) -> AllocationPlanResponse:
-        # Prioritize currently open or closing_today issues, fallback to upcoming issues
-        open_ipos = [ipo for ipo in ipos if ipo.get("status") in ["open", "closing_today"]]
+        today = datetime.now(timezone.utc).date()
+        def _is_active_open(ipo: Dict[str, Any]) -> bool:
+            if ipo.get("status") not in ["open", "closing_today"]:
+                return False
+            close_d = ipo.get("issue_close_date")
+            if close_d:
+                if isinstance(close_d, str):
+                    try:
+                        close_d = datetime.strptime(close_d[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        pass
+                if hasattr(close_d, "year") and close_d < today:
+                    return False
+            return True
+
+        open_ipos = [ipo for ipo in ipos if _is_active_open(ipo)]
         active_ipos = open_ipos if open_ipos else [ipo for ipo in ipos if ipo.get("status") == "upcoming"]
 
         # Filter active accounts with sufficient balance for at least 1 retail lot
@@ -129,7 +143,7 @@ class AllocationOptimizer:
         for acc in active_accounts:
             a_id = acc["id"]
             available = acc.get("available_liquid_balance", 0)
-            pref_cat = acc.get("preferred_category", "RETAIL")
+            pref_cat = (acc.get("preferred_category", "RETAIL") or "RETAIL").upper()
             account_expenditures = []
 
             for ipo in active_ipos:
@@ -141,13 +155,13 @@ class AllocationOptimizer:
                 account_expenditures.append(min_inv * decision_vars[(a_id, i_id, "RETAIL")])
 
                 # sHNI allowance
-                if pref_cat in ["sHNI", "bHNI"] and available >= shni_capital:
+                if pref_cat in ["SHNI", "BHNI"] and available >= shni_capital:
                     account_expenditures.append(shni_capital * decision_vars[(a_id, i_id, "sHNI")])
                 else:
                     prob += decision_vars[(a_id, i_id, "sHNI")] == 0
 
                 # bHNI allowance (> ₹10L required)
-                if pref_cat == "bHNI" and available >= bhni_capital:
+                if pref_cat == "BHNI" and available >= bhni_capital:
                     account_expenditures.append(bhni_capital * decision_vars[(a_id, i_id, "bHNI")])
                 else:
                     prob += decision_vars[(a_id, i_id, "bHNI")] == 0
@@ -231,67 +245,72 @@ class AllocationOptimizer:
         active_accounts: List[Dict[str, Any]],
         active_ipos: List[Dict[str, Any]],
     ) -> AllocationPlanResponse:
-        sorted_ipos = sorted(active_ipos, key=lambda i: (i.get("score") or 0, i.get("gmp_percent") or 0), reverse=True)
+        sorted_ipos = sorted(
+            active_ipos,
+            key=lambda i: ((i.get("gmp_percent") or 0.0) * ((i.get("score") or 50.0) / 100.0), i.get("gmp_percent") or 0.0),
+            reverse=True,
+        )
         entries = []
         total_deployed = 0.0
 
         for acc in active_accounts:
             avail = acc.get("available_liquid_balance", 0)
-            pref_cat = acc.get("preferred_category", "RETAIL")
-            target_ipo = sorted_ipos[0] if sorted_ipos else None
-            if not target_ipo:
-                break
+            pref_cat = (acc.get("preferred_category", "RETAIL") or "RETAIL").upper()
 
-            lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
-            gmp_pct = target_ipo.get("gmp_percent", 20.0) or 20.0
-            shni_cost = shni_lots * lot_cost
-            bhni_cost = bhni_lots * lot_cost
+            for target_ipo in sorted_ipos:
+                lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
+                gmp_pct = target_ipo.get("gmp_percent", 20.0) or 20.0
+                shni_cost = shni_lots * lot_cost
+                bhni_cost = bhni_lots * lot_cost
 
-            if pref_cat == "bHNI" and avail >= bhni_cost:
-                entries.append(
-                    AllocationEntrySchema(
-                        account_id=acc["id"],
-                        account_name=acc["name"],
-                        ipo_id=target_ipo["id"],
-                        ipo_name=target_ipo["name"],
-                        category="bHNI",
-                        lots=bhni_lots,
-                        amount=bhni_cost,
-                        expected_return_pct=gmp_pct,
-                        reason=f"bHNI high-conviction deployment (+{gmp_pct}% GMP)",
+                if pref_cat == "BHNI" and avail >= bhni_cost:
+                    entries.append(
+                        AllocationEntrySchema(
+                            account_id=acc["id"],
+                            account_name=acc["name"],
+                            ipo_id=target_ipo["id"],
+                            ipo_name=target_ipo["name"],
+                            category="bHNI",
+                            lots=bhni_lots,
+                            amount=bhni_cost,
+                            expected_return_pct=gmp_pct,
+                            reason=f"bHNI high-conviction deployment (+{gmp_pct}% GMP)",
+                        )
                     )
-                )
-                total_deployed += bhni_cost
-            elif pref_cat in ["sHNI", "bHNI"] and avail >= shni_cost:
-                entries.append(
-                    AllocationEntrySchema(
-                        account_id=acc["id"],
-                        account_name=acc["name"],
-                        ipo_id=target_ipo["id"],
-                        ipo_name=target_ipo["name"],
-                        category="sHNI",
-                        lots=shni_lots,
-                        amount=shni_cost,
-                        expected_return_pct=gmp_pct,
-                        reason=f"sHNI allocation edge (+{gmp_pct}% GMP)",
+                    total_deployed += bhni_cost
+                    avail -= bhni_cost
+                elif pref_cat in ["SHNI", "BHNI"] and avail >= shni_cost:
+                    entries.append(
+                        AllocationEntrySchema(
+                            account_id=acc["id"],
+                            account_name=acc["name"],
+                            ipo_id=target_ipo["id"],
+                            ipo_name=target_ipo["name"],
+                            category="sHNI",
+                            lots=shni_lots,
+                            amount=shni_cost,
+                            expected_return_pct=gmp_pct,
+                            reason=f"sHNI allocation edge (+{gmp_pct}% GMP)",
+                        )
                     )
-                )
-                total_deployed += shni_cost
-            elif avail >= min_inv:
-                entries.append(
-                    AllocationEntrySchema(
-                        account_id=acc["id"],
-                        account_name=acc["name"],
-                        ipo_id=target_ipo["id"],
-                        ipo_name=target_ipo["name"],
-                        category="RETAIL",
-                        lots=1,
-                        amount=min_inv,
-                        expected_return_pct=gmp_pct,
-                        reason=f"Retail lottery odds maximization (+{gmp_pct}% GMP)",
+                    total_deployed += shni_cost
+                    avail -= shni_cost
+                elif avail >= min_inv:
+                    entries.append(
+                        AllocationEntrySchema(
+                            account_id=acc["id"],
+                            account_name=acc["name"],
+                            ipo_id=target_ipo["id"],
+                            ipo_name=target_ipo["name"],
+                            category="RETAIL",
+                            lots=1,
+                            amount=min_inv,
+                            expected_return_pct=gmp_pct,
+                            reason=f"Retail lottery odds maximization (+{gmp_pct}% GMP)",
+                        )
                     )
-                )
-                total_deployed += min_inv
+                    total_deployed += min_inv
+                    avail -= min_inv
 
         entries.sort(key=lambda e: e.amount, reverse=True)
         return AllocationPlanResponse(
