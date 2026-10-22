@@ -179,6 +179,7 @@ class AllocationOptimizer:
                             lots=bhni_lots,
                             amount=amount,
                             expected_return_pct=gmp_pct,
+                            reason=f"bHNI high-conviction deployment (+{gmp_pct}% GMP)",
                         )
                     )
                 elif pulp.value(decision_vars[(a_id, i_id, "sHNI")]) == 1:
@@ -194,6 +195,7 @@ class AllocationOptimizer:
                             lots=shni_lots,
                             amount=amount,
                             expected_return_pct=gmp_pct,
+                            reason=f"sHNI allocation edge (+{gmp_pct}% GMP)",
                         )
                     )
                 elif pulp.value(decision_vars[(a_id, i_id, "RETAIL")]) == 1:
@@ -209,6 +211,7 @@ class AllocationOptimizer:
                             lots=1,
                             amount=amount,
                             expected_return_pct=gmp_pct,
+                            reason=f"Retail lottery odds maximization (+{gmp_pct}% GMP)",
                         )
                     )
 
@@ -255,6 +258,7 @@ class AllocationOptimizer:
                         lots=bhni_lots,
                         amount=bhni_cost,
                         expected_return_pct=gmp_pct,
+                        reason=f"bHNI high-conviction deployment (+{gmp_pct}% GMP)",
                     )
                 )
                 total_deployed += bhni_cost
@@ -269,6 +273,7 @@ class AllocationOptimizer:
                         lots=shni_lots,
                         amount=shni_cost,
                         expected_return_pct=gmp_pct,
+                        reason=f"sHNI allocation edge (+{gmp_pct}% GMP)",
                     )
                 )
                 total_deployed += shni_cost
@@ -283,6 +288,7 @@ class AllocationOptimizer:
                         lots=1,
                         amount=min_inv,
                         expected_return_pct=gmp_pct,
+                        reason=f"Retail lottery odds maximization (+{gmp_pct}% GMP)",
                     )
                 )
                 total_deployed += min_inv

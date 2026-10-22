@@ -20,6 +20,8 @@ export default function FundsPage() {
   const [locks, setLocks] = useState<any[]>([])
   const [loading, setLoading] = useState(() => !apiClient.getCachedFundSummary() && (apiClient.getCachedAccounts()?.length ?? 0) === 0)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<FamilyAccount | null>(null)
+  const [isRefreshingPlan, setIsRefreshingPlan] = useState(false)
 
   const loadData = useCallback(() => {
     Promise.all([
@@ -59,31 +61,64 @@ export default function FundsPage() {
     loadData()
   })
 
-
   const [errorToast, setErrorToast] = useState<string | null>(null)
 
-  const handleAddAccount = async (newAcc: Partial<FamilyAccount>) => {
+  const handleRefreshPlan = async () => {
+    setIsRefreshingPlan(true)
     try {
-      const created = await apiClient.createAccount({
-        name: newAcc.name || 'New Member',
-        relation: newAcc.relation || 'Self',
-        angel_client_id: newAcc.angel_client_id || `ANGEL_${Date.now().toString().slice(-5)}`,
-        total_balance: newAcc.total_balance || 0,
-        available_balance: newAcc.available_balance || 0,
-        preferred_category: newAcc.preferred_category || 'RETAIL',
-      })
-      setAccounts((prev) => [...prev, created])
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('kapitl_alloc_plan')
+      }
+      const freshPlan = await apiClient.getAllocationPlan(true)
+      setPlan(freshPlan)
+    } catch (err: any) {
+      console.error('Failed to re-calculate allocation plan:', err)
+      setErrorToast('Failed to optimize allocation plan.')
+      setTimeout(() => setErrorToast(null), 5000)
+    } finally {
+      setIsRefreshingPlan(false)
+    }
+  }
+
+  const handleSaveAccount = async (newAcc: Partial<FamilyAccount>) => {
+    try {
+      if (editingAccount) {
+        const updated = await apiClient.updateAccount(editingAccount.id, {
+          name: newAcc.name,
+          relation: newAcc.relation,
+          available_balance: newAcc.available_balance,
+          preferred_category: newAcc.preferred_category,
+          is_active: newAcc.is_active,
+        })
+        setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
+      } else {
+        const created = await apiClient.createAccount({
+          name: newAcc.name || 'New Member',
+          relation: newAcc.relation || 'Self',
+          angel_client_id: newAcc.angel_client_id || `ANGEL_${Date.now().toString().slice(-5)}`,
+          total_balance: newAcc.total_balance || 0,
+          available_balance: newAcc.available_balance || 0,
+          preferred_category: newAcc.preferred_category || 'RETAIL',
+        })
+        setAccounts((prev) => [...prev, created])
+      }
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('kapitl_alloc_plan')
+      }
       const [funds, p, lcks] = await Promise.all([
         apiClient.getFundSummary(),
-        apiClient.getAllocationPlan(),
+        apiClient.getAllocationPlan(true),
         apiClient.getAsbaLocks(),
       ])
       setFundSummary(funds)
       setPlan(p)
       setLocks(lcks || [])
+      setIsAddOpen(false)
+      setEditingAccount(null)
     } catch (err: any) {
-      console.error('Failed to register account:', err)
-      setErrorToast(err.message || 'Failed to create demat account.')
+      console.error('Failed to save demat account:', err)
+      setErrorToast(err.message || 'Failed to save demat account.')
       setTimeout(() => setErrorToast(null), 5000)
     }
   }
@@ -125,7 +160,10 @@ export default function FundsPage() {
               </div>
             )}
             <button
-              onClick={() => setIsAddOpen(true)}
+              onClick={() => {
+                setEditingAccount(null)
+                setIsAddOpen(true)
+              }}
               className="btn btn-primary btn-sm gap-1.5 shadow-md shadow-brand-from/20"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -159,19 +197,35 @@ export default function FundsPage() {
         </div>
 
         {/* ── 2. Accounts Table ────────────────────────────────────────────── */}
-        <AccountsTable accounts={accounts} />
+        <AccountsTable
+          accounts={accounts}
+          onEditAccount={(acc) => {
+            setEditingAccount(acc)
+            setIsAddOpen(true)
+          }}
+        />
 
         {/* ── 3. ASBA Fund Lock Timeline ───────────────────────────────────── */}
         <FundLockTimeline locks={locks} />
 
         {/* ── 4. PuLP Mathematical Allocation Solver Plan ──────────────────── */}
-        {plan && <AllocationTable plan={plan} />}
+        {plan && (
+          <AllocationTable
+            plan={plan}
+            onRefreshPlan={handleRefreshPlan}
+            isRefreshing={isRefreshingPlan}
+          />
+        )}
 
-        {/* Add Account Modal */}
+        {/* Add / Edit Account Modal */}
         <AddAccountModal
           isOpen={isAddOpen}
-          onClose={() => setIsAddOpen(false)}
-          onAddAccount={handleAddAccount}
+          initialAccount={editingAccount}
+          onClose={() => {
+            setIsAddOpen(false)
+            setEditingAccount(null)
+          }}
+          onAddAccount={handleSaveAccount}
         />
       </div>
     </DashboardLayout>

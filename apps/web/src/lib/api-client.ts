@@ -324,6 +324,20 @@ export const apiClient = {
     return result
   },
 
+  async updateAccount(accountId: string, data: any): Promise<FamilyAccount> {
+    const res = await authFetch(`${API_BASE_URL}/funds/accounts/${accountId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    const updated = await handleMutationResponse<FamilyAccount>(res)
+    clearCache('funds')
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('kapitl_alloc_plan')
+    }
+    return updated
+  },
+
   // ── Funds & Allocation ────────────────────────────────────────────────────
   async getFundSummary(): Promise<FundSummary> {
     if (USE_MOCK_DATA || isGuestSession()) {
@@ -350,7 +364,7 @@ export const apiClient = {
       return MOCK_ALLOCATION_PLAN
     }
     const CACHE_KEY = 'kapitl_alloc_plan'
-    const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+    const CACHE_TTL = 3 * 60 * 1000 // 3 minutes
 
     if (!forceRefresh && typeof window !== 'undefined') {
       try {
@@ -369,12 +383,20 @@ export const apiClient = {
     const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
       method: 'POST',
     })
-    const data = await handleResponse(res, MOCK_ALLOCATION_PLAN)
-    const result = {
-      ...data,
-      entries: (data.entries && data.entries.length > 0) ? data.entries : MOCK_ALLOCATION_PLAN.entries,
-      skipped_ipos: data.skipped_ipos || [],
-      warnings: data.warnings || [],
+    const data = await handleResponse<any>(res, null)
+    const result: AllocationPlan = {
+      plan_id: data?.plan_id || `plan-${Date.now()}`,
+      generated_at: data?.generated_at || new Date().toISOString(),
+      total_capital_deployed: data?.total_capital_deployed || 0,
+      entries: Array.isArray(data?.entries) ? data.entries : [],
+      skipped_ipos: Array.isArray(data?.skipped_ipos) ? data.skipped_ipos : [],
+      warnings: Array.isArray(data?.warnings)
+        ? data.warnings
+        : data?.status === 'INSUFFICIENT_FUNDS'
+        ? ['Family Demat accounts have insufficient liquid balance for active IPOs. Update balances or deposit funds to allocate.']
+        : data?.status === 'NO_ACTIVE_ISSUES'
+        ? ['No active IPO bidding windows open today. Capital preserved liquid for upcoming issues.']
+        : [],
     }
 
     if (typeof window !== 'undefined') {

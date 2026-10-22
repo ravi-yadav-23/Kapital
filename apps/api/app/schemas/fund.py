@@ -25,6 +25,7 @@ class AllocationEntrySchema(BaseModel):
     lots: int
     amount: float
     expected_return_pct: float
+    reason: Optional[str] = None
 
 class SkippedIpoSchema(BaseModel):
     ipo_id: str

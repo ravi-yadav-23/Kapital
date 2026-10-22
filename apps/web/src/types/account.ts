@@ -73,6 +73,8 @@ export interface AllocationEntry {
 }
 
 export interface AllocationPlan {
+  plan_id?:     string
+  status?:      string
   generated_at: string
   total_capital_deployed: number
   entries:      AllocationEntry[]

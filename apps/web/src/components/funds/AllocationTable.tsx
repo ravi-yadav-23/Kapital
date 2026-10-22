@@ -4,13 +4,15 @@ import React, { useState } from 'react'
 import { AllocationPlan } from '@/types'
 import { AmountDisplay } from '../shared/AmountDisplay'
 import { formatINR } from '@/lib/formatters'
-import { Sparkles, CheckCircle2, AlertTriangle, Send, ShieldCheck, ArrowRight } from 'lucide-react'
+import { Sparkles, CheckCircle2, AlertTriangle, Send, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react'
 
 interface AllocationTableProps {
   plan?: Partial<AllocationPlan>
+  onRefreshPlan?: () => void
+  isRefreshing?: boolean
 }
 
-export function AllocationTable({ plan }: AllocationTableProps) {
+export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: AllocationTableProps) {
   const [isApplyingAll, setIsApplyingAll] = useState(false)
   const [appliedSuccess, setAppliedSuccess] = useState(false)
 
@@ -48,6 +50,18 @@ export function AllocationTable({ plan }: AllocationTableProps) {
             <span className="text-2xs text-text-muted block uppercase font-mono">Total Deployable</span>
             <AmountDisplay amount={totalCapital} className="text-sm font-bold text-accent-green" />
           </div>
+
+          {onRefreshPlan && (
+            <button
+              onClick={onRefreshPlan}
+              disabled={isRefreshing}
+              className="btn btn-secondary btn-sm gap-1.5"
+              title="Re-run mathematical solver with current demat balances and live IPO pipeline"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isRefreshing ? 'Optimizing...' : 'Re-Calculate'}</span>
+            </button>
+          )}
 
           <button
             onClick={handleApplyAll}
@@ -146,10 +160,24 @@ export function AllocationTable({ plan }: AllocationTableProps) {
           <div className="w-10 h-10 rounded-full bg-brand-from/10 border border-brand-from/20 flex items-center justify-center text-brand-from mb-1">
             <Sparkles className="w-5 h-5" />
           </div>
-          <p className="text-sm font-semibold text-text-primary">Ready for Family Capital Allocation</p>
-          <p className="text-xs text-text-muted max-w-md">
-            Once you link family demat accounts with available liquidity, the PuLP mathematical solver will automatically compute optimal lottery and bidding lot allocations.
+          <p className="text-sm font-semibold text-text-primary">
+            {warnings.length > 0 ? 'No Current Capital Allocations' : 'Ready for Family Capital Allocation'}
           </p>
+          <p className="text-xs text-text-muted max-w-md">
+            {warnings.length > 0
+              ? warnings[0]
+              : 'Once you link family demat accounts with available liquidity, the PuLP mathematical solver will automatically compute optimal lottery and bidding lot allocations.'}
+          </p>
+          {onRefreshPlan && (
+            <button
+              onClick={onRefreshPlan}
+              disabled={isRefreshing}
+              className="btn btn-secondary btn-xs gap-1.5 mt-2"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>{isRefreshing ? 'Optimizing...' : 'Re-Calculate Solver Plan'}</span>
+            </button>
+          )}
         </div>
       )}
 
