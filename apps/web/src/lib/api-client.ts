@@ -145,11 +145,26 @@ async function handleResponse<T>(res: Response, fallback: T): Promise<T> {
   if (res.ok) {
     return await res.json()
   }
+  // If the server returned an explicit error response (4xx/5xx), parse and throw the real error
+  if (res.status !== 503) {
+    const err = await res.json().catch(() => null)
+    if (err && (err.detail || err.message)) {
+      throw new Error(err.detail || err.message)
+    }
+  }
   if (fallback !== undefined && fallback !== null) {
     return fallback
   }
   const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
   throw new Error(err.detail || 'API request failed')
+}
+
+async function handleMutationResponse<T>(res: Response): Promise<T> {
+  if (res.ok) {
+    return await res.json()
+  }
+  const err = await res.json().catch(() => ({ detail: 'Operation failed' }))
+  throw new Error(err.detail || err.message || 'API request failed')
 }
 
 
@@ -248,13 +263,13 @@ export const apiClient = {
     if (cached) {
       authFetch(`${API_BASE_URL}/funds/accounts`)
         .then((res) => handleResponse(res, cached))
-        .then((fresh) => setCached(cacheKey, fresh))
+        .then((fresh) => { if (fresh) setCached(cacheKey, fresh) })
         .catch(() => {})
       return cached
     }
     const res = await authFetch(`${API_BASE_URL}/funds/accounts`)
-    const data = await handleResponse(res, localMockAccounts)
-    const result = data && data.length > 0 ? data : localMockAccounts
+    const data = await handleResponse(res, [] as FamilyAccount[])
+    const result = Array.isArray(data) ? data : []
     setCached(cacheKey, result)
     return result
   },
@@ -286,21 +301,27 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return handleResponse(res, data)
+    const created = await handleMutationResponse<FamilyAccount>(res)
+    clearCache('funds')
+    return created
   },
 
   async syncAccountBalance(accountId: string): Promise<FamilyAccount> {
     const res = await authFetch(`${API_BASE_URL}/funds/accounts/${accountId}/sync`, {
       method: 'POST',
     })
-    return handleResponse(res, null as any)
+    const updated = await handleMutationResponse<FamilyAccount>(res)
+    clearCache('funds')
+    return updated
   },
 
   async syncAllAccounts(): Promise<any> {
     const res = await authFetch(`${API_BASE_URL}/funds/accounts/sync-all`, {
       method: 'POST',
     })
-    return handleResponse(res, { success: true })
+    const result = await handleMutationResponse<any>(res)
+    clearCache('funds')
+    return result
   },
 
   // ── Funds & Allocation ────────────────────────────────────────────────────
@@ -386,13 +407,13 @@ export const apiClient = {
     if (cached) {
       authFetch(`${API_BASE_URL}/allotments`)
         .then((res) => handleResponse(res, cached))
-        .then((fresh) => setCached(cacheKey, fresh))
+        .then((fresh) => { if (fresh) setCached(cacheKey, fresh) })
         .catch(() => {})
       return cached
     }
     const res = await authFetch(`${API_BASE_URL}/allotments`)
-    const data = await handleResponse(res, MOCK_ALLOTMENTS)
-    const result = data && data.length > 0 ? data : MOCK_ALLOTMENTS
+    const data = await handleResponse(res, [] as Allotment[])
+    const result = Array.isArray(data) ? data : []
     setCached(cacheKey, result)
     return result
   },
@@ -403,7 +424,9 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ limit_price: limitPrice, trigger_time: '09:00:00' }),
     })
-    return handleResponse(res, { success: true })
+    const result = await handleMutationResponse<any>(res)
+    clearCache('allotments')
+    return result
   },
 
   // ── P&L ───────────────────────────────────────────────────────────────────
@@ -416,15 +439,26 @@ export const apiClient = {
     if (cached) {
       authFetch(`${API_BASE_URL}/funds/pnl-summary`)
         .then((res) => handleResponse(res, cached))
-        .then((fresh) => setCached(cacheKey, fresh))
+        .then((fresh) => { if (fresh) setCached(cacheKey, fresh) })
         .catch(() => {})
       return cached
     }
     const res = await authFetch(`${API_BASE_URL}/funds/pnl-summary`)
-    const data = await handleResponse(res, MOCK_PNL_SUMMARY)
-    const result = data && data.total_invested > 0 ? data : MOCK_PNL_SUMMARY
-    setCached(cacheKey, result)
-    return result
+    const emptyPnl: PnlSummary = {
+      total_invested: 0,
+      total_realized_pnl: 0,
+      total_unrealized_pnl: 0,
+      total_pnl: 0,
+      overall_roi_percent: 0,
+      total_applied_ipos: 0,
+      total_allotments: 0,
+      allotment_rate_percent: 0,
+      total_sold: 0,
+      total_holding: 0,
+    }
+    const data = await handleResponse(res, emptyPnl)
+    setCached(cacheKey, data)
+    return data
   },
 
   // ── Orders ────────────────────────────────────────────────────────────────
@@ -437,13 +471,13 @@ export const apiClient = {
     if (cached) {
       authFetch(`${API_BASE_URL}/orders`)
         .then((res) => handleResponse(res, cached))
-        .then((fresh) => setCached(cacheKey, fresh))
+        .then((fresh) => { if (fresh) setCached(cacheKey, fresh) })
         .catch(() => {})
       return cached
     }
     const res = await authFetch(`${API_BASE_URL}/orders`)
-    const data = await handleResponse(res, localMockOrders)
-    const result = data && data.length > 0 ? data : localMockOrders
+    const data = await handleResponse(res, [] as IpoOrder[])
+    const result = Array.isArray(data) ? data : []
     setCached(cacheKey, result)
     return result
   },
@@ -471,35 +505,50 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return handleResponse(res, data)
+    const order = await handleMutationResponse<IpoOrder>(res)
+    clearCache('orders')
+    clearCache('funds')
+    return order
   },
 
   async cancelOrder(orderId: string): Promise<IpoOrder> {
     const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/cancel`, {
       method: 'POST',
     })
-    return handleResponse(res, null as any)
+    const order = await handleMutationResponse<IpoOrder>(res)
+    clearCache('orders')
+    clearCache('funds')
+    return order
   },
 
   async deleteOrder(orderId: string): Promise<{ success: boolean }> {
     const res = await authFetch(`${API_BASE_URL}/orders/${orderId}`, {
       method: 'DELETE',
     })
-    return handleResponse(res, { success: true })
+    const result = await handleMutationResponse<{ success: boolean }>(res)
+    clearCache('orders')
+    clearCache('funds')
+    return result
   },
 
   async markOrderApplied(orderId: string): Promise<IpoOrder> {
     const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/mark-applied`, {
       method: 'POST',
     })
-    return handleResponse(res, null as any)
+    const order = await handleMutationResponse<IpoOrder>(res)
+    clearCache('orders')
+    return order
   },
 
   async setOrderAllotmentResult(orderId: string, result: 'ALLOTTED' | 'NOT_ALLOTTED'): Promise<any> {
     const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/allotment?result=${result}`, {
       method: 'POST',
     })
-    return handleResponse(res, { success: true })
+    const resData = await handleMutationResponse<any>(res)
+    clearCache('orders')
+    clearCache('allotments')
+    clearCache('funds')
+    return resData
   },
 
   // ── AI Reports ────────────────────────────────────────────────────────────

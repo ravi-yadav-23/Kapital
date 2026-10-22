@@ -144,7 +144,17 @@ export default function DashboardPage() {
     loadDashboardData()
   }, [loadDashboardData])
 
-  useWebSocketEvent(['IPOS_SYNCED', 'ORDER_PLACED', 'ORDER_FILLED', 'ALLOTMENT_DETECTED', 'SELL_EXECUTED'], () => {
+  useWebSocketEvent([
+    'IPOS_SYNCED',
+    'ORDER_PLACED',
+    'ORDER_CANCELLED',
+    'ORDER_FILLED',
+    'ALLOTMENT_RESULT',
+    'ALLOTMENT_DETECTED',
+    'SELL_EXECUTED',
+    'LISTING_SELLS_DISPATCHED',
+    'ASBA_LOCKS_SWEPT',
+  ], () => {
     loadDashboardData()
   })
 

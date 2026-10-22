@@ -29,7 +29,7 @@ export default function AllotmentsPage() {
     refreshData()
   }, [refreshData])
 
-  useWebSocketEvent(['ALLOTMENT_DETECTED', 'SELL_EXECUTED'], () => {
+  useWebSocketEvent(['ALLOTMENT_RESULT', 'ALLOTMENT_DETECTED', 'SELL_EXECUTED', 'LISTING_SELLS_DISPATCHED'], () => {
     refreshData()
   })
 

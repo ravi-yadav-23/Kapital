@@ -105,7 +105,7 @@ export default function OrdersPage() {
     fetchOrders()
   }, [fetchOrders])
 
-  useWebSocketEvent(['ORDER_PLACED', 'ORDER_FILLED', 'ORDER_FAILED', 'ALLOTMENT_DETECTED'], () => {
+  useWebSocketEvent(['ORDER_PLACED', 'ORDER_CANCELLED', 'ORDER_FILLED', 'ORDER_FAILED', 'ALLOTMENT_RESULT', 'ALLOTMENT_DETECTED', 'ASBA_LOCKS_SWEPT'], () => {
     fetchOrders()
   })
 

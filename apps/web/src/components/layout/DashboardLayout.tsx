@@ -33,12 +33,16 @@ function LiveEventToast({ message, onDismiss }: { message: string; onDismiss: ()
 }
 
 const WS_EVENT_LABELS: Record<string, string> = {
+  ALLOTMENT_RESULT: '🎯 Allotment confirmed!',
   ALLOTMENT_DETECTED: '🎯 Allotment confirmed!',
   IPOS_SYNCED: '🔄 IPO data refreshed',
   ORDER_PLACED: '📝 Order placed',
+  ORDER_CANCELLED: '🚫 Order cancelled',
   ORDER_FILLED: '✅ Order filled',
   ORDER_FAILED: '❌ Order failed',
   SELL_EXECUTED: '💰 Pre-listing sell executed',
+  LISTING_SELLS_DISPATCHED: '💰 Pre-listing sells dispatched',
+  ASBA_LOCKS_SWEPT: '🧹 ASBA fund locks swept',
   HEARTBEAT: '',
 }
 
@@ -52,10 +56,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     // Invalidate client-side memory cache according to event category
     if (msg.type === 'IPOS_SYNCED') {
       apiClient.clearCache('ipos')
-    } else if (msg.type === 'ORDER_PLACED' || msg.type === 'ORDER_FILLED' || msg.type === 'ORDER_FAILED') {
+    } else if (
+      msg.type === 'ORDER_PLACED' ||
+      msg.type === 'ORDER_CANCELLED' ||
+      msg.type === 'ORDER_FILLED' ||
+      msg.type === 'ORDER_FAILED' ||
+      msg.type === 'ASBA_LOCKS_SWEPT'
+    ) {
       apiClient.clearCache('orders')
       apiClient.clearCache('funds')
-    } else if (msg.type === 'ALLOTMENT_DETECTED' || msg.type === 'SELL_EXECUTED') {
+    } else if (
+      msg.type === 'ALLOTMENT_RESULT' ||
+      msg.type === 'ALLOTMENT_DETECTED' ||
+      msg.type === 'SELL_EXECUTED' ||
+      msg.type === 'LISTING_SELLS_DISPATCHED'
+    ) {
       apiClient.clearCache('allotments')
       apiClient.clearCache('orders')
       apiClient.clearCache('funds')

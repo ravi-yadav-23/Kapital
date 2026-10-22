@@ -46,7 +46,16 @@ export default function FundsPage() {
     loadData()
   }, [loadData])
 
-  useWebSocketEvent(['ORDER_PLACED', 'ORDER_FILLED', 'ALLOTMENT_DETECTED', 'SELL_EXECUTED'], () => {
+  useWebSocketEvent([
+    'ORDER_PLACED',
+    'ORDER_CANCELLED',
+    'ORDER_FILLED',
+    'ALLOTMENT_RESULT',
+    'ALLOTMENT_DETECTED',
+    'SELL_EXECUTED',
+    'LISTING_SELLS_DISPATCHED',
+    'ASBA_LOCKS_SWEPT',
+  ], () => {
     loadData()
   })
 
