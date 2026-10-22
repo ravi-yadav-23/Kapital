@@ -37,6 +37,11 @@ export function SellModal({ allotment, isOpen, onClose }: SellModalProps) {
     try {
       await apiClient.stageSellOrder(allotment.id, limitPrice)
       setIsSuccess(true)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('ipo:event', { detail: { type: 'ALLOTMENT_RESULT' } })
+        )
+      }
     } catch (err: any) {
       alert(err?.message || 'Failed to stage listing sell order')
     } finally {
