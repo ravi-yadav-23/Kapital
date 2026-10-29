@@ -318,18 +318,27 @@ class AngelOneSmartApiService:
         shares: int,
         limit_price: float,
         api_key: Optional[str] = None,
+        exchange: str = "NSE",
     ) -> Dict[str, Any]:
         """
         Dispatches 09:00:00 AM IST pre-market limit sell order on listing day via SmartAPI placeOrder endpoint.
+        Supports NSE and BSE (for SME / BSE-exclusive issues) with automatic fallback.
         Endpoint: /rest/secure/angelbroking/order/v1/placeOrder
         """
-        token = await self.get_symbol_token(symbol, exchange="NSE")
+        actual_exchange = (exchange or "NSE").upper()
+        token = await self.get_symbol_token(symbol, exchange=actual_exchange)
         if not token:
-            logger.error(f"Cannot stage pre-market sell: symbol token for '{symbol}' not found in Angel One instrument master.")
+            alt_exchange = "BSE" if actual_exchange == "NSE" else "NSE"
+            token = await self.get_symbol_token(symbol, exchange=alt_exchange)
+            if token:
+                actual_exchange = alt_exchange
+
+        if not token:
+            logger.error(f"Cannot stage pre-market sell: symbol token for '{symbol}' not found on {actual_exchange} in Angel One instrument master.")
             return {
                 "success": False,
                 "status": "TOKEN_NOT_FOUND",
-                "message": f"Instrument token for '{symbol}' not found in Angel One master scrip file. Listing may not be active on NSE yet.",
+                "message": f"Instrument token for '{symbol}' not found in Angel One master scrip file. Listing may not be active yet.",
             }
 
         session = self.sessions.get(client_id)
@@ -376,12 +385,13 @@ class AngelOneSmartApiService:
         key = api_key or session.get("api_key") or ""
         headers = self._get_common_headers(api_key=key, jwt_token=jwt_token)
 
+        tradingsymbol = f"{symbol}-EQ" if actual_exchange == "NSE" else str(symbol)
         order_payload = {
             "variety": "NORMAL",
-            "tradingsymbol": f"{symbol}-EQ",
+            "tradingsymbol": tradingsymbol,
             "symboltoken": str(token),
             "transactiontype": "SELL",
-            "exchange": "NSE",
+            "exchange": actual_exchange,
             "ordertype": "LIMIT",
             "producttype": "DELIVERY",
             "duration": "DAY",

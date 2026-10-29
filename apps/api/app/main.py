@@ -76,6 +76,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[Lifespan Error] Database initialization failed: {e}")
 
+    if settings.environment == "production" and not settings.admin_totp_secret:
+        logger.warning(
+            "CRITICAL SECURITY NOTICE: In production, ADMIN_TOTP_SECRET should be configured in environment variables. "
+            "Without it, ephemeral filesystems (Vercel/container restarts) will lose generated TOTP secrets."
+        )
+
     if not is_serverless:
         try:
             await _seed_accounts_from_env()

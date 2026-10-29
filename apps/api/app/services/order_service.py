@@ -148,15 +148,27 @@ class OrderService:
         acc.locked_asba_balance = (acc.locked_asba_balance or 0.0) + amount
         acc.available_liquid_balance = max(0.0, avail - amount)
 
-        # Create persistent ASBA lock record for timeline tracking
+        # Create persistent ASBA lock record for timeline tracking (SEBI refund date / allotment + 2 days)
         rel_dt = None
-        if ipo and ipo.listing_date:
+        if ipo and ipo.refund_date:
             try:
-                rel_dt = datetime.strptime(str(ipo.listing_date)[:10], "%Y-%m-%d").date()
+                rel_dt = datetime.strptime(str(ipo.refund_date)[:10], "%Y-%m-%d").date()
+            except Exception:
+                pass
+        if not rel_dt and ipo and ipo.allotment_date:
+            try:
+                base_dt = datetime.strptime(str(ipo.allotment_date)[:10], "%Y-%m-%d").date()
+                rel_dt = base_dt + timedelta(days=2)
+            except Exception:
+                pass
+        if not rel_dt and ipo and ipo.listing_date:
+            try:
+                base_dt = datetime.strptime(str(ipo.listing_date)[:10], "%Y-%m-%d").date()
+                rel_dt = base_dt - timedelta(days=1)
             except Exception:
                 pass
         if not rel_dt:
-            rel_dt = date.today() + timedelta(days=4)
+            rel_dt = date.today() + timedelta(days=6)
 
         lock_obj = AsbaLock(
             id=f"lock-{str(uuid.uuid4())[:8]}",
@@ -230,7 +242,7 @@ class OrderService:
         # Release ASBA lock on account
         acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
         acc = acc_res.scalar_one_or_none()
-        if acc and order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED"]:
+        if acc and order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED", "APPLIED"]:
             acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
             acc.available_liquid_balance = (acc.available_liquid_balance or 0.0) + order_obj.amount
 
@@ -273,7 +285,7 @@ class OrderService:
             raise ValueError("Order not found")
 
         # Release ASBA lock on account if active
-        if order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED"]:
+        if order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED", "APPLIED"]:
             acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
             acc = acc_res.scalar_one_or_none()
             if acc:

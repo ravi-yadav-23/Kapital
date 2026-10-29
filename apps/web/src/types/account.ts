@@ -64,20 +64,39 @@ export interface AllocationEntry {
   account_name:  string
   ipo_id:        string
   ipo_name:      string
-  category:      AccountCategory
+  category:      AccountCategory | 'sHNI' | 'bHNI' | string
   lots:          number
   amount:        number
   expected_return_pct: number            // optimizer's expected ROI estimate
-  confidence:    'HIGH' | 'MEDIUM' | 'LOW'
-  reason?:       string                  // why this account was selected
+  confidence?:   'HIGH' | 'MEDIUM' | 'LOW'
+  reason?:       string                  // solver rationale with reservation note
+}
+
+/**
+ * An upcoming high-score IPO whose open date falls inside the ASBA lock window
+ * of a currently-active IPO bid — meaning your money could still be blocked.
+ */
+export interface UpcomingConflict {
+  upcoming_ipo_name: string
+  upcoming_score:    number
+  upcoming_gmp:      number
+  open_date:         string | null
+  conflicts: Array<{
+    blocking_ipo:       string   // the currently-open IPO locking your funds
+    asba_free_date:     string   // when ASBA funds are expected back
+    upcoming_open_date: string   // when the upcoming IPO opens for bidding
+  }>
 }
 
 export interface AllocationPlan {
   plan_id?:     string
   status?:      string
   generated_at: string
-  total_capital_deployed: number
-  entries:      AllocationEntry[]
-  skipped_ipos: Array<{ ipo_id: string; reason: string }>
-  warnings:     string[]
+  total_capital_deployed:   number
+  entries:                  AllocationEntry[]
+  skipped_ipos:             Array<{ ipo_id: string; reason: string }>
+  warnings:                 string[]
+  is_demo?:                 boolean
+  asba_lock_overlaps_detected?: number
+  upcoming_conflicts?:      UpcomingConflict[]
 }

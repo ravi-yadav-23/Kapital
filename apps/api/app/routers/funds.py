@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Response
+import asyncio
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.database import get_db
-from app.schemas.fund import FundSummaryResponse, PnlSummaryResponse, AllocationPlanResponse
+from app.schemas.fund import FundSummaryResponse, PnlSummaryResponse, AllocationPlanResponse, UpcomingConflictSchema
 from app.schemas.account import AccountResponse, AccountCreate, AccountUpdate
 from app.schemas.allotment import AsbaLockResponse
 from app.services.account_service import account_service
@@ -172,7 +173,8 @@ async def run_pulp_optimization(
     db_ipos = await ipo_service.get_all_ipos(db)
 
     is_guest = not user or user.get("is_guest")
-    if is_guest or not db_accounts:
+    using_demo = bool(is_guest or not db_accounts)
+    if using_demo:
         accounts_data = [
             {"id": "demo-1", "name": "Ramesh Yadav", "relation": "Self", "angel_client_id": "DEMO_01", "available_liquid_balance": 300000.0, "preferred_category": "SHNI", "is_active": True},
             {"id": "demo-2", "name": "Sunita Yadav", "relation": "Spouse", "angel_client_id": "DEMO_02", "available_liquid_balance": 150000.0, "preferred_category": "RETAIL", "is_active": True},
@@ -202,7 +204,12 @@ async def run_pulp_optimization(
             "symbol": ipo.symbol,
             "status": ipo.status,
             "issue_type": getattr(ipo, "type", "EQ"),
+            # All date fields needed for ASBA conflict detection
+            "issue_open_date": str(ipo.issue_open_date) if ipo.issue_open_date else None,
             "issue_close_date": str(ipo.issue_close_date) if ipo.issue_close_date else None,
+            "allotment_date": str(ipo.allotment_date) if ipo.allotment_date else None,
+            "refund_date": str(ipo.refund_date) if ipo.refund_date else None,
+            "listing_date": str(ipo.listing_date) if ipo.listing_date else None,
             "lot_size": ipo.lot_size or 1,
             "price_band_min": ipo.price_band_min or 100.0,
             "price_band_max": ipo.price_band_max or 100.0,
@@ -213,10 +220,17 @@ async def run_pulp_optimization(
         for ipo in db_ipos
     ]
 
-    plan = AllocationOptimizer.solve_allocation(
+    # Run solver in thread pool to avoid blocking FastAPI async event loop
+    plan = await asyncio.to_thread(
+        AllocationOptimizer.solve_allocation,
         accounts=accounts_data,
         ipos=ipos_data,
     )
+    if using_demo:
+        plan.is_demo = True
+        plan.warnings = [
+            "DEMO MODE: Showing sample allocation plan with demo family accounts. Add your real family accounts to see your personalized allocation."
+        ] + plan.warnings
     return plan
 
 

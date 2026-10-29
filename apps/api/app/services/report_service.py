@@ -116,19 +116,47 @@ class AiDueDiligenceService:
                     temperature=0.2,
                 )
                 text = response.choices[0].message.content
-                return json.loads(text)
+                s = text.strip()
+                if s.startswith("```"):
+                    parts = s.split("```")
+                    if len(parts) >= 2:
+                        s = parts[1]
+                        if s.startswith("json"):
+                            s = s[4:]
+                return json.loads(s.strip())
 
             elif provider == "gemini":
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                model_obj = genai.GenerativeModel(
-                    model or "gemini-1.5-flash",
-                    generation_config={"response_mime_type": "application/json"},
-                )
-                response = await model_obj.generate_content_async(
-                    f"{system_instruction}\n\n{prompt}"
-                )
-                return json.loads(response.text)
+                raw_text = ""
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=api_key)
+                    model_obj = genai.GenerativeModel(
+                        model or "gemini-1.5-flash",
+                        generation_config={"response_mime_type": "application/json"},
+                    )
+                    response = await model_obj.generate_content_async(
+                        f"{system_instruction}\n\n{prompt}"
+                    )
+                    raw_text = response.text or ""
+                except (ImportError, AttributeError):
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=api_key)
+                    response = await client.aio.models.generate_content(
+                        model=model or "gemini-1.5-flash",
+                        contents=f"{system_instruction}\n\n{prompt}",
+                        config=types.GenerateContentConfig(response_mime_type="application/json"),
+                    )
+                    raw_text = response.text or ""
+
+                s = raw_text.strip()
+                if s.startswith("```"):
+                    parts = s.split("```")
+                    if len(parts) >= 2:
+                        s = parts[1]
+                        if s.startswith("json"):
+                            s = s[4:]
+                return json.loads(s.strip())
 
             elif provider == "anthropic":
                 import anthropic
@@ -139,7 +167,15 @@ class AiDueDiligenceService:
                     system=system_instruction,
                     messages=[{"role": "user", "content": prompt}],
                 )
-                return json.loads(response.content[0].text)
+                text = response.content[0].text
+                s = text.strip()
+                if s.startswith("```"):
+                    parts = s.split("```")
+                    if len(parts) >= 2:
+                        s = parts[1]
+                        if s.startswith("json"):
+                            s = s[4:]
+                return json.loads(s.strip())
 
         except Exception as e:
             logger.error(f"Error calling {provider} ({model}): {e}")

@@ -1,15 +1,72 @@
 'use client'
 
 import React, { useState } from 'react'
-import { AllocationPlan } from '@/types'
+import { AllocationPlan, UpcomingConflict } from '@/types'
 import { AmountDisplay } from '../shared/AmountDisplay'
-import { formatINR } from '@/lib/formatters'
-import { Sparkles, CheckCircle2, AlertTriangle, Send, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react'
+import {
+  Sparkles, CheckCircle2, AlertTriangle, Send, ShieldCheck,
+  RefreshCw, CalendarClock, Info,
+} from 'lucide-react'
 
 interface AllocationTableProps {
   plan?: Partial<AllocationPlan>
   onRefreshPlan?: () => void
   isRefreshing?: boolean
+}
+
+function AsbaConflictBadge({ count }: { count: number }) {
+  if (count === 0) return null
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-semibold bg-accent-amber/15 text-accent-amber border border-accent-amber/25">
+      <CalendarClock className="w-3 h-3" />
+      {count} ASBA conflict{count > 1 ? 's' : ''} detected
+    </span>
+  )
+}
+
+function UpcomingConflictPanel({ conflicts }: { conflicts: UpcomingConflict[] }) {
+  if (!conflicts || conflicts.length === 0) return null
+
+  return (
+    <div className="mt-3 p-3 rounded-xl border border-accent-amber/30 bg-accent-amber/5 space-y-2">
+      <div className="flex items-center gap-2 text-xs font-semibold text-accent-amber">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+        <span>ASBA Lock Conflicts — Upcoming High-Score IPOs</span>
+      </div>
+      <p className="text-2xs text-text-muted leading-relaxed">
+        The following upcoming IPOs open before your ASBA funds are released from current bids.
+        Capital has been reserved so you can participate in these better opportunities.
+      </p>
+      {conflicts.map((c, i) => (
+        <div key={i} className="p-2.5 rounded-lg bg-surface-elevated/50 border border-border-subtle space-y-1">
+          <div className="flex items-center justify-between flex-wrap gap-1">
+            <span className="text-xs font-semibold text-text-primary">{c.upcoming_ipo_name}</span>
+            <div className="flex items-center gap-2">
+              {c.upcoming_score > 0 && (
+                <span className="text-2xs font-mono text-accent-blue">Score {c.upcoming_score}</span>
+              )}
+              {c.upcoming_gmp > 0 && (
+                <span className="text-2xs font-mono text-accent-green">+{c.upcoming_gmp}% GMP</span>
+              )}
+              {c.open_date && (
+                <span className="text-2xs font-mono text-text-muted">Opens {c.open_date}</span>
+              )}
+            </div>
+          </div>
+          {c.conflicts.map((conf, j) => (
+            <div key={j} className="text-2xs text-text-muted flex items-start gap-1.5 pl-2">
+              <span className="text-accent-amber mt-0.5">⚠</span>
+              <span>
+                <span className="font-medium text-text-secondary">{conf.blocking_ipo}</span> ASBA frees on{' '}
+                <span className="font-mono">{conf.asba_free_date}</span>, but this IPO opens{' '}
+                <span className="font-mono">{conf.upcoming_open_date}</span> — funds already reserved.
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: AllocationTableProps) {
@@ -20,9 +77,20 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
   const skippedIpos = plan?.skipped_ipos || []
   const warnings = plan?.warnings || []
   const totalCapital = plan?.total_capital_deployed || 0
+  const asbaConflicts = plan?.asba_lock_overlaps_detected ?? 0
+  const upcomingConflicts = plan?.upcoming_conflicts || []
+
+  // Separate reservation warnings from status warnings
+  const reservationWarnings = warnings.filter(w =>
+    w.includes('reserved') || w.includes('held back') || w.includes('ASBA')
+  )
+  const statusWarnings = warnings.filter(w =>
+    !w.includes('reserved') && !w.includes('held back') && !w.includes('ASBA')
+  )
 
   const handleApplyAll = () => {
     setIsApplyingAll(true)
+    // TODO: Wire this to POST /orders/stage-all with the plan entries
     setTimeout(() => {
       setIsApplyingAll(false)
       setAppliedSuccess(true)
@@ -34,20 +102,21 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Sparkles className="w-4 h-4 text-brand-from" />
             <h3 className="text-sm font-semibold text-text-primary">
-              PuLP Mathematical Solver Allocation Plan
+              PuLP Mathematical Solver — Allocation Plan
             </h3>
+            <AsbaConflictBadge count={asbaConflicts} />
           </div>
           <p className="text-2xs text-text-muted mt-0.5">
-            Deterministic linear optimization maximizing expected family ROI within ASBA capital limits
+            MILP optimizer with ASBA capital reservation for upcoming high-score IPOs
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <span className="text-2xs text-text-muted block uppercase font-mono">Total Deployable</span>
+            <span className="text-2xs text-text-muted block uppercase font-mono">Deploying Now</span>
             <AmountDisplay amount={totalCapital} className="text-sm font-bold text-accent-green" />
           </div>
 
@@ -85,6 +154,15 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
         </div>
       </div>
 
+      {plan?.is_demo && (
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-brand-from/10 border border-brand-from/25 rounded-lg text-xs text-text-primary">
+          <Info className="w-4 h-4 text-brand-from shrink-0" />
+          <span>
+            <strong className="text-brand-from">Demo Simulation Mode:</strong> Showing mathematical solver results using sample family accounts. Configure real broker accounts in settings to generate live allocations.
+          </span>
+        </div>
+      )}
+
       {appliedSuccess && (
         <div className="p-3 rounded-lg bg-accent-green/10 border border-accent-green/20 text-xs text-accent-green flex items-center justify-between animate-fade-in">
           <div className="flex items-center gap-2">
@@ -92,6 +170,23 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
             <span>All {entries.length} IPO application orders staged via Angel One SmartAPI.</span>
           </div>
           <span className="text-2xs font-mono">Check UPI App to Authorize Mandates</span>
+        </div>
+      )}
+
+      {/* ASBA Conflict Panel — shown above table */}
+      {upcomingConflicts.length > 0 && (
+        <UpcomingConflictPanel conflicts={upcomingConflicts} />
+      )}
+
+      {/* Reservation warnings — compact inline strip */}
+      {reservationWarnings.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {reservationWarnings.map((w, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-2xs text-accent-amber">
+              <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+              <span>{w}</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -124,9 +219,9 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
                   <td>
                     <span
                       className={`px-2 py-0.5 rounded text-2xs font-mono font-bold uppercase ${
-                        entry.category === 'SHNI'
+                        entry.category?.toUpperCase() === 'SHNI'
                           ? 'bg-accent-blue/15 text-accent-blue'
-                          : entry.category === 'BHNI'
+                          : entry.category?.toUpperCase() === 'BHNI'
                           ? 'bg-accent-purple/15 text-accent-purple'
                           : 'bg-brand-from/15 text-brand-from'
                       }`}
@@ -161,11 +256,11 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
             <Sparkles className="w-5 h-5" />
           </div>
           <p className="text-sm font-semibold text-text-primary">
-            {warnings.length > 0 ? 'No Current Capital Allocations' : 'Ready for Family Capital Allocation'}
+            {statusWarnings.length > 0 ? 'No Current Capital Allocations' : 'Ready for Family Capital Allocation'}
           </p>
           <p className="text-xs text-text-muted max-w-md">
-            {warnings.length > 0
-              ? warnings[0]
+            {statusWarnings.length > 0
+              ? statusWarnings[0]
               : 'Once you link family demat accounts with available liquidity, the PuLP mathematical solver will automatically compute optimal lottery and bidding lot allocations.'}
           </p>
           {onRefreshPlan && (
@@ -181,8 +276,8 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
         </div>
       )}
 
-      {/* Warnings / Skipped Issues Box */}
-      {(skippedIpos.length > 0 || warnings.length > 0) && (
+      {/* Skipped Issues Box & Status Warnings */}
+      {(skippedIpos.length > 0 || statusWarnings.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 text-2xs">
           {skippedIpos.map((skip, i) => (
             <div
@@ -194,12 +289,12 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
             </div>
           ))}
 
-          {warnings.map((warn, i) => (
+          {statusWarnings.map((warn, i) => (
             <div
               key={i}
-              className="p-2.5 rounded-lg bg-surface-elevated/60 border border-border-subtle flex items-start gap-2 text-accent-green"
+              className="p-2.5 rounded-lg bg-surface-elevated/60 border border-border-subtle flex items-start gap-2 text-text-muted"
             >
-              <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <ShieldCheck className="w-3.5 h-3.5 text-accent-blue flex-shrink-0 mt-0.5" />
               <span>{warn}</span>
             </div>
           ))}

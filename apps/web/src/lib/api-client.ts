@@ -162,9 +162,12 @@ async function authFetch(url: string, init?: RequestInit, timeoutMs = 10000): Pr
     })
     clearTimeout(timeoutId)
     if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      const isGuest = isGuestSession()
       localStorage.removeItem('kapitl_token')
       localStorage.removeItem('kapitl_user')
-      window.location.href = '/login'
+      if (!isGuest) {
+        window.location.href = '/login?expired=true'
+      }
     }
     return res
   } catch (err: any) {
@@ -280,13 +283,13 @@ export const apiClient = {
     try {
       const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
       if (res.status === 404) {
-        return mockFallback
+        return null
       }
-      const data = await handleResponse(res, mockFallback)
+      const data = await handleResponse(res, null)
       if (data) setCached(cacheKey, data)
-      return data || mockFallback
+      return data
     } catch {
-      return mockFallback
+      return null
     }
   },
 
@@ -299,7 +302,7 @@ export const apiClient = {
 
   // ── Accounts ──────────────────────────────────────────────────────────────
   async getAccounts(): Promise<FamilyAccount[]> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return [...localMockAccounts]
     }
     const cacheKey = 'funds:accounts'
@@ -479,7 +482,7 @@ export const apiClient = {
   },
 
   async getAsbaLocks(): Promise<any[]> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return MOCK_ASBA_LOCKS
     }
     const res = await authFetch(`${API_BASE_URL}/funds/locks`)
@@ -492,7 +495,7 @@ export const apiClient = {
 
   // ── Allotments ────────────────────────────────────────────────────────────
   async getAllotments(): Promise<Allotment[]> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return MOCK_ALLOTMENTS
     }
     const cacheKey = 'allotments:all'
@@ -524,7 +527,7 @@ export const apiClient = {
 
   // ── P&L ───────────────────────────────────────────────────────────────────
   async getPnlSummary(): Promise<PnlSummary> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return MOCK_PNL_SUMMARY
     }
     const cacheKey = 'funds:pnl'

@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     admin_pin: str = "1234"
     google_client_id: str = "817266880199-0gilousjp4gnrbve1tli77db7c5v62oo.apps.googleusercontent.com"
     google_client_secret: str = ""
-    allowed_email: str = "ravidahiya9350@gmail.com"
+    allowed_email: str = ""
     admin_totp_secret: str = ""
 
     # IPO Data Sources

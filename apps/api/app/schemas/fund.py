@@ -1,5 +1,6 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
+
 
 class FundSummaryResponse(BaseModel):
     total_family_balance: float
@@ -9,12 +10,14 @@ class FundSummaryResponse(BaseModel):
     accounts_active: int = 0
     accounts_total: int
 
+
 class PnlSummaryResponse(BaseModel):
     total_realized_pnl: float
     overall_roi_percent: float
     total_allotments: int
     total_holding: int
     allotment_rate_percent: float
+
 
 class AllocationEntrySchema(BaseModel):
     account_id: str
@@ -27,9 +30,23 @@ class AllocationEntrySchema(BaseModel):
     expected_return_pct: float
     reason: Optional[str] = None
 
+
 class SkippedIpoSchema(BaseModel):
     ipo_id: str
     reason: str
+
+
+class UpcomingConflictSchema(BaseModel):
+    """
+    Describes an upcoming high-score IPO whose bidding window opens before
+    the ASBA funds from a currently-applied IPO are released.
+    """
+    upcoming_ipo_name: str
+    upcoming_score: int = 0
+    upcoming_gmp: float = 0.0
+    open_date: Optional[str] = None
+    conflicts: List[Dict[str, Any]] = []   # list of {blocking_ipo, asba_free_date, upcoming_open_date}
+
 
 class AllocationPlanResponse(BaseModel):
     plan_id: str
@@ -39,4 +56,6 @@ class AllocationPlanResponse(BaseModel):
     skipped_ipos: List[SkippedIpoSchema] = []
     warnings: List[str] = []
     status: str = "OPTIMAL"
+    is_demo: bool = False
     asba_lock_overlaps_detected: int = 0
+    upcoming_conflicts: List[UpcomingConflictSchema] = []

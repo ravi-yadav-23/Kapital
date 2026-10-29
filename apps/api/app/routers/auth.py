@@ -52,11 +52,11 @@ def save_admin_totp_secret(secret: str) -> None:
     """Save newly verified TOTP secret."""
     global _in_memory_totp_secret
     _in_memory_totp_secret = secret.strip()
-    for path in [TOTP_TMP_FILE, TOTP_STORE_FILE]:
+    # Write to permanent store first, then to /tmp as secondary fallback
+    for path in [TOTP_STORE_FILE, TOTP_TMP_FILE]:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(secret.strip())
-            return
         except Exception as e:
             logger.warning(f"Could not persist TOTP secret to {path}: {e}")
 

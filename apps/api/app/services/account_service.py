@@ -138,7 +138,7 @@ class AccountService:
         Upsert an account from ANGEL_ACCOUNTS_JSON into the DB with encrypted credentials.
         If the client_id already exists, updates secrets safely.
         """
-        from app.utils.security import encrypt_credential
+        from app.utils.security import encrypt_credential, decrypt_credential
 
         client_id = env_acc.get("client_id", "")
         result = await db.execute(
@@ -146,16 +146,28 @@ class AccountService:
         )
         existing = result.scalar_one_or_none()
 
-        enc_key = encrypt_credential(env_acc.get("api_key"))
-        enc_totp = encrypt_credential(env_acc.get("totp_secret"))
-        enc_pin = encrypt_credential(env_acc.get("pin"))
+        raw_key = env_acc.get("api_key")
+        raw_totp = env_acc.get("totp_secret")
+        raw_pin = env_acc.get("pin")
 
         if existing:
-            existing.angel_api_key = enc_key
-            existing.totp_secret = enc_totp
-            existing.pin = enc_pin
+            # Only update credentials if raw env value is non-empty and actually differs from existing
+            if raw_key and decrypt_credential(existing.angel_api_key) != raw_key:
+                existing.angel_api_key = encrypt_credential(raw_key)
+            if raw_totp and decrypt_credential(existing.totp_secret) != raw_totp:
+                existing.totp_secret = encrypt_credential(raw_totp)
+            if raw_pin and decrypt_credential(existing.pin) != raw_pin:
+                existing.pin = encrypt_credential(raw_pin)
+            if env_acc.get("name"):
+                existing.name = env_acc.get("name")
+            if env_acc.get("relation"):
+                existing.relation = env_acc.get("relation")
             await db.flush()
             return existing
+
+        enc_key = encrypt_credential(raw_key)
+        enc_totp = encrypt_credential(raw_totp)
+        enc_pin = encrypt_credential(raw_pin)
 
         acc = FamilyAccount(
             id=str(uuid.uuid4()),

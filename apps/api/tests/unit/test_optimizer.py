@@ -49,3 +49,55 @@ def test_scoring_with_penalties():
     )
     assert score < 50
     assert report_service.get_recommendation(score) in ["WATCH", "AVOID"]
+
+
+def test_asba_capital_reservation_and_conflicts():
+    from datetime import date, timedelta
+    today = date.today()
+
+    accounts = [
+        {"id": "a1", "name": "Ravi", "available_liquid_balance": 500000.0, "is_active": True, "preferred_category": "SHNI"},
+        {"id": "a2", "name": "Papa", "available_liquid_balance": 200000.0, "is_active": True, "preferred_category": "RETAIL"},
+    ]
+    ipos = [
+        {
+            "id": "i1",
+            "name": "Paras Healthcare",
+            "status": "open",
+            "issue_open_date": str(today - timedelta(days=1)),
+            "issue_close_date": str(today + timedelta(days=1)),
+            "allotment_date": str(today + timedelta(days=6)),
+            "refund_date": str(today + timedelta(days=8)),
+            "lot_size": 100,
+            "price_band_max": 150.0,
+            "min_investment": 15000.0,
+            "score": 72,
+            "gmp_percent": 18.0,
+        },
+        {
+            "id": "i2",
+            "name": "Zetwerk Manufacturing",
+            "status": "upcoming",
+            "issue_open_date": str(today + timedelta(days=5)),
+            "issue_close_date": str(today + timedelta(days=7)),
+            "allotment_date": str(today + timedelta(days=13)),
+            "refund_date": str(today + timedelta(days=15)),
+            "lot_size": 50,
+            "price_band_max": 300.0,
+            "min_investment": 15000.0,
+            "score": 82,
+            "gmp_percent": 35.0,
+        },
+    ]
+
+    plan = AllocationOptimizer.solve_allocation(accounts, ipos)
+    assert plan.status == "OPTIMAL"
+    assert plan.asba_lock_overlaps_detected == 2
+    assert len(plan.upcoming_conflicts) == 1
+    assert plan.upcoming_conflicts[0].upcoming_ipo_name == "Zetwerk Manufacturing"
+    assert len(plan.warnings) >= 2
+    # Check that capital was not over-allocated
+    ravi_entries = [e for e in plan.entries if e.account_id == "a1"]
+    assert len(ravi_entries) == 1
+    assert ravi_entries[0].amount <= 500000.0
+

@@ -169,8 +169,13 @@ class AllotmentService:
             holdings = holdings_by_client[client_id]
             clean_sym = (ipo.symbol or "").upper().replace("-EQ", "").strip()
 
+            def _is_exact_symbol_match(h: dict) -> bool:
+                tsym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").strip()
+                sname = (h.get("symbolname") or "").upper().strip()
+                return clean_sym == tsym or clean_sym == sname
+
             matched_holding = next(
-                (h for h in holdings if clean_sym in (h.get("tradingsymbol") or "").upper() or clean_sym in (h.get("symbolname") or "").upper()),
+                (h for h in holdings if _is_exact_symbol_match(h)),
                 None
             )
 

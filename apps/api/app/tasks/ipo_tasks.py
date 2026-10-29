@@ -67,6 +67,8 @@ from bs4 import BeautifulSoup
 
 
 def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optional[str], Optional[str]]:
+    if not d_str or not isinstance(d_str, str):
+        return None, None
     if year is None:
         year = datetime.date.today().year
     months = {
@@ -74,16 +76,26 @@ def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optio
         'jul': 7, 'aug': 8, 'sep': 9, 'sept': 9, 'oct': 10, 'nov': 11, 'dec': 12
     }
     m_clean = d_str.strip().lower()
+
+    # Check if an explicit 4-digit year is present
+    year_match = re.search(r'\b(20\d{2})\b', m_clean)
+    if year_match:
+        year = int(year_match.group(1))
+
     for m_name, m_num in months.items():
         if m_name in m_clean:
-            nums = [int(n) for n in re.findall(r'\d+', m_clean)]
-            if len(nums) >= 2:
-                d_open = datetime.date(year, m_num, nums[0])
-                d_close = datetime.date(year, m_num, nums[1])
-                return d_open.isoformat(), d_close.isoformat()
-            elif len(nums) == 1:
-                d_open = datetime.date(year, m_num, nums[0])
-                return d_open.isoformat(), d_open.isoformat()
+            raw_nums = [int(n) for n in re.findall(r'\b\d+\b', m_clean)]
+            nums = [n for n in raw_nums if 1 <= n <= 31]
+            try:
+                if len(nums) >= 2:
+                    d_open = datetime.date(year, m_num, nums[0])
+                    d_close = datetime.date(year, m_num, nums[1])
+                    return d_open.isoformat(), d_close.isoformat()
+                elif len(nums) == 1:
+                    d_open = datetime.date(year, m_num, nums[0])
+                    return d_open.isoformat(), d_open.isoformat()
+            except ValueError:
+                pass
     return None, None
 
 
@@ -310,7 +322,7 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
         res_active = await db.execute(stmt_active)
         active_ipos = res_active.scalars().all()
 
-        for ipo_item in active_ipos[:8]:
+        for ipo_item in active_ipos:
             stmt_r = select(AiReport).where(AiReport.ipo_id == ipo_item.id)
             res_r = await db.execute(stmt_r)
             if not res_r.scalar_one_or_none():

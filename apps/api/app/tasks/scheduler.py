@@ -215,7 +215,7 @@ async def periodic_allotment_detection():
     logger.info("=== [30m Poll] Periodic Allotment Auto-Detection ===")
     from app.db.database import AsyncSessionLocal
     from app.services.allotment_service import allotment_service
-    from app.models.order import Order
+    from app.models.order import IpoOrder as Order
     from app.models.ipo import Ipo
     from sqlalchemy import select
     from datetime import timedelta
@@ -263,6 +263,7 @@ def start_scheduler():
         trigger=CronTrigger(hour=8, minute=30, day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="morning_angel_one_login",
         replace_existing=True,
+        max_instances=1,
     )
 
     # Job 2: 09:00 AM IST Mon-Fri (Listing Day Pre-Market Limit Sell Execution)
@@ -271,6 +272,16 @@ def start_scheduler():
         trigger=CronTrigger(hour=9, minute=0, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="listing_day_premarket_execution",
         replace_existing=True,
+        max_instances=1,
+    )
+
+    # Job 2b: 09:15 AM IST Mon-Fri (Listing Day Market-Open Retry for unplaced sells / delayed scrips)
+    scheduler.add_job(
+        listing_day_premarket_execution,
+        trigger=CronTrigger(hour=9, minute=15, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="listing_day_marketopen_retry",
+        replace_existing=True,
+        max_instances=1,
     )
 
     # Job 3: 05:00 PM IST Mon-Fri (Post-Market Public Feeds Scraper Sync)
@@ -279,6 +290,7 @@ def start_scheduler():
         trigger=CronTrigger(hour=17, minute=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="daily_ipo_scraper_sync",
         replace_existing=True,
+        max_instances=1,
     )
 
     # Job 4: 10:00 PM IST Daily (Nightly ASBA lock sweep & Multi-Agent dossiers)
@@ -287,6 +299,7 @@ def start_scheduler():
         trigger=CronTrigger(hour=22, minute=0, timezone="Asia/Kolkata"),
         id="daily_asba_and_reports_maintenance",
         replace_existing=True,
+        max_instances=1,
     )
 
     # Job 5: Every 30 mins 10:00 AM–5:00 PM IST Mon-Fri (Live subscription metrics for open IPOs)
@@ -295,6 +308,7 @@ def start_scheduler():
         trigger=CronTrigger(hour="10-16", minute="*/30", day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="intraday_subscription_sync",
         replace_existing=True,
+        max_instances=1,
     )
 
     # Job 6: Every 30 mins 6:00 AM–8:00 PM IST Mon-Fri (Auto-detect allotments T+3 to T+7)
@@ -303,6 +317,7 @@ def start_scheduler():
         trigger=CronTrigger(hour="6-20", minute="*/30", day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="periodic_allotment_detection",
         replace_existing=True,
+        max_instances=1,
     )
 
     scheduler.start()
