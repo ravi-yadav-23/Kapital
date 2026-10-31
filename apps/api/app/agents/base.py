@@ -19,6 +19,8 @@ def get_default_model_for_provider(provider: str) -> str:
         return "claude-3-5-sonnet-20241022"
     elif p == "openai":
         return "gpt-4o-mini"
+    elif p == "groq":
+        return "openai/gpt-oss-120b"
     return "openai/gpt-oss-120b"
 
 

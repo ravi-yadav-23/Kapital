@@ -305,7 +305,11 @@ class AngelOneSmartApiService:
                 )
                 data = res.json()
                 if data.get("status") and data.get("data"):
-                    return data["data"]
+                    raw = data["data"]
+                    if isinstance(raw, dict):
+                        return raw.get("holdings", []) or []
+                    elif isinstance(raw, list):
+                        return raw
                 return []
         except Exception as e:
             logger.error(f"[{client_id}] Failed to fetch demat holdings: {e}")
