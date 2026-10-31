@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.schemas.order import OrderResponse, OrderCreate, BatchOrderCreate
+from app.schemas.order import OrderResponse, OrderCreate, BatchOrderCreate, BatchOrderResponse
 from app.services.order_service import order_service
 
 from app.middleware.auth import get_current_user_optional, require_admin
@@ -39,6 +39,16 @@ async def submit_ipo_bid(
         return await order_service.create_order(db=db, data=order_data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/batch", response_model=BatchOrderResponse)
+async def submit_batch_ipo_bids(
+    batch_data: BatchOrderCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    """Submit multiple ASBA IPO applications in a single batch (e.g. from optimizer allocation plan)."""
+    return await order_service.create_batch_orders(db=db, orders=batch_data.orders)
 
 
 @router.post("/{order_id}/mark-applied", response_model=OrderResponse)

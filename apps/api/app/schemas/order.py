@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class OrderCreate(BaseModel):
@@ -7,11 +7,11 @@ class OrderCreate(BaseModel):
     ipo_id: str
     category: str = "RETAIL"
     lots: int = 1
-    bid_price: float
+    bid_price: Optional[float] = None
     upi_vpa: str
 
 class BatchOrderCreate(BaseModel):
-    ipo_id: str
+    ipo_id: Optional[str] = None
     orders: List[OrderCreate]
 
 class OrderResponse(BaseModel):
@@ -33,3 +33,16 @@ class OrderResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class BatchOrderFailedItem(BaseModel):
+    account_id: str
+    ipo_id: str
+    reason: str
+
+class BatchOrderResponse(BaseModel):
+    succeeded: List[OrderResponse]
+    failed: List[BatchOrderFailedItem]
+    total_requested: int
+    total_staged: int
+    total_amount_locked: float
+

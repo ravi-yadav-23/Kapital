@@ -79,7 +79,14 @@ class OrderService:
 
         lot_sz = ipo.lot_size or 1
         shares = data.lots * lot_sz
-        amount = shares * data.bid_price
+        bid_px = data.bid_price if (data.bid_price and data.bid_price > 0) else (ipo.price_band_max or ipo.min_price or 0.0)
+        if bid_px <= 0:
+            raise ValueError(f"Could not determine bid price for '{ipo.name}'. Price band not set.")
+        amount = shares * bid_px
+
+        upi_vpa = (data.upi_vpa or "").strip()
+        if not upi_vpa or "@" not in upi_vpa:
+            raise ValueError("Valid UPI VPA handle (e.g. user@upi) is required for ASBA application.")
 
         # Validate SEBI category threshold
         cat_upper = (data.category or "RETAIL").upper()
@@ -132,9 +139,9 @@ class OrderService:
             category=data.category,
             lots=data.lots,
             shares=shares,
-            bid_price=data.bid_price,
+            bid_price=bid_px,
             amount=amount,
-            upi_vpa=data.upi_vpa,
+            upi_vpa=upi_vpa,
             angel_order_id=None,
             status="PENDING",
             reject_reason=None,
@@ -201,6 +208,48 @@ class OrderService:
             pass
 
         return _model_to_response(order_obj)
+
+    @staticmethod
+    async def create_batch_orders(
+        db: AsyncSession,
+        orders: List[OrderCreate],
+    ) -> Dict[str, Any]:
+        """
+        Executes a batch of IPO applications (e.g. from optimizer allocation plan).
+        Attempts each within the session, records successes and failures gracefully,
+        and broadcasts real-time events.
+        """
+        succeeded: List[OrderResponse] = []
+        failed: List[Dict[str, Any]] = []
+
+        for item in orders:
+            try:
+                res = await order_service.create_order(db=db, data=item)
+                succeeded.append(res)
+            except Exception as e:
+                await db.rollback()
+                failed.append({
+                    "account_id": item.account_id,
+                    "ipo_id": item.ipo_id,
+                    "reason": str(e),
+                })
+
+        if len(succeeded) > 1:
+            try:
+                await broadcast_event("BATCH_ORDERS_PLACED", {
+                    "count": len(succeeded),
+                    "total_amount": sum(o.amount for o in succeeded),
+                })
+            except Exception:
+                pass
+
+        return {
+            "succeeded": succeeded,
+            "failed": failed,
+            "total_requested": len(orders),
+            "total_staged": len(succeeded),
+            "total_amount_locked": sum(o.amount for o in succeeded),
+        }
 
     @staticmethod
     async def mark_applied(db: AsyncSession, order_id: str) -> OrderResponse:

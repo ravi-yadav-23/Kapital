@@ -40,3 +40,41 @@ async def test_order_creation_and_asba_lock(db_session: AsyncSession, seed_data)
     res_after = await db_session.execute(fresh_stmt)
     lock_after = res_after.scalar_one_or_none()
     assert lock_after is None
+
+
+@pytest.mark.asyncio
+async def test_batch_order_creation_and_route(client, db_session: AsyncSession, seed_data):
+    from httpx import AsyncClient
+    from app.middleware.auth import create_access_token
+
+    # Create admin token
+    token = create_access_token({"sub": "admin-1", "role": "ADMIN", "email": "admin@kapitl.local"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Batch staging request
+    batch_payload = {
+        "orders": [
+            {
+                "account_id": "acc-test-1",
+                "ipo_id": "ipo-test-1",
+                "category": "RETAIL",
+                "lots": 1,
+                "bid_price": 215.0,
+                "upi_vpa": "batchuser@upi",
+            }
+        ]
+    }
+
+    res = await client.post("/api/orders/batch", json=batch_payload, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_requested"] == 1
+    assert data["total_staged"] == 1
+    assert len(data["succeeded"]) == 1
+    assert data["succeeded"][0]["account_id"] == "acc-test-1"
+    assert data["succeeded"][0]["status"] in ["CONFIRMED", "PENDING"]
+
+    # Cleanup
+    order_id = data["succeeded"][0]["id"]
+    await order_service.cancel_order(db_session, order_id)
+

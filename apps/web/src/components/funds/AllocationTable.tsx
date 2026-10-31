@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { AllocationPlan, UpcomingConflict } from '@/types'
 import { AmountDisplay } from '../shared/AmountDisplay'
+import { BatchApplyModal } from './BatchApplyModal'
 import {
   Sparkles, CheckCircle2, AlertTriangle, Send, ShieldCheck,
   RefreshCw, CalendarClock, Info,
@@ -70,7 +71,7 @@ function UpcomingConflictPanel({ conflicts }: { conflicts: UpcomingConflict[] })
 }
 
 export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: AllocationTableProps) {
-  const [isApplyingAll, setIsApplyingAll] = useState(false)
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
   const [appliedSuccess, setAppliedSuccess] = useState(false)
 
   const entries = plan?.entries || []
@@ -89,12 +90,7 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
   )
 
   const handleApplyAll = () => {
-    setIsApplyingAll(true)
-    // TODO: Wire this to POST /orders/stage-all with the plan entries
-    setTimeout(() => {
-      setIsApplyingAll(false)
-      setAppliedSuccess(true)
-    }, 1500)
+    setIsBatchModalOpen(true)
   }
 
   return (
@@ -134,12 +130,10 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
 
           <button
             onClick={handleApplyAll}
-            disabled={isApplyingAll || appliedSuccess || entries.length === 0}
+            disabled={entries.length === 0}
             className="btn btn-primary btn-sm gap-1.5 shadow-md shadow-brand-from/20 disabled:opacity-50"
           >
-            {isApplyingAll ? (
-              <span className="animate-pulse">Staging {entries.length} Orders...</span>
-            ) : appliedSuccess ? (
+            {appliedSuccess ? (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5 text-accent-green" />
                 <span>Orders Staged</span>
@@ -300,6 +294,18 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
           ))}
         </div>
       )}
+
+      {/* Batch Application Modal */}
+      <BatchApplyModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        entries={entries}
+        isDemo={Boolean(plan?.is_demo)}
+        onSuccess={() => {
+          setAppliedSuccess(true)
+          onRefreshPlan?.()
+        }}
+      />
     </div>
   )
 }

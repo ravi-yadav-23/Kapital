@@ -15,3 +15,11 @@ export interface IpoOrder {
   placed_at: string
   reject_reason?: string
 }
+
+export interface BatchOrderResult {
+  succeeded: IpoOrder[]
+  failed: Array<{ account_id: string; ipo_id: string; reason: string }>
+  total_requested: number
+  total_staged: number
+  total_amount_locked: number
+}

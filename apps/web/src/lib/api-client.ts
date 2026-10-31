@@ -607,6 +607,60 @@ export const apiClient = {
     return order
   },
 
+  async applyBatchOrders(orders: Array<{
+    account_id: string
+    ipo_id: string
+    category: string
+    lots: number
+    bid_price?: number
+    upi_vpa: string
+  }>): Promise<{
+    succeeded: IpoOrder[]
+    failed: Array<{ account_id: string; ipo_id: string; reason: string }>
+    total_requested: number
+    total_staged: number
+    total_amount_locked: number
+  }> {
+    if (USE_MOCK_DATA) {
+      const succeeded: IpoOrder[] = orders.map((o, idx) => ({
+        id: `ord-mock-${Date.now()}-${idx}`,
+        ipo_id: o.ipo_id,
+        ipo_name: 'IPO Issue',
+        account_id: o.account_id,
+        account_name: 'Family Member',
+        category: (o.category as any) || 'RETAIL',
+        lots: o.lots,
+        amount: o.lots * 15000,
+        status: 'CONFIRMED',
+        angel_order_id: `ANG_IPO_${Date.now().toString().slice(-6)}`,
+        placed_at: new Date().toISOString(),
+      }))
+      localMockOrders = [...succeeded, ...localMockOrders]
+      return {
+        succeeded,
+        failed: [],
+        total_requested: orders.length,
+        total_staged: succeeded.length,
+        total_amount_locked: succeeded.reduce((sum, o) => sum + o.amount, 0),
+      }
+    }
+    const res = await authFetch(`${API_BASE_URL}/orders/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orders }),
+    })
+    const data = await handleMutationResponse<{
+      succeeded: IpoOrder[]
+      failed: Array<{ account_id: string; ipo_id: string; reason: string }>
+      total_requested: number
+      total_staged: number
+      total_amount_locked: number
+    }>(res)
+    clearCache('orders')
+    clearCache('funds')
+    return data
+  },
+
   async cancelOrder(orderId: string): Promise<IpoOrder> {
     const res = await authFetch(`${API_BASE_URL}/orders/${orderId}/cancel`, {
       method: 'POST',
