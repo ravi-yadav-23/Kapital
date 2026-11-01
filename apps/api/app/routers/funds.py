@@ -12,6 +12,7 @@ from app.services.account_service import account_service
 from app.services.ipo_service import ipo_service
 from app.services.allotment_service import allotment_service
 from app.services.optimizer_service import AllocationOptimizer
+from app.services.demo_dataset import demo_dataset
 
 from app.middleware.auth import get_current_user_optional, require_admin
 
@@ -27,21 +28,16 @@ async def get_fund_summary(
     """Get overall family corpus balance, available deployment liquidity, and ASBA locked totals."""
     response.headers["Cache-Control"] = "public, max-age=30"
     if user and user.get("is_guest"):
-        return FundSummaryResponse(
-            total_family_balance=0.0,
-            total_available=0.0,
-            total_locked_asba=0.0,
-            utilization_percent=0.0,
-            accounts_active=0,
-            accounts_total=0,
-        )
+        return demo_dataset.get_fund_summary()
 
     accounts = await account_service.get_all_accounts(db)
+    asba_locks = await allotment_service.get_asba_locks(db)
     total_family    = sum(a.total_balance or 0.0 for a in accounts)
     total_available = sum(a.available_balance or 0.0 for a in accounts)
     total_locked    = sum(a.locked_balance or 0.0 for a in accounts)
     utilization     = (total_locked / total_family * 100.0) if total_family > 0 else 0.0
     active_count    = sum(1 for a in accounts if a.is_active)
+    active_locks    = sum(1 for l in asba_locks if l.status == "LOCKED") or len(asba_locks)
 
     return FundSummaryResponse(
         total_family_balance=total_family,
@@ -50,6 +46,7 @@ async def get_fund_summary(
         utilization_percent=round(utilization, 1),
         accounts_active=active_count,
         accounts_total=len(accounts),
+        active_asba_locks=active_locks,
     )
 
 
@@ -61,13 +58,7 @@ async def get_pnl_summary(
 ):
     """Get family historical realized P&L, overall ROI, active lots, and lottery hit rates."""
     if user and user.get("is_guest"):
-        return PnlSummaryResponse(
-            total_realized_pnl=0.0,
-            overall_roi_percent=0.0,
-            total_allotments=0,
-            total_holding=0,
-            allotment_rate_percent=0.0,
-        )
+        return demo_dataset.get_pnl_summary()
 
     allotments = await allotment_service.get_allotments(db)
     accounts   = await account_service.get_all_accounts(db)
@@ -96,9 +87,9 @@ async def list_family_accounts(
     db: AsyncSession = Depends(get_db),
     user: Optional[dict] = Depends(get_current_user_optional),
 ):
-    """List all registered family demat accounts. Returns empty for guest mode."""
+    """List all registered family demat accounts. Returns demo accounts for guest mode."""
     if user and user.get("is_guest"):
-        return []
+        return demo_dataset.get_accounts()
     return await account_service.get_all_accounts(db)
 
 
@@ -235,6 +226,11 @@ async def run_pulp_optimization(
 
 
 @router.get("/locks", response_model=List[AsbaLockResponse])
-async def list_asba_locks(db: AsyncSession = Depends(get_db)):
+async def list_asba_locks(
+    db: AsyncSession = Depends(get_db),
+    user: Optional[dict] = Depends(get_current_user_optional),
+):
     """Get ASBA fund lock and liquidity recycling timeline."""
+    if user and user.get("is_guest"):
+        return demo_dataset.get_asba_locks()
     return await allotment_service.get_asba_locks(db)

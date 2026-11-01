@@ -9,6 +9,7 @@ class FundSummaryResponse(BaseModel):
     utilization_percent: float
     accounts_active: int = 0
     accounts_total: int
+    active_asba_locks: int = 0
 
 
 class PnlSummaryResponse(BaseModel):
