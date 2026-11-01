@@ -11,6 +11,7 @@ from app.services.report_service import report_service
 from app.services.pnl_service import pnl_service
 from app.middleware.auth import get_current_user_optional
 from app.db.seed_data import seed_initial_ipos_and_reports
+from app.utils.date_utils import compute_ipo_status
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -21,17 +22,16 @@ async def list_ai_reports(db: AsyncSession = Depends(get_db)):
     Includes all active IPOs from live market feeds.
     If an active IPO does not yet have an AI report, it generates it once and persists it to DB.
     """
-    # 1. Fetch all active or upcoming IPOs with their optional AI reports
+    # 1. Fetch all candidate IPOs with their optional AI reports
     stmt = (
         select(Ipo, AiReport)
         .outerjoin(AiReport, Ipo.id == AiReport.ipo_id)
-        .where(Ipo.status.in_(["open", "closing_today", "upcoming"]))
         .order_by(Ipo.score.desc().nullslast())
     )
     res = await db.execute(stmt)
     rows = res.all()
 
-    # If database has no active IPOs, trigger live market sync
+    # If database has no IPOs, trigger live market sync
     if not rows:
         from app.tasks.ipo_tasks import sync_ipos_pipeline
         await sync_ipos_pipeline(db)
@@ -40,10 +40,12 @@ async def list_ai_reports(db: AsyncSession = Depends(get_db)):
 
     reports = []
     for ipo_row, report_row in rows:
-        if report_row:
-            reports.append(report_service.format_report_response(report_row, ipo_row))
-        else:
-            reports.append(report_service.build_fallback_report_response(ipo_row))
+        eff_status = compute_ipo_status(ipo_row.issue_open_date, ipo_row.issue_close_date)
+        if eff_status in ["open", "closing_today", "upcoming"]:
+            if report_row:
+                reports.append(report_service.format_report_response(report_row, ipo_row))
+            else:
+                reports.append(report_service.build_fallback_report_response(ipo_row))
 
     return reports
 
@@ -122,9 +124,31 @@ async def get_pnl_summary(
     Guest users receive an empty summary.
     """
     if user and user.get("is_guest"):
+        from app.services.demo_dataset import DEMO_ALLOTMENTS
+        sold_allotments = [a for a in DEMO_ALLOTMENTS if a.get("status") == "SOLD"]
+        total_inv = sum(a.get("invested_amount", 0.0) for a in sold_allotments)
+        total_pnl = sum(a.get("realized_pnl", 0.0) for a in sold_allotments)
+        roi = round((total_pnl / total_inv * 100.0), 1) if total_inv > 0 else 0.0
         return {
-            "total_invested": 0, "total_realized": 0, "total_net_pnl": 0,
-            "overall_roi_percent": 0, "total_trades": 0,
-            "wins": 0, "losses": 0, "win_rate_percent": 0, "breakdown": [],
+            "total_invested": total_inv,
+            "total_realized": total_inv + total_pnl,
+            "total_net_pnl": total_pnl,
+            "overall_roi_percent": roi,
+            "total_trades": len(sold_allotments),
+            "wins": sum(1 for a in sold_allotments if a.get("realized_pnl", 0) > 0),
+            "losses": sum(1 for a in sold_allotments if a.get("realized_pnl", 0) <= 0),
+            "win_rate_percent": round(
+                (sum(1 for a in sold_allotments if a.get("realized_pnl", 0) > 0) / len(sold_allotments) * 100.0), 1
+            ) if sold_allotments else 0.0,
+            "breakdown": [
+                {
+                    "ipo_name": a.get("ipo_name"),
+                    "shares": a.get("allotted_shares"),
+                    "invested": a.get("invested_amount"),
+                    "realized_pnl": a.get("realized_pnl"),
+                    "roi_percent": round((a.get("realized_pnl", 0) / a.get("invested_amount", 1) * 100.0), 1) if a.get("invested_amount") else 0.0,
+                }
+                for a in sold_allotments
+            ],
         }
     return await pnl_service.get_summary(db)
