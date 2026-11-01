@@ -8,7 +8,7 @@ from app.models.ipo import Ipo, IpoSchedule, IpoAlias
 from app.schemas.ipo import IpoResponse, IpoScheduleSchema
 from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 from app.utils.text_utils import clean_text, clean_text_list
-from app.utils.date_utils import compute_ipo_status, today_ist
+from app.utils.date_utils import compute_ipo_status, today_ist, normalize_ipo_dates
 from sqlalchemy.orm import selectinload
 import re
 
@@ -35,8 +35,9 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         for s in (ipo.schedules or [])
     ]
 
-    # Status: Always computed via the single canonical function in IST
-    effective_status = compute_ipo_status(ipo.issue_open_date, ipo.issue_close_date)
+    # Status & Dates: Always normalized and computed via the single canonical function in IST
+    d_open, d_close = normalize_ipo_dates(ipo.issue_open_date, ipo.issue_close_date)
+    effective_status = compute_ipo_status(d_open, d_close)
 
     # Score: One single source of truth across Dashboard, IPO Board, and Reports
     has_audit = bool(getattr(ipo, "report", None))
@@ -105,8 +106,8 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         min_investment=ipo.min_investment,
         issue_size=ipo.issue_size,
         issue_size_cr=ipo.issue_size_cr,
-        issue_open_date=_format_date(ipo.issue_open_date) or "",
-        issue_close_date=_format_date(ipo.issue_close_date) or "",
+        issue_open_date=_format_date(d_open) or "",
+        issue_close_date=_format_date(d_close) or "",
         allotment_date=_format_date(ipo.allotment_date),
         refund_date=_format_date(ipo.refund_date),
         listing_date=_format_date(ipo.listing_date),
@@ -279,6 +280,7 @@ class IpoService:
         listing_dt = parse_date(ipo_dict.get("listing_date"))
 
         # ── Compute Authentic IST Status via the Canonical Function ───
+        open_dt, close_dt = normalize_ipo_dates(open_dt, close_dt)
         computed_status = compute_ipo_status(open_dt, close_dt)
 
         # ── Merge and Enrich Existing Record ───────────────────────────
@@ -287,6 +289,8 @@ class IpoService:
             if not is_secondary:
                 existing.name = raw_name
             existing.status = computed_status
+            existing.issue_open_date = open_dt
+            existing.issue_close_date = close_dt
             if ipo_dict.get("price_band_min") and float(ipo_dict.get("price_band_min")) > 0:
                 existing.price_band_min = float(ipo_dict.get("price_band_min"))
             if ipo_dict.get("price_band_max") and float(ipo_dict.get("price_band_max")) > 0:

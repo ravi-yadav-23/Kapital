@@ -77,6 +77,8 @@ def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optio
         'jul': 7, 'aug': 8, 'sep': 9, 'sept': 9, 'oct': 10, 'nov': 11, 'dec': 12
     }
     m_clean = d_str.strip().lower()
+    # Normalize unicode dashes (en-dash, em-dash, minus) to regular hyphen
+    m_clean = re.sub(r'[\u2010-\u2015\u2212]', '-', m_clean)
 
     # Check if an explicit 4-digit year is present
     year_match = re.search(r'\b(20\d{2})\b', m_clean)
@@ -84,15 +86,37 @@ def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optio
         year = int(year_match.group(1))
 
     # Match cross-month pattern like "30 Oct - 3 Nov" or "30 Oct to 3 Nov"
-    two_month_match = re.search(r'(\d{1,2})\s*([a-z]{3,4})\s*[-to\s]+\s*(\d{1,2})\s*([a-z]{3,4})', m_clean)
+    two_month_match = re.search(r'(\d{1,2})\s*([a-z]{3,4})\s*(?:-|to|\s)\s*(\d{1,2})\s*([a-z]{3,4})', m_clean)
     if two_month_match:
         d1, m1_str, d2, m2_str = two_month_match.groups()
         m1 = months.get(m1_str[:3])
         m2 = months.get(m2_str[:3])
         if m1 and m2:
+            y_open = year
+            y_close = year
+            if m1 == 12 and m2 == 1:
+                y_close = year + 1
             try:
-                d_open = datetime.date(year, m1, int(d1))
-                d_close = datetime.date(year, m2, int(d2))
+                d_open = datetime.date(y_open, m1, int(d1))
+                d_close = datetime.date(y_close, m2, int(d2))
+                return d_open.isoformat(), d_close.isoformat()
+            except ValueError:
+                pass
+
+    # Match pattern like "Oct 30 - Nov 3"
+    two_month_match2 = re.search(r'([a-z]{3,4})\s*(\d{1,2})\s*(?:-|to|\s)\s*([a-z]{3,4})\s*(\d{1,2})', m_clean)
+    if two_month_match2:
+        m1_str, d1, m2_str, d2 = two_month_match2.groups()
+        m1 = months.get(m1_str[:3])
+        m2 = months.get(m2_str[:3])
+        if m1 and m2:
+            y_open = year
+            y_close = year
+            if m1 == 12 and m2 == 1:
+                y_close = year + 1
+            try:
+                d_open = datetime.date(y_open, m1, int(d1))
+                d_close = datetime.date(y_close, m2, int(d2))
                 return d_open.isoformat(), d_close.isoformat()
             except ValueError:
                 pass
@@ -100,11 +124,24 @@ def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optio
     for m_name, m_num in months.items():
         if m_name in m_clean:
             raw_nums = [int(n) for n in re.findall(r'\b\d+\b', m_clean)]
-            nums = [n for n in raw_nums if 1 <= n <= 31]
+            nums = [n for n in raw_nums if 1 <= n <= 31 and n != year]
             try:
                 if len(nums) >= 2:
-                    d_open = datetime.date(year, m_num, nums[0])
-                    d_close = datetime.date(year, m_num, nums[1])
+                    day1, day2 = nums[0], nums[1]
+                    if day1 > day2:
+                        # Cross-month rollover (e.g. "30-3 Nov" opens Oct 30 and closes Nov 3)
+                        m_open = m_num - 1 if m_num > 1 else 12
+                        y_open = year if m_num > 1 else year - 1
+                        m_close = m_num
+                        y_close = year
+                    else:
+                        m_open = m_num
+                        y_open = year
+                        m_close = m_num
+                        y_close = year
+
+                    d_open = datetime.date(y_open, m_open, day1)
+                    d_close = datetime.date(y_close, m_close, day2)
                     return d_open.isoformat(), d_close.isoformat()
                 elif len(nums) == 1:
                     d_open = datetime.date(year, m_num, nums[0])
@@ -159,6 +196,8 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                             continue
 
                         # Clean out table tag artifacts like "Open", "Upcoming", "Closed" joined without spaces
+                        status_match = re.search(r'(Open|Upcoming|Closed|Allotted|Listed)$', name, flags=re.IGNORECASE)
+                        feed_status_hint = status_match.group(1).lower() if status_match else None
                         name = re.sub(r'(Open|Upcoming|Closed|Allotted|Listed)$', '', name, flags=re.IGNORECASE).strip()
 
                         gmp_str = cols[gmp_idx] if gmp_idx < len(cols) else "0"
@@ -185,6 +224,8 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                         gmp_pct = round((gmp_val / max_p) * 100, 2) if max_p > 0 else 0.0
                         open_d_str, close_d_str = _parse_ipowatch_dates(dates)
                         status = compute_ipo_status(open_d_str, close_d_str)
+                        if feed_status_hint == "open" and status != "closed":
+                            status = "open"
                         
                         clean_sym = re.sub(r'[^a-zA-Z0-9]', '', name).upper()[:10]
                         slug = re.sub(r'[^a-zA-Z0-9]+', '-', name).strip('-').lower()

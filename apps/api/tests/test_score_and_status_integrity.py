@@ -44,6 +44,39 @@ def test_canonical_status_computation():
     # Missing dates -> fallback to upcoming
     assert compute_ipo_status(None, None, today=today) == "upcoming"
 
+    # Self-heal inverted dates (e.g. 2026-11-30 to 2026-11-03)
+    assert compute_ipo_status("2026-11-30", "2026-11-03", today=today) == "open"
+    assert compute_ipo_status("2026-11-29", "2026-11-02", today=today) == "open"
+
+
+def test_cross_month_date_parsing_and_status_resolution():
+    from app.tasks.ipo_tasks import _parse_ipowatch_dates
+    today = date(2026, 11, 1)
+
+    # "30-3 Nov" (Maxwell Engineering, HGS India, Johnsoncab Electricals, Vectras Enprocon)
+    o1, c1 = _parse_ipowatch_dates("30-3 Nov", year=2026)
+    assert o1 == "2026-10-30"
+    assert c1 == "2026-11-03"
+    assert compute_ipo_status(o1, c1, today=today) == "open"
+
+    # "29-2 Nov" (Antala Industries)
+    o2, c2 = _parse_ipowatch_dates("29-2 Nov", year=2026)
+    assert o2 == "2026-10-29"
+    assert c2 == "2026-11-02"
+    assert compute_ipo_status(o2, c2, today=today) == "open"
+
+    # "2-4 Nov" (Vedant Poly Fabs Solutions - opens tomorrow Nov 2)
+    o3, c3 = _parse_ipowatch_dates("2-4 Nov", year=2026)
+    assert o3 == "2026-11-02"
+    assert c3 == "2026-11-04"
+    assert compute_ipo_status(o3, c3, today=today) == "upcoming"
+
+    # Cross-month with unicode en-dash "30 Oct – 3 Nov"
+    o4, c4 = _parse_ipowatch_dates("30 Oct \u2013 3 Nov", year=2026)
+    assert o4 == "2026-10-30"
+    assert c4 == "2026-11-03"
+    assert compute_ipo_status(o4, c4, today=today) == "open"
+
 
 def test_t_plus_3_listing_date_calculation():
     # Friday close -> Mon (T+1), Tue (T+2), Wed (T+3)

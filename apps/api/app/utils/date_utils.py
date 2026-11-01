@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime, time, date, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional, Any
@@ -35,6 +36,38 @@ def parse_to_date(val: Any) -> Optional[date]:
     return None
 
 
+def normalize_ipo_dates(
+    open_date: Any,
+    close_date: Any,
+) -> tuple[Optional[date], Optional[date]]:
+    """
+    Parse and sanitize open and close dates.
+    Self-heals inverted cross-month dates (e.g. 2026-11-30 to 2026-11-03 becomes 2026-10-30 to 2026-11-03).
+    """
+    d_open = parse_to_date(open_date)
+    d_close = parse_to_date(close_date)
+
+    if d_open and d_close and d_open > d_close:
+        # Check if single-month parse caused rollover inversion (day_open > day_close)
+        if d_open.day > d_close.day and d_open.month == d_close.month and d_open.year == d_close.year:
+            if d_open.month > 1:
+                try:
+                    d_open = d_open.replace(month=d_open.month - 1)
+                except ValueError:
+                    last_day = calendar.monthrange(d_open.year, d_open.month - 1)[1]
+                    d_open = d_open.replace(month=d_open.month - 1, day=min(d_open.day, last_day))
+            else:
+                try:
+                    d_open = d_open.replace(year=d_open.year - 1, month=12)
+                except ValueError:
+                    pass
+        elif d_open > d_close:
+            # If still inverted for any other reason, swap them to prevent impossible issue windows
+            d_open, d_close = d_close, d_open
+
+    return d_open, d_close
+
+
 def compute_ipo_status(
     open_date: Any,
     close_date: Any,
@@ -47,8 +80,7 @@ def compute_ipo_status(
     if today is None:
         today = today_ist()
 
-    d_open = parse_to_date(open_date)
-    d_close = parse_to_date(close_date)
+    d_open, d_close = normalize_ipo_dates(open_date, close_date)
 
     if not d_close:
         return "upcoming"
@@ -56,14 +88,16 @@ def compute_ipo_status(
     if d_close < today:
         return "closed"
 
+    if d_close == today:
+        return "closing_today"
+
+    if d_open and today < d_open:
+        return "upcoming"
+
     if d_open and d_open <= today <= d_close:
-        if d_close == today:
-            return "closing_today"
         return "open"
 
     if not d_open and today <= d_close:
-        if d_close == today:
-            return "closing_today"
         return "open"
 
     return "upcoming"
