@@ -47,3 +47,4 @@ def test_production_accepts_strong_pin():
     )
     assert s.admin_pin == "849204"
     assert s.environment == "production"
+

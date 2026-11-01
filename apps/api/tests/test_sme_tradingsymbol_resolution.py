@@ -24,3 +24,4 @@ def test_bse_symbol_remains_clean():
     """BSE symbols do not append -EQ."""
     res = angel_service.resolve_tradingsymbol("500325", exchange="BSE")
     assert res == "500325"
+

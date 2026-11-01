@@ -34,3 +34,4 @@ describe('Kapitl Core Scoring & Verdict Engine', () => {
     assert.strictEqual(verdict.action, 'SKIP');
   });
 });
+

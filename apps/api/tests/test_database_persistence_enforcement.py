@@ -23,3 +23,4 @@ def test_production_accepts_postgresql_database_url():
         database_url="postgresql+asyncpg://postgres:pass@db.example.com:5432/kapitl",
     )
     assert "postgresql" in s.database_url
+

@@ -31,3 +31,4 @@ async def test_guest_pnl_endpoints_return_structured_responses():
         assert data_reports["total_net_pnl"] > 0, "Guest report ledger should show demo realized PnL"
         assert "breakdown" in data_reports
         assert len(data_reports["breakdown"]) > 0, "Guest report ledger should include demo trades"
+

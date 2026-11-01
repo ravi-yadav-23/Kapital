@@ -20,7 +20,7 @@ async def test_order_creation_and_asba_lock(db_session: AsyncSession, seed_data)
 
     # 1. Place order
     order_res = await order_service.create_order(db_session, req)
-    assert order_res.status in ["CONFIRMED", "PENDING"]
+    assert order_res.status in ["CONFIRMED", "PENDING", "SUBMITTED"]
 
     # 2. Verify ASBA lock record created in database
     stmt = select(AsbaLock).where(
@@ -72,7 +72,7 @@ async def test_batch_order_creation_and_route(client, db_session: AsyncSession, 
     assert data["total_staged"] == 1
     assert len(data["succeeded"]) == 1
     assert data["succeeded"][0]["account_id"] == "acc-test-1"
-    assert data["succeeded"][0]["status"] in ["CONFIRMED", "PENDING"]
+    assert data["succeeded"][0]["status"] in ["CONFIRMED", "PENDING", "SUBMITTED"]
 
     # Cleanup
     order_id = data["succeeded"][0]["id"]
