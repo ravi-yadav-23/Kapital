@@ -22,4 +22,5 @@ export interface AiReport {
   gmp_percent?: number
   estimated_listing_price?: number
   summary_source?: 'ai_generated' | 'template_fallback' | 'sector_fallback' | string
+  is_audited?: boolean
 }

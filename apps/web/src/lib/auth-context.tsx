@@ -67,6 +67,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedToken && storedUser) {
         setToken(storedToken)
         setUser(JSON.parse(storedUser))
+      } else {
+        // Seamless guest exploration with demo workspace
+        const guestProfile: UserProfile = {
+          id: 'guest-explorer',
+          username: 'Guest Explorer',
+          email: 'guest@kapitl.internal',
+          role: 'GUEST',
+          is_guest: true,
+        }
+        localStorage.setItem('kapitl_token', 'demo-guest-jwt-token')
+        localStorage.setItem('kapitl_user', JSON.stringify(guestProfile))
+        setToken('demo-guest-jwt-token')
+        setUser(guestProfile)
       }
     } catch (e) {
       console.error('Failed to load stored auth session:', e)

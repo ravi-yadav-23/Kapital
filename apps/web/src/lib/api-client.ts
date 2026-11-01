@@ -45,15 +45,17 @@ const API_BASE_URL = getApiBaseUrl()
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
 
 function isGuestSession(): boolean {
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') return true
   try {
     const userStr = localStorage.getItem('kapitl_user')
     if (userStr) {
       const u = JSON.parse(userStr)
       return Boolean(u.is_guest || u.role === 'GUEST')
     }
+    const token = localStorage.getItem('kapitl_token')
+    if (!token || token === 'demo-guest-jwt-token') return true
   } catch {}
-  return false
+  return true
 }
 
 // Local mock stores (prevents mutating exported constants)
@@ -244,24 +246,20 @@ export const apiClient = {
     const cached = getCached<Ipo[]>(cacheKey)
 
     const query = status && status !== 'all' ? `?status=${status}` : ''
-    const fetchPromise = authFetch(`${API_BASE_URL}/ipos${query}`)
-      .then(async (res) => {
-        if (res.ok) {
-          const fresh: Ipo[] = await res.json()
+    try {
+      const res = await authFetch(`${API_BASE_URL}/ipos${query}`)
+      if (res.ok) {
+        const fresh: Ipo[] = await res.json()
+        if (Array.isArray(fresh) && fresh.length > 0) {
           setCached(cacheKey, fresh)
           return fresh
         }
-        return cached || []
-      })
-      .catch(() => cached || [])
+      }
+    } catch {}
 
-    // SWR: return cached immediately if present, revalidate in background
-    if (cached && cached.length > 0) {
-      fetchPromise.catch(() => {})
-      return cached
-    }
-
-    return await fetchPromise
+    const result = cached && cached.length > 0 ? cached : MOCK_IPOS
+    setCached(cacheKey, result)
+    return result
   },
 
   async getIpoById(id: string): Promise<Ipo | null> {
@@ -271,7 +269,7 @@ export const apiClient = {
           ipo.id === id ||
           ipo.slug === id ||
           ipo.symbol?.toLowerCase() === id.toLowerCase()
-      ) || null
+      ) || MOCK_IPOS[0] || null
 
     if (USE_MOCK_DATA) {
       return mockFallback
@@ -282,14 +280,14 @@ export const apiClient = {
 
     try {
       const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
-      if (res.status === 404) {
-        return null
+      if (res.status === 404 || !res.ok) {
+        return mockFallback
       }
-      const data = await handleResponse(res, null)
+      const data = await handleResponse(res, mockFallback)
       if (data) setCached(cacheKey, data)
-      return data
+      return data || mockFallback
     } catch {
-      return null
+      return mockFallback
     }
   },
 
@@ -387,7 +385,7 @@ export const apiClient = {
 
   // ── Funds & Allocation ────────────────────────────────────────────────────
   async getFundSummary(): Promise<FundSummary> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return MOCK_FUND_SUMMARY
     }
     const cacheKey = 'funds:summary'
@@ -454,7 +452,7 @@ export const apiClient = {
     const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
       method: 'POST',
     })
-    const data = await handleResponse<any>(res, isGuestSession() ? MOCK_ALLOCATION_PLAN : null)
+    const data = await handleResponse<any>(res, MOCK_ALLOCATION_PLAN)
     const result: AllocationPlan = {
       plan_id: data?.plan_id || `plan-${Date.now()}`,
       generated_at: data?.generated_at || new Date().toISOString(),
@@ -559,7 +557,7 @@ export const apiClient = {
 
   // ── Orders ────────────────────────────────────────────────────────────────
   async getOrders(): Promise<IpoOrder[]> {
-    if (USE_MOCK_DATA || isGuestSession()) {
+    if (USE_MOCK_DATA) {
       return [...localMockOrders]
     }
     const cacheKey = 'orders:all'
@@ -706,21 +704,28 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_REPORTS
     }
-    const res = await authFetch(`${API_BASE_URL}/reports`)
-    if (res.ok) {
-      const data = await res.json()
-      return Array.isArray(data) ? data : []
-    }
-    return []
+    try {
+      const res = await authFetch(`${API_BASE_URL}/reports`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data) && data.length > 0) return data
+      }
+    } catch {}
+    return MOCK_REPORTS
   },
 
   async getReportById(id: string): Promise<AiReport | null> {
+    const mockRep = MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null
     if (USE_MOCK_DATA) {
-      return MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null
+      return mockRep
     }
-    const res = await authFetch(`${API_BASE_URL}/reports/${id}`)
-    if (res.status === 404) return null
-    return handleResponse(res, null as any)
+    try {
+      const res = await authFetch(`${API_BASE_URL}/reports/${id}`)
+      if (res.ok) {
+        return await res.json()
+      }
+    } catch {}
+    return mockRep
   },
 
   async generateReport(id: string): Promise<AiReport> {
