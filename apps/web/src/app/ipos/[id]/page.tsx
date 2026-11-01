@@ -140,6 +140,15 @@ export default function IpoDetailPage() {
                     <span className={getStatusDotClass(effectiveStatus)} />
                     <span>{getStatusLabel(effectiveStatus)}</span>
                   </span>
+                  {ipo.type === 'SME' ? (
+                    <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                      SME
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      Mainboard
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 text-[13px] font-mono text-ink-3 mt-1">

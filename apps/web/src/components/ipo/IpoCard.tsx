@@ -38,12 +38,23 @@ export function IpoCard({ ipo }: IpoCardProps) {
       href={`/ipos/${ipo.id}`}
       className="p-4 rounded-sm bg-surface border border-line hover:border-line-strong hover:bg-surface-raised transition-colors flex flex-col justify-between space-y-4 group"
     >
-      {/* Eyebrow Header: Status dot + GMP */}
+      {/* Eyebrow Header: Status dot + Type badge + GMP */}
       <div className="flex items-center justify-between text-xs">
-        <span className="status-pill">
-          <span className={getStatusDotClass(ipo.status)} />
-          <span>{getStatusLabel(ipo.status)}</span>
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="status-pill">
+            <span className={getStatusDotClass(ipo.status)} />
+            <span>{getStatusLabel(ipo.status)}</span>
+          </span>
+          {ipo.type === 'SME' ? (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              SME
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              Mainboard
+            </span>
+          )}
+        </div>
         {(ipo.gmp_percent || 0) > 0 ? (
           <span className="val-positive text-xs font-mono font-medium">
             ↑ {formatPercent(ipo.gmp_percent)} GMP

@@ -115,7 +115,7 @@ export function IpoBoard({
 
       return true
     })
-  }, [ipos, activeTab, selectedType, minScore, maxInvestment, searchQuery])
+  }, [canonicalIpos, activeTab, selectedType, minScore, maxInvestment, searchQuery])
 
   const displayList = maxItemsPerTab ? filteredIpos.slice(0, maxItemsPerTab) : filteredIpos
 
@@ -340,11 +340,20 @@ export function IpoBoard({
                           {avatar.initials}
                         </div>
                         <div className="min-w-0">
-                          <div className="font-medium text-ink truncate max-w-[220px]">
-                            {ipo.name}
+                          <div className="font-medium text-ink truncate max-w-[240px] flex items-center gap-1.5">
+                            <span className="truncate">{ipo.name}</span>
+                            {ipo.type === 'SME' ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex-shrink-0">
+                                SME
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0">
+                                Mainboard
+                              </span>
+                            )}
                           </div>
                           <div className="text-[13px] font-mono text-ink-3">
-                            {ipo.symbol} · {ipo.type || 'EQ'}
+                            {ipo.symbol}
                           </div>
                         </div>
                       </div>

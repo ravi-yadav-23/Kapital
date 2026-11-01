@@ -141,13 +141,41 @@ export default function ReportsPage() {
     }
   }
 
+  type ReportTab = 'all' | 'open' | 'upcoming' | 'closed'
+  const [activeTab, setActiveTab] = useState<ReportTab>('open')
+
+  const canonicalIpos = useMemo(() => {
+    return ipos.map((i) => ({
+      ...i,
+      computedStatus: computeIpoStatus(i.issue_open_date, i.issue_close_date),
+    }))
+  }, [ipos])
+
+  const openCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'open' || i.computedStatus === 'closing_today').length,
+    [canonicalIpos]
+  )
+  const upcomingCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'upcoming').length,
+    [canonicalIpos]
+  )
+  const closedCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'closed').length,
+    [canonicalIpos]
+  )
+  const allCount = canonicalIpos.length
+
   const filteredIpos = useMemo(() => {
-    return ipos.filter((ipo) => {
+    return canonicalIpos.filter((ipo) => {
+      if (activeTab === 'open' && ipo.computedStatus !== 'open' && ipo.computedStatus !== 'closing_today') return false
+      if (activeTab === 'upcoming' && ipo.computedStatus !== 'upcoming') return false
+      if (activeTab === 'closed' && ipo.computedStatus !== 'closed') return false
+
       if (!searchQuery.trim()) return true
       const q = searchQuery.toLowerCase()
       return ipo.name.toLowerCase().includes(q) || ipo.symbol.toLowerCase().includes(q)
     })
-  }, [ipos, searchQuery])
+  }, [canonicalIpos, activeTab, searchQuery])
 
   // Is this an actual AI audit or just preliminary sector estimate?
   // Backend now returns is_audited flag explicitly.
@@ -200,6 +228,29 @@ export default function ReportsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Search & Compact IPO List */}
           <div className="lg:col-span-4 space-y-3">
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1 border-b border-line pb-1.5 overflow-x-auto text-xs">
+              {[
+                { id: 'open' as ReportTab, label: 'Open', count: openCount },
+                { id: 'upcoming' as ReportTab, label: 'Upcoming', count: upcomingCount },
+                { id: 'closed' as ReportTab, label: 'Closed', count: closedCount },
+                { id: 'all' as ReportTab, label: 'All', count: allCount },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className={`px-2.5 py-1 rounded-sm transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                    activeTab === t.id
+                      ? 'bg-surface-raised text-ink font-medium border border-line'
+                      : 'text-ink-3 hover:text-ink hover:bg-surface'
+                  }`}
+                >
+                  <span>{t.label}</span>
+                  <span className="font-mono text-[11px] text-ink-3">({t.count})</span>
+                </button>
+              ))}
+            </div>
+
             <div className="relative">
               <Search className="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -215,7 +266,7 @@ export default function ReportsPage() {
               {filteredIpos.map((ipo) => {
                 const isSelected = selectedIpo?.id === ipo.id
                 const ipoScore = reports[ipo.id]?.overall_score || ipo.score || 50
-                const ipoStatus = computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date)
+                const ipoStatus = ipo.computedStatus
                 const avatar = getCompanyAvatarProps(ipo.name)
 
                 return (
@@ -234,8 +285,17 @@ export default function ReportsPage() {
                         {avatar.initials}
                       </div>
                       <div className="truncate">
-                        <div className={`text-[14px] truncate ${isSelected ? 'font-medium text-ink' : 'text-ink-2'}`}>
-                          {ipo.name}
+                        <div className={`text-[14px] truncate flex items-center gap-1.5 ${isSelected ? 'font-medium text-ink' : 'text-ink-2'}`}>
+                          <span className="truncate">{ipo.name}</span>
+                          {ipo.type === 'SME' ? (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex-shrink-0">
+                              SME
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0">
+                              Mainboard
+                            </span>
+                          )}
                         </div>
                         <div className="text-[13px] font-mono text-ink-3 mt-0.5 flex items-center gap-1.5">
                           <span className={getStatusDotClass(ipoStatus)} />
@@ -266,9 +326,20 @@ export default function ReportsPage() {
                 {/* Header: Title + Audit Status */}
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-line pb-4">
                   <div>
-                    <h2 className="text-[18px] font-medium text-ink">
-                      {selectedIpo.name}
-                    </h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-[18px] font-medium text-ink">
+                        {selectedIpo.name}
+                      </h2>
+                      {selectedIpo.type === 'SME' ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          SME
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          Mainboard
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[13px] text-ink-2 mt-1">
                       {isAudited
                         ? 'AI forensic audit · Gemini Flash & Claude Haiku'
