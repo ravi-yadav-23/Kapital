@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, date
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -8,6 +9,33 @@ from app.config import settings
 logger = logging.getLogger("scheduler")
 
 scheduler = AsyncIOScheduler()
+_in_memory_job_locks = {}
+
+
+async def acquire_job_lock(job_name: str, timeout_seconds: int = 120) -> bool:
+    """
+    Acquires a distributed Redis lock to prevent duplicate execution across
+    multiple Uvicorn worker processes or container replicas.
+    Falls back to single-process in-memory lock if Redis is unreachable.
+    """
+    lock_key = f"kapitl:scheduler:lock:{job_name}"
+    redis_url = getattr(settings, "REDIS_URL", None)
+    if redis_url:
+        try:
+            import redis.asyncio as aioredis
+            r = aioredis.from_url(redis_url, decode_responses=True)
+            acquired = await r.set(lock_key, "locked", nx=True, ex=timeout_seconds)
+            await r.aclose()
+            return bool(acquired)
+        except Exception:
+            pass
+
+    now = time.time()
+    last_run = _in_memory_job_locks.get(job_name, 0)
+    if now - last_run < timeout_seconds:
+        return False
+    _in_memory_job_locks[job_name] = now
+    return True
 
 
 async def morning_angel_one_login():
@@ -17,6 +45,10 @@ async def morning_angel_one_login():
     2. Obtains fresh JWT & feed tokens.
     3. Fetches live RMS limits and updates available balances in PostgreSQL.
     """
+    if not await acquire_job_lock("morning_angel_one_login", timeout_seconds=120):
+        logger.info("[08:30 AM IST] Morning login already acquired by another worker. Skipping duplicate run.")
+        return
+
     logger.info("=== [08:30 AM IST] Executing Morning Angel One Multi-Account Login ===")
     from app.services.angel_service import angel_service
     from app.services.account_service import account_service
@@ -64,13 +96,17 @@ async def listing_day_premarket_execution():
     """
     Runs at 09:00:00 AM IST on market days (Mon-Fri).
     Checks if any active IPO holdings list today and dispatches pre-market limit sell orders.
-    On success, records realized P&L to the realized_pnl ledger table.
+    Stages the orders with the broker and marks status as STAGED.
+    Realized P&L is deferred until 10:05 AM IST when order fills are confirmed post-market open.
     """
+    if not await acquire_job_lock("listing_day_premarket_execution", timeout_seconds=120):
+        logger.info("[09:00 AM IST] Pre-market sell job already acquired by another worker. Skipping duplicate run.")
+        return
+
     logger.info("=== [09:00 AM IST] Checking Listing Day Pre-Market Sell Orders ===")
     from app.db.database import AsyncSessionLocal
     from app.models.allotment import Allotment
     from app.services.angel_service import angel_service
-    from app.services.pnl_service import pnl_service
     from sqlalchemy import select
 
     today = date.today()
@@ -115,13 +151,10 @@ async def listing_day_premarket_execution():
                         alt.sell_order_id = order_res.get("sell_order_id")
                         alt.status = "STAGED"
                         await db.flush()
-                        logger.info(f"[{alt.ipo_symbol}] Sell order placed successfully: {alt.sell_order_id}")
-
-                        # Record realized P&L — use staged limit price as exit price
-                        exit_px = float(alt.staged_sell_limit_price or 0.0)
-                        if exit_px > 0:
-                            await pnl_service.record_sell(db, alt, exit_px, exit_type="PRE_MARKET_LISTING")
-                            logger.info(f"[{alt.ipo_symbol}] P&L recorded at exit price ₹{exit_px}")
+                        logger.info(
+                            f"[{alt.ipo_symbol}] Sell order placed successfully with broker (ID: {alt.sell_order_id}). "
+                            "Awaiting 10:05 AM market-open fill reconciliation before booking realized P&L."
+                        )
                     else:
                         alt.status = "ACTIVE"
                         await db.flush()
@@ -134,6 +167,65 @@ async def listing_day_premarket_execution():
             await db.commit()
     except Exception as job_err:
         logger.error(f"listing_day_premarket_execution job failed: {job_err}")
+
+
+async def reconcile_listing_sells():
+    """
+    Runs at 10:05:00 AM IST on market days (Mon-Fri).
+    Polls Angel One SmartAPI to confirm execution status of staged pre-market sell orders.
+    Only records realized P&L to the ledger table once the order fill is confirmed.
+    """
+    if not await acquire_job_lock("reconcile_listing_sells", timeout_seconds=120):
+        logger.info("[10:05 AM IST] Sell reconciliation already acquired by another worker. Skipping duplicate run.")
+        return
+
+    logger.info("=== [10:05 AM IST] Running Listing Day Sell Reconciliation ===")
+    from app.db.database import AsyncSessionLocal
+    from app.models.allotment import Allotment
+    from app.services.pnl_service import pnl_service
+    from app.services.angel_service import angel_service
+    from sqlalchemy import select
+
+    today = date.today()
+    try:
+        async with AsyncSessionLocal() as db:
+            stmt = select(Allotment).where(
+                Allotment.listing_date == today,
+                Allotment.status == "STAGED",
+                Allotment.sell_order_id.isnot(None),
+            )
+            res = await db.execute(stmt)
+            staged = res.scalars().all()
+
+            if not staged:
+                logger.info("No staged listing sell orders to reconcile today.")
+                return
+
+            for alt in staged:
+                logger.info(f"Checking execution status for {alt.ipo_symbol} (Order ID: {alt.sell_order_id})...")
+                status_res = await angel_service.get_order_status(
+                    order_id=alt.sell_order_id,
+                    client_id=alt.angel_client_id,
+                )
+                order_status = status_res.get("status")
+
+                if order_status == "COMPLETE":
+                    fill_px = float(status_res.get("average_price") or alt.staged_sell_limit_price or 0.0)
+                    if fill_px > 0:
+                        alt.status = "SOLD"
+                        alt.exit_price = fill_px
+                        await pnl_service.record_sell(db, alt, fill_px, exit_type="PRE_MARKET_LISTING")
+                        logger.info(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} FILLED at ₹{fill_px}. Realized P&L recorded.")
+                elif order_status in ["CANCELLED", "REJECTED"]:
+                    alt.status = "ACTIVE"
+                    alt.sell_order_id = None
+                    logger.warning(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} {order_status} by broker. Reverted allotment status to ACTIVE.")
+                else:
+                    logger.info(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} status is '{order_status}'. Staged order remains pending.")
+
+            await db.commit()
+    except Exception as ex:
+        logger.error(f"reconcile_listing_sells job failed: {ex}")
 
 
 async def daily_ipo_scraper_sync():
@@ -280,6 +372,15 @@ def start_scheduler():
         listing_day_premarket_execution,
         trigger=CronTrigger(hour=9, minute=15, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="listing_day_marketopen_retry",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Job 2c: 10:05 AM IST Mon-Fri (Listing Day Order Fill Reconciliation & P&L Booking)
+    scheduler.add_job(
+        reconcile_listing_sells,
+        trigger=CronTrigger(hour=10, minute=5, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="reconcile_listing_sells",
         replace_existing=True,
         max_instances=1,
     )

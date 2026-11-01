@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.ipo_service import ipo_service
 from app.utils.text_utils import clean_text, clean_text_list
+from app.utils.date_utils import compute_ipo_status, calculate_listing_date
 
 logger = logging.getLogger("ipo_tasks")
 
@@ -81,6 +82,20 @@ def _parse_ipowatch_dates(d_str: str, year: Optional[int] = None) -> tuple[Optio
     year_match = re.search(r'\b(20\d{2})\b', m_clean)
     if year_match:
         year = int(year_match.group(1))
+
+    # Match cross-month pattern like "30 Oct - 3 Nov" or "30 Oct to 3 Nov"
+    two_month_match = re.search(r'(\d{1,2})\s*([a-z]{3,4})\s*[-to\s]+\s*(\d{1,2})\s*([a-z]{3,4})', m_clean)
+    if two_month_match:
+        d1, m1_str, d2, m2_str = two_month_match.groups()
+        m1 = months.get(m1_str[:3])
+        m2 = months.get(m2_str[:3])
+        if m1 and m2:
+            try:
+                d_open = datetime.date(year, m1, int(d1))
+                d_close = datetime.date(year, m2, int(d2))
+                return d_open.isoformat(), d_close.isoformat()
+            except ValueError:
+                pass
 
     for m_name, m_num in months.items():
         if m_name in m_clean:
@@ -169,18 +184,7 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
                         
                         gmp_pct = round((gmp_val / max_p) * 100, 2) if max_p > 0 else 0.0
                         open_d_str, close_d_str = _parse_ipowatch_dates(dates)
-                        
-                        if close_d_str:
-                            close_d = datetime.date.fromisoformat(close_d_str)
-                            open_d = datetime.date.fromisoformat(open_d_str) if open_d_str else close_d
-                            if close_d < today:
-                                status = 'closed'
-                            elif open_d <= today <= close_d:
-                                status = 'closing_today' if close_d == today else 'open'
-                            else:
-                                status = 'upcoming'
-                        else:
-                            status = 'upcoming'
+                        status = compute_ipo_status(open_d_str, close_d_str)
                         
                         clean_sym = re.sub(r'[^a-zA-Z0-9]', '', name).upper()[:10]
                         slug = re.sub(r'[^a-zA-Z0-9]+', '-', name).strip('-').lower()
@@ -269,7 +273,7 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
                     "name": clean_text(raw.get("name", "IPO Issue")),
                     "slug": raw.get("slug", raw.get("symbol", "").lower()),
                     "type": raw.get("type", "EQ"),
-                    "status": raw.get("status", status),
+                    "status": compute_ipo_status(raw.get("startDate"), raw.get("endDate")),
                     "logo_url": raw.get("logo"),
                     "price_band_min": min_p,
                     "price_band_max": max_p,

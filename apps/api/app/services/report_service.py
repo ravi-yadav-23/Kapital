@@ -192,6 +192,7 @@ class AiDueDiligenceService:
             ipo_name=ipo_name,
             ipo_symbol=ipo_symbol,
             overall_score=existing.overall_score,
+            is_audited=True,
             recommendation=existing.recommendation,
             score_breakdown=ScoreBreakdownSchema(
                 financial_quality=existing.score_financial_quality,
@@ -212,7 +213,12 @@ class AiDueDiligenceService:
         )
 
     def build_fallback_report_response(self, ipo: Ipo) -> AiReportResponse:
-        """Helper to create an instant sector-aware AiReportResponse for an IPO that hasn't generated a full multi-agent report yet."""
+        """
+        Helper to create an honest preliminary AiReportResponse for an IPO that hasn't run an AI DRHP audit.
+        DRHP-dependent factors (financial quality, promoter integrity, valuation) are None ("Not assessed").
+        Only live market data factors (GMP, subscription) are scored.
+        Displayed weights total 100% (GMP 60% + Subscription 40%) and the headline score equals their weighted sum.
+        """
         from app.utils.sector_fallbacks import get_sector_fallback
         sector_data = get_sector_fallback(
             name=ipo.name or "",
@@ -220,9 +226,34 @@ class AiDueDiligenceService:
             about=ipo.about or ""
         )
 
-        score = ipo.score or 50
-        rec = ipo.recommendation or self.get_recommendation(score)
-        gmp = ipo.gmp_percent or 0.0
+        gmp = float(ipo.gmp_percent or 0.0)
+        sub_total = float(ipo.subscription_total or 0.0)
+
+        # 1. GMP Signal (0 - 100)
+        if gmp >= 50.0:
+            gmp_strength = min(100, int(80 + (gmp - 50) * 0.4))
+        elif gmp >= 20.0:
+            gmp_strength = int(60 + (gmp - 20) * (20 / 30))
+        elif gmp >= 5.0:
+            gmp_strength = int(40 + (gmp - 5) * (20 / 15))
+        elif gmp >= 0.0:
+            gmp_strength = int(25 + gmp * 3)
+        else:
+            gmp_strength = max(0, int(25 + gmp))
+
+        # 2. Subscription Momentum (0 - 100)
+        if sub_total >= 20.0:
+            subscription_momentum = min(100, int(80 + (sub_total - 20) * 0.5))
+        elif sub_total >= 5.0:
+            subscription_momentum = int(60 + (sub_total - 5) * (20 / 15))
+        elif sub_total >= 1.0:
+            subscription_momentum = int(40 + (sub_total - 1) * 5)
+        else:
+            subscription_momentum = 30  # Baseline neutral prior to subscription opening
+
+        # Displayed weights total 100%: 60% GMP + 40% Subscription
+        score = int(round(gmp_strength * 0.60 + subscription_momentum * 0.40))
+        rec = self.get_recommendation(score)
         price_max = ipo.price_band_max or 100.0
         est_price = round(price_max * (1 + (gmp / 100.0)), 2)
 
@@ -232,16 +263,17 @@ class AiDueDiligenceService:
             ipo_name=ipo.name,
             ipo_symbol=ipo.symbol,
             overall_score=score,
+            is_audited=False,
             recommendation=rec,
             score_breakdown=ScoreBreakdownSchema(
-                financial_quality=min(100, max(10, score + 5)),
-                industry_tailwinds=min(100, max(10, score + 2)),
-                subscription_momentum=min(100, max(10, int(gmp * 1.2))),
-                valuation_safety=min(100, max(10, score - 5)),
-                gmp_strength=min(100, max(10, int(gmp * 1.5))),
-                promoter_integrity=score,
+                financial_quality=None,  # DRHP-dependent: Not assessed
+                industry_tailwinds=None,  # DRHP-dependent: Not assessed
+                subscription_momentum=subscription_momentum,  # From live data (40% weight)
+                valuation_safety=None,   # DRHP-dependent: Not assessed
+                gmp_strength=gmp_strength,  # From live data (60% weight)
+                promoter_integrity=None, # DRHP-dependent: Not assessed
             ),
-            executive_summary=f"Sector-based estimate — AI analysis not run. Preliminary assessment for {ipo.name} ({ipo.type}). Indicative GMP stands at {gmp}% with preliminary score of {score}/100.",
+            executive_summary=f"No audit has run, so red flags are unknown. Preliminary rating derived solely from live grey market premium ({gmp}%) and subscription demand.",
             summary_source="sector_fallback",
             strengths=sector_data["strengths"],
             risks=sector_data["risks"],

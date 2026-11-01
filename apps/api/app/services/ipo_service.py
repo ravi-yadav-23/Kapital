@@ -8,6 +8,8 @@ from app.models.ipo import Ipo, IpoSchedule, IpoAlias
 from app.schemas.ipo import IpoResponse, IpoScheduleSchema
 from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 from app.utils.text_utils import clean_text, clean_text_list
+from app.utils.date_utils import compute_ipo_status, today_ist
+from sqlalchemy.orm import selectinload
 import re
 
 
@@ -32,19 +34,62 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         IpoScheduleSchema(event=s.event, date=_format_date(s.event_date) or "")
         for s in (ipo.schedules or [])
     ]
-    score_breakdown = None
-    red_flags = []
-    if getattr(ipo, "report", None):
+
+    # Status: Always computed via the single canonical function in IST
+    effective_status = compute_ipo_status(ipo.issue_open_date, ipo.issue_close_date)
+
+    # Score: One single source of truth across Dashboard, IPO Board, and Reports
+    has_audit = bool(getattr(ipo, "report", None))
+    if has_audit:
         rep = ipo.report
+        score = rep.overall_score
+        recommendation = rep.recommendation
+        is_audited = True
         score_breakdown = ScoreBreakdownSchema(
-            financial_quality=rep.score_financial_quality or 0,
-            industry_tailwinds=rep.score_industry_tailwinds or 0,
-            subscription_momentum=rep.score_subscription_momentum or 0,
-            valuation_safety=rep.score_valuation_safety or 0,
-            gmp_strength=rep.score_gmp_strength or 0,
-            promoter_integrity=rep.score_promoter_integrity or 0,
+            financial_quality=rep.score_financial_quality,
+            industry_tailwinds=rep.score_industry_tailwinds,
+            subscription_momentum=rep.score_subscription_momentum,
+            valuation_safety=rep.score_valuation_safety,
+            gmp_strength=rep.score_gmp_strength,
+            promoter_integrity=rep.score_promoter_integrity,
         )
         red_flags = [RedFlagSchema(**rf) if isinstance(rf, dict) else rf for rf in (rep.red_flags or [])]
+    else:
+        # Canonical preliminary rating from live data: exactly matches build_fallback_report_response
+        gmp = float(ipo.gmp_percent or 0.0)
+        sub_total = float(ipo.subscription_total or 0.0)
+        if gmp >= 50.0:
+            gmp_strength = min(100, int(80 + (gmp - 50) * 0.4))
+        elif gmp >= 20.0:
+            gmp_strength = int(60 + (gmp - 20) * (20 / 30))
+        elif gmp >= 5.0:
+            gmp_strength = int(40 + (gmp - 5) * (20 / 15))
+        elif gmp >= 0.0:
+            gmp_strength = int(25 + gmp * 3)
+        else:
+            gmp_strength = max(0, int(25 + gmp))
+
+        if sub_total >= 20.0:
+            subscription_momentum = min(100, int(80 + (sub_total - 20) * 0.5))
+        elif sub_total >= 5.0:
+            subscription_momentum = int(60 + (sub_total - 5) * (20 / 15))
+        elif sub_total >= 1.0:
+            subscription_momentum = int(40 + (sub_total - 1) * 5)
+        else:
+            subscription_momentum = 30
+
+        score = int(round(gmp_strength * 0.60 + subscription_momentum * 0.40))
+        recommendation = ipo.recommendation or ("STRONG_APPLY" if score >= 80 else "MODERATE_APPLY" if score >= 60 else "WATCH" if score >= 45 else "AVOID")
+        is_audited = False
+        score_breakdown = ScoreBreakdownSchema(
+            financial_quality=None,
+            industry_tailwinds=None,
+            subscription_momentum=subscription_momentum,
+            valuation_safety=None,
+            gmp_strength=gmp_strength,
+            promoter_integrity=None,
+        )
+        red_flags = []
 
     return IpoResponse(
         id=ipo.id,
@@ -52,7 +97,7 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         name=ipo.name,
         slug=ipo.slug,
         type=ipo.type or "EQ",
-        status=ipo.status or "upcoming",
+        status=effective_status,
         logo_url=ipo.logo_url,
         price_band_min=ipo.price_band_min,
         price_band_max=ipo.price_band_max,
@@ -68,8 +113,9 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         about=ipo.about,
         strengths=ipo.strengths or [],
         risks=ipo.risks or [],
-        score=ipo.score,
-        recommendation=ipo.recommendation,
+        score=score,
+        is_audited=is_audited,
+        recommendation=recommendation,
         gmp_percent=ipo.gmp_percent,
         subscription_retail=ipo.subscription_retail or 0.0,
         subscription_shni=ipo.subscription_shni or 0.0,
@@ -94,10 +140,8 @@ class IpoService:
         min_score: Optional[int] = None,
         max_investment: Optional[float] = None,
     ) -> List[IpoResponse]:
-        stmt = select(Ipo)
+        stmt = select(Ipo).options(selectinload(Ipo.report), selectinload(Ipo.schedules))
 
-        if status and status != "all":
-            stmt = stmt.where(Ipo.status == status)
         if ipo_type and ipo_type != "ALL":
             stmt = stmt.where(Ipo.type == ipo_type)
         if min_score is not None:
@@ -125,12 +169,19 @@ class IpoService:
                 result = await db.execute(stmt)
                 ipos = result.scalars().all()
 
+        responses = [_model_to_response(i) for i in ipos]
+        if status and status != "all":
+            responses = [r for r in responses if r.status == status]
 
-        return [_model_to_response(i) for i in ipos]
+        return responses
 
     @staticmethod
     async def get_ipo_by_id(db: AsyncSession, ipo_id: str) -> Optional[IpoResponse]:
-        stmt = select(Ipo).where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id) | (Ipo.symbol == ipo_id.upper()))
+        stmt = (
+            select(Ipo)
+            .options(selectinload(Ipo.report), selectinload(Ipo.schedules))
+            .where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id) | (Ipo.symbol == ipo_id.upper()))
+        )
         result = await db.execute(stmt)
         ipo = result.scalar_one_or_none()
 
@@ -227,13 +278,15 @@ class IpoService:
         refund_dt = parse_date(ipo_dict.get("refund_date"))
         listing_dt = parse_date(ipo_dict.get("listing_date"))
 
+        # ── Compute Authentic IST Status via the Canonical Function ───
+        computed_status = compute_ipo_status(open_dt, close_dt)
+
         # ── Merge and Enrich Existing Record ───────────────────────────
         if existing:
             # Preserve primary authentic official name if secondary feed has shorter name
             if not is_secondary:
                 existing.name = raw_name
-            if ipo_dict.get("status"):
-                existing.status = ipo_dict.get("status")
+            existing.status = computed_status
             if ipo_dict.get("price_band_min") and float(ipo_dict.get("price_band_min")) > 0:
                 existing.price_band_min = float(ipo_dict.get("price_band_min"))
             if ipo_dict.get("price_band_max") and float(ipo_dict.get("price_band_max")) > 0:
@@ -300,7 +353,7 @@ class IpoService:
             name=raw_name,
             slug=incoming_slug,
             type=ipo_dict.get("type", "EQ"),
-            status=ipo_dict.get("status", "upcoming"),
+            status=computed_status,
             logo_url=ipo_dict.get("logo_url"),
             price_band_min=float(ipo_dict.get("price_band_min", 0.0)),
             price_band_max=float(ipo_dict.get("price_band_max", 0.0)),

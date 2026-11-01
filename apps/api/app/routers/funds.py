@@ -37,7 +37,7 @@ async def get_fund_summary(
     total_locked    = sum(a.locked_balance or 0.0 for a in accounts)
     utilization     = (total_locked / total_family * 100.0) if total_family > 0 else 0.0
     active_count    = sum(1 for a in accounts if a.is_active)
-    active_locks    = sum(1 for l in asba_locks if l.status == "LOCKED") or len(asba_locks)
+    active_locks    = len(asba_locks) if asba_locks else 0
 
     return FundSummaryResponse(
         total_family_balance=total_family,

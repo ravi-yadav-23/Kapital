@@ -132,7 +132,10 @@ class AllocationOptimizer:
                         # Conflict: money would still be locked when this IPO opens
                         conflict_ipos.append(upcoming.get("name", upcoming.get("id", "Unknown")))
 
-            # Reserve capital for each upcoming high-score IPO within the ASBA window
+            # Reserve capital for upcoming high-score IPOs that overlap active ASBA windows.
+            # To avoid starving the current active bidding window, reserve for the largest conflicting
+            # requirement (since funds recycle sequentially) rather than naively summing all future dates.
+            max_conflicting_needed = 0.0
             for upcoming in upcoming_high_score:
                 upcoming_open = _parse_date(upcoming.get("issue_open_date"))
                 if upcoming_open is None:
@@ -146,7 +149,6 @@ class AllocationOptimizer:
                         will_be_locked = True
                         break
 
-                # Always reserve capital for upcoming IPO (lock or not, we want to be ready)
                 lot_cost, min_inv, _, _ = cls._compute_lot_cost_and_lots(upcoming)
                 pref_cat = (acc.get("preferred_category", "RETAIL") or "RETAIL").upper()
                 if pref_cat in ["SHNI", "BHNI"]:
@@ -154,10 +156,14 @@ class AllocationOptimizer:
                     needed = shni_lots * lot_cost
                 else:
                     needed = min_inv
-                reservation += needed
 
-                if will_be_locked and upcoming.get("name", "") not in conflict_ipos:
-                    conflict_ipos.append(upcoming.get("name", upcoming.get("id", "")))
+                if will_be_locked:
+                    if upcoming.get("name", "") not in conflict_ipos:
+                        conflict_ipos.append(upcoming.get("name", upcoming.get("id", "")))
+                    if needed > max_conflicting_needed:
+                        max_conflicting_needed = needed
+
+            reservation = max_conflicting_needed
 
             if conflict_ipos:
                 asba_conflicts += 1

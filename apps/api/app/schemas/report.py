@@ -23,44 +23,44 @@ class RedFlagSchema(BaseModel):
             self.penalty = self.penalty_points
 
 class ScoreBreakdownSchema(BaseModel):
-    financial_quality: int = 0
-    valuation_safety: int = 0
-    gmp_strength: int = 0
-    gmp_signal: int = 0
-    subscription_momentum: int = 0
-    subscription_hype: int = 0
-    industry_tailwinds: int = 0
-    industry_trend: int = 0
-    promoter_integrity: int = 0
-    allotment_probability: int = 0
-    lock_in_conflict: int = 0
+    financial_quality: Optional[int] = None
+    valuation_safety: Optional[int] = None
+    gmp_strength: Optional[int] = None
+    gmp_signal: Optional[int] = None
+    subscription_momentum: Optional[int] = None
+    subscription_hype: Optional[int] = None
+    industry_tailwinds: Optional[int] = None
+    industry_trend: Optional[int] = None
+    promoter_integrity: Optional[int] = None
+    allotment_probability: Optional[int] = None
+    lock_in_conflict: Optional[int] = None
     total: int = 0
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        if not self.gmp_signal and self.gmp_strength:
+        if self.gmp_signal is None and self.gmp_strength is not None:
             self.gmp_signal = self.gmp_strength
-        elif not self.gmp_strength and self.gmp_signal:
+        elif self.gmp_strength is None and self.gmp_signal is not None:
             self.gmp_strength = self.gmp_signal
 
-        if not self.subscription_hype and self.subscription_momentum:
+        if self.subscription_hype is None and self.subscription_momentum is not None:
             self.subscription_hype = self.subscription_momentum
-        elif not self.subscription_momentum and self.subscription_hype:
+        elif self.subscription_momentum is None and self.subscription_hype is not None:
             self.subscription_momentum = self.subscription_hype
 
-        if not self.industry_trend and self.industry_tailwinds:
+        if self.industry_trend is None and self.industry_tailwinds is not None:
             self.industry_trend = self.industry_tailwinds
-        elif not self.industry_tailwinds and self.industry_trend:
+        elif self.industry_tailwinds is None and self.industry_trend is not None:
             self.industry_tailwinds = self.industry_trend
 
-        if not self.allotment_probability and self.valuation_safety:
+        if self.allotment_probability is None and self.valuation_safety is not None:
             self.allotment_probability = self.valuation_safety
-        elif not self.valuation_safety and self.allotment_probability:
+        elif self.valuation_safety is None and self.allotment_probability is not None:
             self.valuation_safety = self.allotment_probability
 
-        if not self.lock_in_conflict and self.promoter_integrity:
+        if self.lock_in_conflict is None and self.promoter_integrity is not None:
             self.lock_in_conflict = self.promoter_integrity
-        elif not self.promoter_integrity and self.lock_in_conflict:
+        elif self.promoter_integrity is None and self.lock_in_conflict is not None:
             self.promoter_integrity = self.lock_in_conflict
 
 class AiReportResponse(BaseModel):
@@ -69,6 +69,7 @@ class AiReportResponse(BaseModel):
     ipo_name: Optional[str] = None
     ipo_symbol: Optional[str] = None
     overall_score: int
+    is_audited: bool = False
     recommendation: str
     score_breakdown: ScoreBreakdownSchema
     executive_summary: Optional[str] = None
