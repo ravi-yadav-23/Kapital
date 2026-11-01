@@ -1,59 +1,58 @@
 'use client'
 
-import React, { ReactNode, useEffect, useCallback } from 'react'
+import React, { ReactNode, useEffect, useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { useAuth } from '@/lib/auth-context'
 import { useWebSocket, WebSocketMessage } from '@/lib/hooks/useWebSocket'
 import { apiClient } from '@/lib/api-client'
-import { Eye, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 interface DashboardLayoutProps {
   children: ReactNode
 }
 
-/** Toast-style in-app notification for real-time WS events. */
+/** Toast-style in-app notification for real-time WS events */
 function LiveEventToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   useEffect(() => {
-    const t = setTimeout(onDismiss, 4500)
+    const t = setTimeout(onDismiss, 4000)
     return () => clearTimeout(t)
   }, [onDismiss])
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 shadow-2xl text-sm text-slate-100 animate-fade-in"
-      style={{ maxWidth: 340 }}
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-surface border border-line rounded-sm px-3.5 py-2.5 shadow-modal text-xs text-ink animate-fade-in"
+      style={{ maxWidth: 320 }}
     >
-      <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse" />
-      <span>{message}</span>
-      <button onClick={onDismiss} className="ml-auto text-slate-500 hover:text-slate-300 text-xs">✕</button>
+      <span className="w-2 h-2 rounded-full bg-positive flex-shrink-0" />
+      <span className="truncate">{message}</span>
+      <button onClick={onDismiss} className="ml-auto text-ink-3 hover:text-ink text-xs">✕</button>
     </div>
   )
 }
 
 const WS_EVENT_LABELS: Record<string, string> = {
-  ALLOTMENT_RESULT: '🎯 Allotment confirmed!',
-  ALLOTMENT_DETECTED: '🎯 Allotment confirmed!',
-  IPOS_SYNCED: '🔄 IPO data refreshed',
-  ORDER_PLACED: '📝 Order placed',
-  ORDER_CANCELLED: '🚫 Order cancelled',
-  ORDER_FILLED: '✅ Order filled',
-  ORDER_FAILED: '❌ Order failed',
-  SELL_EXECUTED: '💰 Pre-listing sell executed',
-  LISTING_SELLS_DISPATCHED: '💰 Pre-listing sells dispatched',
-  ASBA_LOCKS_SWEPT: '🧹 ASBA fund locks swept',
+  ALLOTMENT_RESULT: 'Allotment confirmed',
+  ALLOTMENT_DETECTED: 'Allotment confirmed',
+  IPOS_SYNCED: 'IPO data refreshed',
+  ORDER_PLACED: 'Order placed',
+  ORDER_CANCELLED: 'Order cancelled',
+  ORDER_FILLED: 'Order filled',
+  ORDER_FAILED: 'Order failed',
+  SELL_EXECUTED: 'Pre-listing sell executed',
+  LISTING_SELLS_DISPATCHED: 'Pre-listing sells dispatched',
+  ASBA_LOCKS_SWEPT: 'ASBA fund locks swept',
   HEARTBEAT: '',
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const { isAuthenticated, isGuest, isLoading } = useAuth()
-  const [toast, setToast] = React.useState<string | null>(null)
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
 
   const handleWsMessage = useCallback((msg: WebSocketMessage) => {
-    // Invalidate client-side memory cache according to event category
     if (msg.type === 'IPOS_SYNCED') {
       apiClient.clearCache('ipos')
     } else if (
@@ -76,16 +75,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       apiClient.clearCache('funds')
     }
 
-    // Suppress heartbeats; surface all other events
     const label = WS_EVENT_LABELS[msg.type]
     if (label === undefined) {
-      // Unknown event — show raw type
       setToast(msg.message || msg.type)
     } else if (label !== '') {
-      const detail = msg.message ? ` ${msg.message}` : ''
+      const detail = msg.message ? ` — ${msg.message}` : ''
       setToast(`${label}${detail}`)
     }
-    // If label === '' (heartbeat) — silently ignore
   }, [])
 
   const { isConnected } = useWebSocket(isAuthenticated && !isGuest ? handleWsMessage : undefined)
@@ -98,9 +94,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen w-full bg-[#080d1a] flex flex-col items-center justify-center text-slate-300">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
-        <span className="text-xs font-medium tracking-wide">Loading Kapitl...</span>
+      <div className="min-h-screen w-full bg-canvas flex flex-col items-center justify-center text-ink-2" suppressHydrationWarning>
+        <Loader2 className="w-5 h-5 animate-spin text-ink-3 mb-2" />
+        <span className="text-xs font-normal">Loading workspace...</span>
       </div>
     )
   }
@@ -110,54 +106,54 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="main-layout">
+    <div className="min-h-screen bg-canvas text-ink flex">
+      {/* 232px Sidebar */}
       <Sidebar
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
-      <div className="main-content flex flex-col">
-        {/* Guest Mode Notice Banner */}
+
+      {/* Main Content Area (offset by 232px on desktop) */}
+      <div className="flex-1 lg:pl-[232px] flex flex-col min-h-screen bg-canvas w-full">
+        {/* 36px Guest Mode Notice Banner */}
         {isGuest && (
-          <div className="bg-[#1a1612] border-b border-[#2d2520] px-4 py-2.5 flex items-center justify-between text-xs text-[#fafaf9]">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2 h-2 rounded-full bg-[#f59e0b] animate-pulse flex-shrink-0" />
-              <span>
-                <strong className="text-[#f59e0b]">Guest Portfolio Preview:</strong> Exploring live market data and seeded family demo allocations. Order placement and broker credentials are locked.
+          <div className="h-9 bg-surface border-b border-line px-4 flex items-center justify-between text-xs text-ink-2">
+            <div className="flex items-center gap-2 truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-ink-3 flex-shrink-0" />
+              <span className="truncate">
+                Demo workspace. IPO data is live. Accounts, orders and P&L are sample data.
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/settings')}
-                className="text-xs font-semibold text-[#f59e0b] hover:text-[#d97706] hover:underline cursor-pointer flex-shrink-0"
-              >
-                Link your Angel One accounts →
-              </button>
-              <button
-                onClick={() => router.push('/login')}
-                className="text-[11px] text-[#a8a29e] hover:text-[#fafaf9] underline cursor-pointer flex-shrink-0"
-              >
-                Admin Sign In
-              </button>
-            </div>
+            <button
+              onClick={() => router.push('/login')}
+              className="btn-secondary h-6 px-2 text-[11px] flex-shrink-0 ml-3"
+            >
+              Sign in
+            </button>
           </div>
         )}
 
+        {/* 48px Topbar */}
         <Topbar onMenuClick={() => setIsMobileSidebarOpen(true)} />
-        <main className="page-content animate-fade-in flex-1">{children}</main>
+
+        {/* Page Content */}
+        <main className="flex-1 bg-canvas p-4 sm:p-6 w-full animate-fade-in">
+          {children}
+        </main>
       </div>
 
-      {/* Real-time event toast — only shown when a meaningful WS event arrives */}
+      {/* Real-time event toast */}
       {toast && (
         <LiveEventToast message={toast} onDismiss={() => setToast(null)} />
       )}
 
-      {/* Subtle WS connection indicator (dot in bottom-left, only when disconnected) */}
+      {/* Offline dot */}
       {!isConnected && isAuthenticated && !isGuest && (
         <div
-          title="WebSocket disconnected — live updates paused"
-          className="fixed bottom-4 left-4 z-40 flex items-center gap-1.5 bg-slate-900/80 border border-slate-700 rounded-full px-2.5 py-1 text-[10px] text-slate-400"
+          title="Live WebSocket stream disconnected"
+          className="fixed bottom-4 left-4 z-40 flex items-center gap-1.5 bg-surface border border-line rounded-full px-2 py-0.5 text-[10px] text-ink-3"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          <span className="w-1.5 h-1.5 rounded-full bg-negative" />
           Offline
         </div>
       )}

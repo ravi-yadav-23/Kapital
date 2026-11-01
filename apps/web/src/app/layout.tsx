@@ -1,20 +1,8 @@
 import type { Metadata } from 'next'
-import { Inter, DM_Sans } from 'next/font/google'
+import { GeistSans } from 'geist/font/sans'
+import { GeistMono } from 'geist/font/mono'
 import '../styles/globals.css'
 import { AppProviders } from '@/components/providers/AppProviders'
-
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-})
-
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-heading',
-  weight: ['400', '500', '600', '700', '800'],
-})
 
 export const metadata: Metadata = {
   title: 'Kapitl — IPO Intelligence Platform',
@@ -71,10 +59,25 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${dmSans.variable} ${inter.className}`}
+      className={`${GeistSans.variable} ${GeistMono.variable} ${GeistSans.className}`}
       suppressHydrationWarning
     >
-      <body className="antialiased">
+      <body className="antialiased" suppressHydrationWarning>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var params = new URLSearchParams(window.location.search);
+                var theme = params.get('theme') || localStorage.getItem('kapitl_theme');
+                if (theme === 'light') {
+                  document.documentElement.setAttribute('data-theme', 'light');
+                } else {
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

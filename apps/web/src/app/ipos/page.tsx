@@ -4,14 +4,15 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import { Ipo, FamilyAccount } from '@/types'
+import { MOCK_IPOS, MOCK_ACCOUNTS } from '@/lib/mock-data'
 import { IpoBoard } from '@/components/ipo/IpoBoard'
 import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
-import { TrendingUp, Layers, Flame, Sparkles, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 
 export default function IposPage() {
-  const [ipos, setIpos] = useState<Ipo[]>(() => apiClient.getCachedIpos() || [])
-  const [accounts, setAccounts] = useState<FamilyAccount[]>(() => apiClient.getCachedAccounts() || [])
-  const [loading, setLoading] = useState(() => (apiClient.getCachedIpos()?.length ?? 0) === 0)
+  const [ipos, setIpos] = useState<Ipo[]>(MOCK_IPOS)
+  const [accounts, setAccounts] = useState<FamilyAccount[]>(MOCK_ACCOUNTS)
+  const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -30,10 +31,13 @@ export default function IposPage() {
   }, [])
 
   useEffect(() => {
+    const cachedIpos = apiClient.getCachedIpos()
+    if (cachedIpos && cachedIpos.length > 0) setIpos(cachedIpos)
+    const cachedAccounts = apiClient.getCachedAccounts()
+    if (cachedAccounts && cachedAccounts.length > 0) setAccounts(cachedAccounts)
     fetchData()
   }, [fetchData])
 
-  // Real-time live update when server broadcasts new sync
   useWebSocketEvent('IPOS_SYNCED', () => {
     fetchData()
   })
@@ -50,62 +54,36 @@ export default function IposPage() {
     }
   }
 
-  const openCount = ipos.filter((i) => i.status === 'open').length
-  const closingCount = ipos.filter((i) => i.status === 'closing_today').length
-
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="page-header">
+      <div className="space-y-6 max-w-6xl mx-auto">
+        {/* Page Header (Subtle, Informational) */}
+        <div className="flex items-center justify-between border-b border-line pb-4">
           <div>
-            <h1 className="page-title flex items-center gap-2.5">
-              <TrendingUp className="w-5 h-5 text-brand-from" />
-              <span>IPO Discovery & Scoring Pipeline</span>
-            </h1>
-            <p className="page-subtitle">
-              Live market feed with Claude DRHP analysis, Gemini grey market signals, and instant SmartAPI staging
+            <h1 className="text-lg font-medium text-ink">IPO Discovery & Scoring</h1>
+            <p className="text-xs text-ink-2 mt-0.5">
+              Live primary market feed scored across DRHP fundamentals and grey market premiums.
             </p>
           </div>
 
-          {/* Actions & Mini pipeline status chips */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSyncMarket}
-              disabled={syncing}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-subtle bg-bg-surface hover:bg-bg-elevated text-xs font-semibold text-text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-brand-from ${syncing ? 'animate-spin' : ''}`} />
-              <span>{syncing ? 'Syncing...' : 'Sync Market Feed'}</span>
-            </button>
-
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-status-open text-status-open-fg border border-accent-green/20 text-xs font-mono font-bold">
-                <span className="dot-pulse" />
-                <span>{openCount} Open</span>
-              </div>
-              {closingCount > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-status-closing text-status-closing-fg border border-accent-amber/20 text-xs font-mono font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent-amber animate-ping" />
-                  <span>{closingCount} Closing Today</span>
-                </div>
-              )}
-            </div>
-          </div>
+          <button
+            onClick={handleSyncMarket}
+            disabled={syncing}
+            className="btn-secondary h-8 px-3 text-xs flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-ink' : 'text-ink-3'}`} />
+            <span>{syncing ? 'Syncing...' : 'Sync Market Feed'}</span>
+          </button>
         </div>
 
         {/* Board Component */}
         {loading ? (
-          <div className="space-y-4">
-            <div className="card h-28 skeleton" />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="card h-64 skeleton" />
-              ))}
-            </div>
+          <div className="space-y-3">
+            <div className="skeleton-bar h-10 w-full" />
+            <div className="skeleton-bar h-64 w-full" />
           </div>
         ) : (
-          <IpoBoard ipos={ipos} accounts={accounts} showFilters={true} />
+          <IpoBoard ipos={ipos} accounts={accounts} />
         )}
       </div>
     </DashboardLayout>
