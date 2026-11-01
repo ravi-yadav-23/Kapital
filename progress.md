@@ -1,8 +1,15 @@
 # Implementation Progress Log
 
 ## Session Started: 2026-11-01
-## Batch 2 Complete (Tasks 4 - 6):
-- **Task 4 (`[MED-01]`)**: Added `active_asba_locks: int = 0` to `FundSummaryResponse` and populated it in `demo_dataset.py` and `funds.py`. Confirmed `test_demo_data_whole_lots_and_asba_reconciliation` passes. (Commit: `d576154`)
-- **Task 5 (`[HIGH-02]`)**: Added `resolve_tradingsymbol` to `AngelOneSmartApiService` preserving NSE SME series suffixes (`-SM`, `-ST`, etc.). Added 3 pytest cases (`test_sme_tradingsymbol_resolution.py`). (Commit: `ae6eeec`)
-- **Task 6 (`[SYNC-01]`)**: Harmonized guest preview response on `/api/reports/pnl/summary` with demo allotments ledger. Added pytest verification (`test_pnl_consistency.py`). (Commit: `075f000`)
+## Batch 3 Complete (Tasks 7 - 10):
+- **Task 7 (`[CRIT-03]`, `[HIGH-01]`)**: Created production `apps/web/Dockerfile`, added `web` service to `docker-compose.yml`, and populated all 0-byte ghost files in `infra/` (`nginx.conf`, `ssl.conf`, `backup_db.sh`, `deploy.sh`, `setup_static_ip.sh`, `user_data.sh`, `init.sql`). (Commit: `d3d6d30`)
+- **Task 8 (`[ARC-01]`)**: Unlinked `@kapitl/shared-types` workspace dependency and removed orphaned `packages/` directory. (Commit: `a88254e`)
+- **Task 9 (`[HIGH-03]`)**: Added automated smoke test suite for scoring engine with Node test runner (`apps/web/src/__tests__/smoke.test.ts`). (Commit: `f522a24`)
+- **Task 10 (Full Verification)**:
+  - Backend: **74/74 tests passed** (0 failures).
+  - Frontend: **4/4 unit tests passed**, TypeScript 0 errors, Next.js **13/13 routes compiled** to optimized production build.
+  - Deployment: `docker compose config` syntax validated.
+
+## Final Status: ALL REMEDIATION TASKS COMPLETE
+The codebase is now fully remediated according to the production readiness audit report.
 

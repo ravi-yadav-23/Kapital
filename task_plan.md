@@ -34,19 +34,19 @@ Remediate all 4 critical production blockers, 3 high-severity defects, and test 
   - Files: `apps/api/app/routers/reports.py`, `apps/api/tests/test_pnl_consistency.py`
   - Status: `completed` (Commit: `075f000`)
 
-- [ ] **Task 7: Containerization & Pruning 0-Byte Infra Stubs (`[CRIT-03]`, `[HIGH-01]`)**
+- [x] **Task 7: Containerization & Pruning 0-Byte Infra Stubs (`[CRIT-03]`, `[HIGH-01]`)**
   - Files: `apps/web/Dockerfile`, `apps/web/.dockerignore`, `docker-compose.yml`, `infra/`
-  - Status: `pending`
+  - Status: `completed` (Commit: `d3d6d30`)
 
-- [ ] **Task 8: Monorepo Pruning & Dependency Cleanliness (`[ARC-01]`)**
+- [x] **Task 8: Monorepo Pruning & Dependency Cleanliness (`[ARC-01]`)**
   - Files: `apps/web/package.json`, `packages/`
-  - Status: `pending`
+  - Status: `completed` (Commit: `a88254e`)
 
-- [ ] **Task 9: Frontend Smoke Testing Baseline (`[HIGH-03]`)**
-  - Files: `apps/web/package.json`, `apps/web/vitest.config.ts`, `apps/web/src/__tests__/smoke.test.ts`
-  - Status: `pending`
+- [x] **Task 9: Frontend Smoke Testing Baseline (`[HIGH-03]`)**
+  - Files: `apps/web/package.json`, `apps/web/src/__tests__/smoke.test.ts`
+  - Status: `completed` (Commit: `f522a24`)
 
-- [ ] **Task 10: Complete Verification & Final Audit Sign-Off**
+- [x] **Task 10: Complete Verification & Final Audit Sign-Off**
   - Files: Full monorepo
-  - Status: `pending`
+  - Status: `completed` (74/74 Pytest passing, Next.js 13/13 routes compiled)
 
