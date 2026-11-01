@@ -110,13 +110,16 @@ class AngelOneSmartApiService:
     async def get_symbol_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
         """
         Retrieves the exact Angel One scrip token from OpenAPI Scrip Master.
-        Refreshes scrip master on-demand if token is missing.
+        Refreshes scrip master on-demand with a 6-second timeout guard.
         """
         clean_symbol = symbol.upper().replace("-EQ", "").strip()
         cache_key = f"{exchange}:{clean_symbol}"
 
         if not self._instrument_cache_loaded:
-            await self.refresh_scrip_master(force=True)
+            try:
+                await asyncio.wait_for(self.refresh_scrip_master(force=True), timeout=6.0)
+            except Exception as e:
+                logger.warning(f"Initial scrip master fetch timed out or failed: {e}")
 
         token = self._instrument_cache.get(cache_key) or self._instrument_cache.get(f"{exchange}:{clean_symbol}-EQ")
 
@@ -124,14 +127,38 @@ class AngelOneSmartApiService:
         if not token and self._last_scrip_refresh:
             if (datetime.now(timezone.utc) - self._last_scrip_refresh).total_seconds() > 1800:
                 logger.info(f"Symbol '{clean_symbol}' not found in cache. Refreshing scrip master...")
-                await self.refresh_scrip_master(force=True)
+                try:
+                    await asyncio.wait_for(self.refresh_scrip_master(force=True), timeout=6.0)
+                except Exception as e:
+                    logger.warning(f"On-demand scrip master refresh timed out: {e}")
                 token = self._instrument_cache.get(cache_key) or self._instrument_cache.get(f"{exchange}:{clean_symbol}-EQ")
 
         if not token:
-            logger.error(f"Instrument token NOT found for {cache_key} in Angel One master scrip list.")
+            logger.warning(f"Instrument token NOT found for {cache_key} in Angel One master scrip list.")
             return None
 
         return token
+
+    def resolve_tradingsymbol(self, symbol: str, exchange: str = "NSE") -> str:
+        """
+        Determines the exact trading symbol with proper series suffix.
+        Preserves SME suffixes (-SM, -ST) and special categories (-BE, -BZ).
+        Appends -EQ only for mainline NSE equity without existing suffix.
+        """
+        clean = (symbol or "").strip().upper()
+        if not clean:
+            return ""
+        if (exchange or "NSE").upper() != "NSE":
+            return clean
+        if clean.endswith(("-EQ", "-SM", "-ST", "-BE", "-BZ", "-SZ")):
+            return clean
+        # Check if instrument master contains clean-SM or clean-ST
+        if hasattr(self, "_instrument_cache"):
+            if f"NSE:{clean}-SM" in self._instrument_cache:
+                return f"{clean}-SM"
+            if f"NSE:{clean}-ST" in self._instrument_cache:
+                return f"{clean}-ST"
+        return f"{clean}-EQ"
 
     def generate_totp(self, totp_secret: str) -> str:
         """Generate 6-digit TOTP for Angel One login."""
@@ -338,6 +365,21 @@ class AngelOneSmartApiService:
                 actual_exchange = alt_exchange
 
         if not token:
+            # Fallback: check if the client's live Demat holdings list provides the exact symboltoken
+            try:
+                holdings = await self.get_holdings(client_id, api_key=api_key)
+                clean_target = symbol.upper().replace("-EQ", "").strip()
+                for h in holdings:
+                    h_sym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").strip()
+                    if h_sym == clean_target and h.get("symboltoken"):
+                        token = str(h["symboltoken"])
+                        actual_exchange = (h.get("exchange") or actual_exchange).upper()
+                        logger.info(f"Resolved token '{token}' for '{symbol}' directly from Demat holdings ({actual_exchange})")
+                        break
+            except Exception as ex:
+                logger.debug(f"Holdings fallback token lookup failed: {ex}")
+
+        if not token:
             logger.error(f"Cannot stage pre-market sell: symbol token for '{symbol}' not found on {actual_exchange} in Angel One instrument master.")
             return {
                 "success": False,
@@ -389,7 +431,7 @@ class AngelOneSmartApiService:
         key = api_key or session.get("api_key") or ""
         headers = self._get_common_headers(api_key=key, jwt_token=jwt_token)
 
-        tradingsymbol = f"{symbol}-EQ" if actual_exchange == "NSE" else str(symbol)
+        tradingsymbol = self.resolve_tradingsymbol(symbol, exchange=actual_exchange)
         order_payload = {
             "variety": "NORMAL",
             "tradingsymbol": tradingsymbol,
