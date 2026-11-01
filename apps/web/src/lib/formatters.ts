@@ -1,4 +1,4 @@
-import { IpoStatus, ScoreRecommendation } from '../types'
+import type { IpoStatus, ScoreRecommendation } from '../types/ipo.ts'
 
 // ── Currency / Number Formatters ──────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ export function computeIpoStatus(
   closeDate: string | null | undefined,
   todayStr?: string
 ): 'upcoming' | 'open' | 'closing_today' | 'closed' {
-  if (!openDate || !closeDate) return 'upcoming'
+  if (!closeDate) return 'upcoming'
 
   const today = todayStr || getTodayIST()
 
@@ -96,13 +96,31 @@ export function computeIpoStatus(
     return d.trim()
   }
 
-  const open = parseDateOnly(openDate)
-  const close = parseDateOnly(closeDate)
+  let open = openDate ? parseDateOnly(openDate) : null
+  let close = parseDateOnly(closeDate)
 
-  if (today < open) return 'upcoming'
+  // Self-heal inverted cross-month dates (e.g. 2026-11-30 to 2026-11-03 becomes 2026-10-30 to 2026-11-03)
+  if (open && close && open > close) {
+    const [oY, oM, oD] = open.split('-').map(Number)
+    const [cY, cM, cD] = close.split('-').map(Number)
+    if (oY === cY && oM === cM && oD > cD) {
+      const prevMonth = oM === 1 ? 12 : oM - 1
+      const prevYear = oM === 1 ? oY - 1 : oY
+      open = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(oD).padStart(2, '0')}`
+    } else {
+      const tmp = open
+      open = close
+      close = tmp
+    }
+  }
+
   if (today > close) return 'closed'
   if (today === close) return 'closing_today'
-  return 'open'
+  if (open && today < open) return 'upcoming'
+  if (open && open <= today && today <= close) return 'open'
+  if (!open && today <= close) return 'open'
+
+  return 'upcoming'
 }
 
 /**

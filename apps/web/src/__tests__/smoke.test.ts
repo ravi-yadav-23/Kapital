@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { computeIpoStatus } from '../lib/formatters.ts';
 
 // Test core conviction verdict scoring rules
 function calculateConvictionVerdict(score: number): { label: string; action: string } {
@@ -32,6 +33,26 @@ describe('Kapitl Core Scoring & Verdict Engine', () => {
     const verdict = calculateConvictionVerdict(42);
     assert.strictEqual(verdict.label, 'AVOID');
     assert.strictEqual(verdict.action, 'SKIP');
+  });
+
+  test('canonical status computation & self-healing for active cross-month IPOs', () => {
+    const today = '2026-11-01';
+
+    // Cross-month active IPOs on Groww (e.g. Maxwell Engineering, HGS India, Johnsoncab)
+    // Legacy inverted date format self-heals to open on 1 Nov 2026
+    assert.strictEqual(computeIpoStatus('2026-11-30', '2026-11-03', today), 'open');
+    assert.strictEqual(computeIpoStatus('2026-10-30', '2026-11-03', today), 'open');
+    assert.strictEqual(computeIpoStatus('2026-11-29', '2026-11-02', today), 'open');
+    assert.strictEqual(computeIpoStatus('2026-10-29', '2026-11-02', today), 'open');
+
+    // Upcoming IPO (e.g. Vedant Poly Fabs opening 2 Nov 2026)
+    assert.strictEqual(computeIpoStatus('2026-11-02', '2026-11-04', today), 'upcoming');
+
+    // Closing today
+    assert.strictEqual(computeIpoStatus('2026-10-30', '2026-11-01', today), 'closing_today');
+
+    // Closed
+    assert.strictEqual(computeIpoStatus('2026-10-27', '2026-10-29', today), 'closed');
   });
 });
 
