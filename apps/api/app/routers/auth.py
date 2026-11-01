@@ -19,6 +19,7 @@ from app.middleware.auth import (
     hash_password,
 )
 from app.config import settings
+from app.utils.security import encrypt_credential, decrypt_credential
 
 logger = logging.getLogger("auth")
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -30,7 +31,7 @@ _in_memory_totp_secret: Optional[str] = None
 
 
 def get_admin_totp_secret() -> Optional[str]:
-    """Retrieve existing TOTP secret from settings, in-memory cache, or persistent files."""
+    """Retrieve existing TOTP secret from settings, in-memory cache, or encrypted persistent files."""
     global _in_memory_totp_secret
     if settings.admin_totp_secret and settings.admin_totp_secret.strip():
         return settings.admin_totp_secret.strip()
@@ -41,22 +42,24 @@ def get_admin_totp_secret() -> Optional[str]:
             try:
                 val = path.read_text().strip()
                 if val:
-                    _in_memory_totp_secret = val
-                    return val
+                    dec = decrypt_credential(val) or val
+                    _in_memory_totp_secret = dec
+                    return dec
             except Exception as e:
                 logger.warning(f"Could not read TOTP store file {path}: {e}")
     return None
 
 
 def save_admin_totp_secret(secret: str) -> None:
-    """Save newly verified TOTP secret."""
+    """Save newly verified TOTP secret encrypted at rest."""
     global _in_memory_totp_secret
-    _in_memory_totp_secret = secret.strip()
-    # Write to permanent store first, then to /tmp as secondary fallback
+    clean = secret.strip()
+    _in_memory_totp_secret = clean
+    encrypted = encrypt_credential(clean) or clean
     for path in [TOTP_STORE_FILE, TOTP_TMP_FILE]:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(secret.strip())
+            path.write_text(encrypted)
         except Exception as e:
             logger.warning(f"Could not persist TOTP secret to {path}: {e}")
 

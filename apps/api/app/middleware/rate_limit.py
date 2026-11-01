@@ -39,11 +39,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
-        client_ip = (
-            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-            or request.headers.get("x-real-ip", "").strip()
-            or (request.client.host if request.client else "127.0.0.1")
+        # Determine client IP safely: only trust proxy headers if socket connection is from private/loopback address
+        direct_ip = request.client.host if request.client else "127.0.0.1"
+        is_trusted_proxy = (
+            direct_ip in ("127.0.0.1", "::1", "localhost")
+            or direct_ip.startswith("10.")
+            or direct_ip.startswith("192.168.")
+            or direct_ip.startswith("172.")
         )
+        if is_trusted_proxy and request.headers.get("x-forwarded-for"):
+            client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        elif is_trusted_proxy and request.headers.get("x-real-ip"):
+            client_ip = request.headers.get("x-real-ip", "").strip()
+        else:
+            client_ip = direct_ip
         now = time.time()
 
         # Periodic cleanup of inactive IPs every 60s

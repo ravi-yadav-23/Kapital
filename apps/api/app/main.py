@@ -114,10 +114,16 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# CORS Middleware: Explicitly allow localhost origins and Vercel domains with credentials
+# CORS Middleware: Explicitly allow localhost origins on any port and Vercel domains with credentials
 cors_origins_list = list(set(settings.cors_origins + [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3002",
+    "http://localhost:3003",
+    "http://127.0.0.1:3003",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "https://kapital-gamma-nine.vercel.app",
@@ -126,7 +132,7 @@ cors_origins_list = list(set(settings.cors_origins + [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins_list,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:[0-9]+)?|https://(kapital|kapitl)[a-zA-Z0-9_\-]*\.vercel\.app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
