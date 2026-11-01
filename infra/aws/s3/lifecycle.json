@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "PruneOldBackups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "backups/" },
+      "Expiration": { "Days": 30 }
+    }
+  ]
+}

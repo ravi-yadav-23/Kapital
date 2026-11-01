@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   transpilePackages: ["@kapitl/shared-types", "@kapitl/score-engine", "@kapitl/config"],
   env: {
     NEXT_PUBLIC_GOOGLE_CLIENT_ID:

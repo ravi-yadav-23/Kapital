@@ -55,6 +55,19 @@ services:
     volumes:
       - ./apps/api:/app
 
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: kapitl-web
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   redis_data:
