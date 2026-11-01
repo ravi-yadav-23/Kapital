@@ -40,12 +40,10 @@ async def list_ai_reports(db: AsyncSession = Depends(get_db)):
 
     reports = []
     for ipo_row, report_row in rows:
-        eff_status = compute_ipo_status(ipo_row.issue_open_date, ipo_row.issue_close_date)
-        if eff_status in ["open", "closing_today", "upcoming"]:
-            if report_row:
-                reports.append(report_service.format_report_response(report_row, ipo_row))
-            else:
-                reports.append(report_service.build_fallback_report_response(ipo_row))
+        if report_row:
+            reports.append(report_service.format_report_response(report_row, ipo_row))
+        else:
+            reports.append(report_service.build_fallback_report_response(ipo_row))
 
     return reports
 

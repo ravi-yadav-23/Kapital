@@ -211,6 +211,7 @@ class IpoService:
         incoming_symbol = ipo_dict.get("symbol")
         incoming_isin = ipo_dict.get("isin")
         is_secondary = ipo_dict.get("is_secondary_feed", False)
+        is_groww = ipo_dict.get("is_groww_feed", False)
         norm_key = normalize_entity_name(raw_name)
 
         existing: Optional[Ipo] = None
@@ -288,9 +289,21 @@ class IpoService:
             # Preserve primary authentic official name if secondary feed has shorter name
             if not is_secondary:
                 existing.name = raw_name
+            if is_groww or not existing.type:
+                existing.type = ipo_dict.get("type", existing.type)
+            if is_groww and ipo_dict.get("isin"):
+                existing.isin = ipo_dict["isin"]
+            if is_groww and ipo_dict.get("logo_url") and not existing.logo_url:
+                existing.logo_url = ipo_dict["logo_url"]
+
             existing.status = computed_status
             existing.issue_open_date = open_dt
             existing.issue_close_date = close_dt
+            if ipo_dict.get("allotment_date"):
+                existing.allotment_date = allot_dt
+            if ipo_dict.get("listing_date"):
+                existing.listing_date = listing_dt
+
             if ipo_dict.get("price_band_min") and float(ipo_dict.get("price_band_min")) > 0:
                 existing.price_band_min = float(ipo_dict.get("price_band_min"))
             if ipo_dict.get("price_band_max") and float(ipo_dict.get("price_band_max")) > 0:
@@ -311,15 +324,25 @@ class IpoService:
             elif not existing.issue_size_cr and ipo_dict.get("issue_size"):
                 existing.issue_size = ipo_dict.get("issue_size")
 
-            existing.score = ipo_dict.get("score", existing.score)
-            existing.recommendation = ipo_dict.get("recommendation", existing.recommendation)
-            if ipo_dict.get("gmp_percent") is not None:
-                existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
-
             for field in ["subscription_retail", "subscription_shni", "subscription_bhni", "subscription_qib", "subscription_total"]:
                 val = ipo_dict.get(field)
                 if val is not None and float(val) > 0:
                     setattr(existing, field, float(val))
+
+            if ipo_dict.get("gmp_percent") is not None and float(ipo_dict.get("gmp_percent")) > 0:
+                existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
+                from app.utils.score_engine import IpoScoreEngine
+                new_score, new_rec, _ = IpoScoreEngine.compute_score({
+                    "gmp_percent": existing.gmp_percent,
+                    "subscription_qib": existing.subscription_qib or 0.0,
+                    "subscription_total": existing.subscription_total or 0.0,
+                    "issue_size_cr": existing.issue_size_cr or 0.0,
+                })
+                existing.score = new_score
+                existing.recommendation = new_rec
+            elif ipo_dict.get("score") and not existing.score:
+                existing.score = ipo_dict.get("score")
+                existing.recommendation = ipo_dict.get("recommendation")
 
             # Ensure this alias is recorded in Tier 2
             if norm_key:
