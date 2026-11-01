@@ -34,6 +34,11 @@ def _build_engine(url: str):
         else:
             return create_async_engine(url, echo=False, pool_pre_ping=True)
     except Exception as e:
+        if getattr(settings, "environment", "") == "production":
+            logger.critical(f"[DB FATAL] Cannot connect to primary database in production: {e}")
+            raise RuntimeError(
+                f"Production database initialization failed: {e}. SQLite fallback is strictly disabled in production."
+            )
         logger.error(f"[DB Error] Failed to create engine for {url}: {e}. Falling back to SQLite on /tmp")
         fallback_url = "sqlite+aiosqlite:////tmp/kapitl_local.db"
         return create_async_engine(fallback_url, echo=False)

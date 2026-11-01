@@ -72,6 +72,14 @@ class Settings(BaseSettings):
                 raise ValueError("In production, ADMIN_PIN cannot be a trivial or default PIN.")
             if len(val_pin) < 6:
                 raise ValueError("In production, ADMIN_PIN must be at least 6 digits/characters.")
+
+            # Database persistence check
+            db_url = (self.database_url or "").strip().lower()
+            if not db_url.startswith("postgresql") and not db_url.startswith("postgres"):
+                raise ValueError(
+                    "In production, DATABASE_URL must be a managed PostgreSQL connection "
+                    "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
+                )
         else:
             if not val_sec:
                 self.secret_key = _INSECURE_DEFAULT_KEY
