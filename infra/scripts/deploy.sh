@@ -22,3 +22,4 @@ echo "[4/4] Restarting services..."
 docker compose -f infra/docker/docker-compose.prod.yml up -d --remove-orphans
 
 echo "[SUCCESS] Kapitl production deployment complete."
+

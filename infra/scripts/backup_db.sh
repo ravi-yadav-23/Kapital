@@ -21,3 +21,4 @@ echo "[INFO] Backup completed successfully: ${BACKUP_FILE}"
 # Keep last 14 days of backups
 find "${BACKUP_DIR}" -type f -name "kapitl_backup_*.sql.gz" -mtime +14 -delete
 echo "[INFO] Old backups cleaned up."
+

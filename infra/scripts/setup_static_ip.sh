@@ -12,3 +12,4 @@ if [ -n "${STATIC_IP:-}" ]; then
   fi
   echo "[OK] IP matches registered broker static IP."
 fi
+

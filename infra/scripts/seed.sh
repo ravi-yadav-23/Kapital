@@ -8,3 +8,4 @@ from app.db.database import init_db
 asyncio.run(init_db())
 "
 echo "[SEED] Completed successfully."
+
