@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.schemas.ipo import IpoResponse
 from app.services.ipo_service import ipo_service
 from app.tasks.ipo_tasks import sync_ipos_pipeline
+from app.middleware.auth import require_admin
 
 router = APIRouter(prefix="/ipos", tags=["ipos"])
 
@@ -38,7 +39,10 @@ async def get_ipo_details(ipo_id: str, response: Response, db: AsyncSession = De
     return ipo
 
 @router.post("/sync")
-async def sync_market_data(db: AsyncSession = Depends(get_db)):
-    """Trigger real-time sync for current Indian IPOs pipeline into PostgreSQL."""
+async def sync_market_data(
+    admin: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger real-time sync for current Indian IPOs pipeline into PostgreSQL (Admin only)."""
     count = await sync_ipos_pipeline(db)
     return {"success": True, "message": f"Successfully synchronized {count} live IPOs into PostgreSQL database"}
