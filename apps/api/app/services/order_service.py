@@ -129,7 +129,23 @@ class OrderService:
         acc_name = acc.name
         ipo_name = ipo.name
 
-        # Record manual IPO application intent & reserve ASBA capital
+        # Transmit IPO bid and UPI ASBA mandate request via Angel One SmartAPI
+        broker_res = await angel_service.apply_ipo(
+            client_id=acc.angel_client_id or acc_name,
+            symbol=ipo.symbol or ipo_name,
+            lots=data.lots,
+            shares=shares,
+            price=bid_px,
+            upi_vpa=upi_vpa,
+            category=data.category,
+        )
+
+        angel_order_id = broker_res.get("broker_order_id")
+        order_status = broker_res.get("status", "SUBMITTED") if broker_res.get("success") else "FAILED"
+        mandate_status = broker_res.get("mandate_status", "MANDATE_REQUESTED") if broker_res.get("success") else "FAILED"
+        reject_reason = broker_res.get("error") if not broker_res.get("success") else None
+
+        # Record IPO application intent & reserve ASBA capital
         order_obj = IpoOrder(
             id=f"ord-{str(uuid.uuid4())[:8]}",
             account_id=data.account_id,
@@ -142,12 +158,19 @@ class OrderService:
             bid_price=bid_px,
             amount=amount,
             upi_vpa=upi_vpa,
-            angel_order_id=None,
-            status="PENDING",
-            reject_reason=None,
-            mandate_status="PENDING_SUBMISSION",
+            angel_order_id=angel_order_id,
+            status=order_status,
+            reject_reason=reject_reason,
+            mandate_status=mandate_status,
             placed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
+
+        if not broker_res.get("success"):
+            db.add(order_obj)
+            await db.commit()
+            await db.refresh(order_obj)
+            raise ValueError(f"Angel One rejected application: {reject_reason}")
+
         db.add(order_obj)
 
         acc.total_bids_placed = (acc.total_bids_placed or 0) + 1

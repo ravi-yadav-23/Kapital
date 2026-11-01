@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.schemas.order import OrderResponse, OrderCreate, BatchOrderCreate, BatchOrderResponse
 from app.services.order_service import order_service
+from app.services.demo_dataset import demo_dataset
 
 from app.middleware.auth import get_current_user_optional, require_admin
 
@@ -20,7 +21,14 @@ async def list_orders(
 ):
     """Audit log of all IPO applications submitted through Angel One SmartAPI from PostgreSQL."""
     if user and user.get("is_guest"):
-        return []
+        orders = demo_dataset.get_orders()
+        if status and status.upper() != "ALL":
+            orders = [o for o in orders if o.status.upper() == status.upper()]
+        if account:
+            orders = [o for o in orders if account.lower() in o.account_name.lower()]
+        if ipo:
+            orders = [o for o in orders if ipo.lower() in o.ipo_name.lower()]
+        return orders
     return await order_service.get_orders(
         db=db,
         status=status,

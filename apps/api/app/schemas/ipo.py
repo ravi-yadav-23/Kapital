@@ -29,6 +29,7 @@ class IpoBase(BaseModel):
     strengths: List[str] = []
     risks: List[str] = []
     score: Optional[int] = None
+    is_audited: bool = False
     recommendation: Optional[str] = None
     gmp_percent: Optional[float] = None
     subscription_retail: Optional[float] = 0.0
