@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     cors_origins: Any = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:3003",
+        "http://127.0.0.1:3003",
         "https://kapital-gamma-nine.vercel.app",
     ]
 
@@ -36,21 +42,39 @@ class Settings(BaseSettings):
         return [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+            "http://localhost:3002",
+            "http://127.0.0.1:3002",
+            "http://localhost:3003",
+            "http://127.0.0.1:3003",
             "https://kapital-gamma-nine.vercel.app",
         ]
 
     @model_validator(mode="after")
-    def validate_secret_key(self):
-        val = (self.secret_key or "").strip()
+    def validate_production_security(self):
+        val_sec = (self.secret_key or "").strip()
+        val_pin = (self.admin_pin or "").strip()
+
         if self.environment == "production":
-            if not val or val == _INSECURE_DEFAULT_KEY:
+            # Secret key checks
+            if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
                 raise ValueError(
                     "In production, SECRET_KEY must be set to a strong, private secret (cannot be empty or default)."
                 )
-            if len(val) < 32:
+            if len(val_sec) < 32:
                 raise ValueError("In production, SECRET_KEY must be at least 32 characters.")
-        elif not val:
-            self.secret_key = _INSECURE_DEFAULT_KEY
+
+            # Admin PIN checks
+            if not val_pin:
+                raise ValueError("In production, ADMIN_PIN must be explicitly set.")
+            if val_pin in ["1234", "0000", "1111", "123456", "000000", "111111"]:
+                raise ValueError("In production, ADMIN_PIN cannot be a trivial or default PIN.")
+            if len(val_pin) < 6:
+                raise ValueError("In production, ADMIN_PIN must be at least 6 digits/characters.")
+        else:
+            if not val_sec:
+                self.secret_key = _INSECURE_DEFAULT_KEY
         return self
 
     # Database
