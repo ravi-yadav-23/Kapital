@@ -114,7 +114,11 @@ export function IpoScoreRadar({ breakdown, score }: IpoScoreRadarProps) {
                       <span className="font-semibold text-text-primary block">{item.subject}</span>
                       <div className="flex justify-between gap-3 text-text-secondary font-mono">
                         <span>Score:</span>
-                        <span className="text-brand-from font-bold">{item.raw} pts</span>
+                        <span className="text-brand-from font-bold">{item.score}/100</span>
+                      </div>
+                      <div className="flex justify-between gap-3 text-text-muted font-mono">
+                        <span>Contribution:</span>
+                        <span>{item.raw} pts</span>
                       </div>
                     </div>
                   )

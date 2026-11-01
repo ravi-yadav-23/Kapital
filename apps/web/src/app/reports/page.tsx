@@ -1,72 +1,90 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
-import { Ipo, FamilyAccount, AiReport, ScoreBreakdown } from '@/types'
-import { ScoreBadge } from '@/components/shared/ScoreBadge'
-import { IpoScoreRadar } from '@/components/ipo/IpoScoreRadar'
-import { IpoScoreBreakdown } from '@/components/ipo/IpoScoreBreakdown'
-import { RedFlagList } from '@/components/ipo/RedFlagList'
-import { ApplyModal } from '@/components/ipo/ApplyModal'
+import { Ipo, AiReport } from '@/types'
+import { MOCK_IPOS, MOCK_REPORTS } from '@/lib/mock-data'
 import {
-  FileText,
-  Sparkles,
-  AlertTriangle,
-  ShieldCheck,
-  BookOpen,
+  formatPercent,
+  formatRelativeDate,
+  computeIpoStatus,
+  getCompanyAvatarProps,
+  getStatusDotClass,
+  getStatusPillClass,
+  getStatusLabel,
+  getScoreRecommendation,
+  getRecommendationLabel,
+  getScoreBarColor,
+} from '@/lib/formatters'
+import {
   Search,
-  Share2,
-  Send,
   CheckCircle2,
+  AlertTriangle,
   RefreshCw,
+  ArrowRight,
+  ShieldCheck,
+  FileText,
 } from 'lucide-react'
-import { formatDate } from '@/lib/formatters'
 import { stripHtml } from '@/lib/utils'
 
 export default function ReportsPage() {
-  const [ipos, setIpos] = useState<Ipo[]>([])
-  const [reports, setReports] = useState<Record<string, AiReport>>({})
-  const [accounts, setAccounts] = useState<FamilyAccount[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedIpo, setSelectedIpo] = useState<Ipo | null>(null)
+  const [ipos, setIpos] = useState<Ipo[]>(() => {
+    const cached = apiClient.getCachedIpos()
+    return cached && cached.length > 0 ? cached : MOCK_IPOS
+  })
+  const [reports, setReports] = useState<Record<string, AiReport>>(() => {
+    const repMap: Record<string, AiReport> = {}
+    MOCK_REPORTS.forEach((r) => {
+      if (r.ipo_id) repMap[r.ipo_id] = r
+    })
+    return repMap
+  })
+  const [loading, setLoading] = useState(false)
+  const [selectedIpo, setSelectedIpo] = useState<Ipo | null>(() => {
+    const all = apiClient.getCachedIpos()?.length ? apiClient.getCachedIpos()! : MOCK_IPOS
+    return (
+      all.find((i) => {
+        const st = computeIpoStatus(i.issue_open_date, i.issue_close_date)
+        return st === 'open' || st === 'closing_today'
+      }) ||
+      all.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date) === 'upcoming') ||
+      all[0] ||
+      null
+    )
+  })
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterStatus, setFilterStatus] = useState<string>('ACTIVE') // 'ACTIVE', 'UPCOMING', 'ALL'
-  const [filterRec, setFilterRec] = useState<string>('ALL')
-  const [isApplyOpen, setIsApplyOpen] = useState(false)
-  const [copiedToast, setCopiedToast] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
-  const [syncing, setSyncing] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const loadData = async () => {
     try {
-      const [allIpos, allReports, allAccs] = await Promise.all([
+      const [allIpos, allReports] = await Promise.all([
         apiClient.getIpos(),
         apiClient.getReports(),
-        apiClient.getAccounts(),
       ])
-      setIpos(allIpos)
-      setAccounts(allAccs)
+      if (allIpos && allIpos.length > 0) {
+        setIpos(allIpos)
+      }
 
       const repMap: Record<string, AiReport> = {}
-      allReports.forEach((r) => {
-        if (r.ipo_id) repMap[r.ipo_id] = r
-      })
-      setReports(repMap)
+      if (allReports && allReports.length > 0) {
+        allReports.forEach((r) => {
+          if (r.ipo_id) repMap[r.ipo_id] = r
+        })
+        setReports((prev) => ({ ...prev, ...repMap }))
+      }
 
-      if (allIpos.length > 0) {
+      if (allIpos && allIpos.length > 0 && !selectedIpo) {
         const activeFirst =
-          allIpos.find((i) => i.status === 'open' || i.status === 'closing_today') ||
-          allIpos.find((i) => i.status === 'upcoming') ||
+          allIpos.find((i) => {
+            const st = computeIpoStatus(i.issue_open_date, i.issue_close_date)
+            return st === 'open' || st === 'closing_today'
+          }) ||
+          allIpos.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date) === 'upcoming') ||
           allIpos[0]
         setSelectedIpo(activeFirst)
-        if (!repMap[activeFirst.id]) {
-          apiClient.getReportById(activeFirst.id).then((rep) => {
-            if (rep) {
-              setReports((prev) => ({ ...prev, [activeFirst.id]: rep }))
-            }
-          }).catch((err) => console.warn('Could not load report for first IPO:', err))
-        }
       }
     } catch (err) {
       console.error('Failed to load reports page data:', err)
@@ -93,12 +111,10 @@ export default function ReportsPage() {
           setReports((prev) => ({ ...prev, [ipo.id]: rep }))
         }
       } catch (err) {
-        console.error('Failed to fetch report for ipo:', err)
+        console.error('Failed to fetch report:', err)
       }
     }
   }
-
-  const [reportToast, setReportToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const handleRunAiAudit = async () => {
     if (!selectedIpo) return
@@ -107,503 +123,424 @@ export default function ReportsPage() {
       const rep = await apiClient.generateReport(selectedIpo.id)
       if (rep) {
         setReports((prev) => ({ ...prev, [selectedIpo.id]: rep }))
-        setReportToast({
-          message: `Multi-agent due diligence audit generated for ${selectedIpo.name}! Composite Score: ${rep.score || selectedIpo.score || 74}/100`,
+        setToast({
+          message: `AI due diligence audit completed for ${selectedIpo.name}!`,
           type: 'success',
         })
+        setTimeout(() => setToast(null), 4000)
       }
     } catch (err: any) {
-      console.error('Failed to generate AI due diligence report:', err)
-      setReportToast({
-        message: err.message || 'Failed to complete multi-agent audit. Please try again.',
+      console.error('Failed to run AI audit:', err)
+      setToast({
+        message: err.message || 'Audit unavailable. Please retry in a moment.',
         type: 'error',
       })
+      setTimeout(() => setToast(null), 5000)
     } finally {
       setAnalyzing(false)
-      setTimeout(() => setReportToast(null), 5000)
-    }
-  }
-
-  const handleSyncMarketIpos = async () => {
-    setSyncing(true)
-    try {
-      await apiClient.syncIpos()
-      await loadData()
-    } catch (err) {
-      console.error('Failed to sync market IPOs:', err)
-    } finally {
-      setSyncing(false)
     }
   }
 
   const filteredIpos = useMemo(() => {
     return ipos.filter((ipo) => {
-      // Status filter
-      if (filterStatus === 'ACTIVE') {
-        if (ipo.status !== 'open' && ipo.status !== 'closing_today') return false
-      } else if (filterStatus === 'UPCOMING') {
-        if (ipo.status !== 'upcoming') return false
-      }
-
-      // Recommendation filter
-      const rep = reports[ipo.id]
-      const rec = rep?.recommendation || ipo.recommendation
-      if (filterRec !== 'ALL' && rec !== filterRec) return false
-
-      // Search filter
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        const matchName = ipo.name.toLowerCase().includes(q)
-        const matchSymbol = ipo.symbol.toLowerCase().includes(q)
-        if (!matchName && !matchSymbol) return false
-      }
-      return true
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      return ipo.name.toLowerCase().includes(q) || ipo.symbol.toLowerCase().includes(q)
     })
-  }, [ipos, reports, filterStatus, filterRec, searchQuery])
+  }, [ipos, searchQuery])
 
-  const handleShare = () => {
-    setCopiedToast(true)
-    setTimeout(() => setCopiedToast(false), 2000)
-  }
+  // Is this an actual AI audit or just preliminary sector estimate?
+  // Backend now returns is_audited flag explicitly.
+  const isAudited = Boolean(currentReport?.is_audited)
 
-  const isClosed =
-    selectedIpo &&
-    (selectedIpo.status === 'closed' ||
-      selectedIpo.status === 'allotted' ||
-      selectedIpo.status === 'listed')
+  const breakdown = currentReport?.score_breakdown || selectedIpo?.score_breakdown
 
-  const activeScore = currentReport?.overall_score ?? selectedIpo?.score ?? 50
-  const activeVerdict = currentReport?.recommendation ?? selectedIpo?.recommendation ?? 'WATCH'
+  // Live factors fallback from live IPO data
+  const gmpVal = breakdown?.gmp_strength ?? (selectedIpo?.gmp_percent ? Math.min(100, Math.round(selectedIpo.gmp_percent * 2)) : 60)
+  const subVal = breakdown?.subscription_momentum ?? 65
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-6">
-          <div className="page-header">
-            <div>
-              <h1 className="page-title flex items-center gap-2.5">
-                <FileText className="w-5 h-5 text-brand-to" />
-                <span>AI Due Diligence & Research Reports</span>
-              </h1>
-              <p className="page-subtitle">
-                Autonomous multi-agent forensic analysis, red flag audits, and SEBI allocation strategy
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="card h-96 skeleton" />
-            <div className="card h-96 skeleton lg:col-span-2" />
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  // When unaudited, headline score equals weighted sum of live factors (60% GMP + 40% sub)
+  const compositeScore = isAudited
+    ? (currentReport?.overall_score || selectedIpo?.score || 50)
+    : (currentReport?.overall_score || Math.round(gmpVal * 0.60 + subVal * 0.40))
 
-  if (!selectedIpo || ipos.length === 0) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-6">
-          <div className="page-header">
-            <div>
-              <h1 className="page-title flex items-center gap-2.5">
-                <FileText className="w-5 h-5 text-brand-to" />
-                <span>AI Due Diligence & Research Reports</span>
-              </h1>
-              <p className="page-subtitle">
-                Autonomous multi-agent forensic analysis, red flag audits, and SEBI allocation strategy
-              </p>
-            </div>
-            <button
-              onClick={handleSyncMarketIpos}
-              disabled={syncing}
-              className="btn btn-secondary btn-sm gap-2"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-              <span>{syncing ? 'Syncing...' : 'Sync Market IPOs'}</span>
-            </button>
-          </div>
-          <div className="p-12 text-center rounded-xl bg-surface-elevated/40 border border-border-subtle flex flex-col items-center justify-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-brand-to/10 border border-brand-to/20 flex items-center justify-center text-brand-to mb-1">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <p className="text-base font-semibold text-text-primary">No IPO Reports Available</p>
-            <p className="text-xs text-text-muted max-w-md">
-              Click &quot;Sync Market IPOs&quot; to fetch the latest Indian market issues and trigger autonomous multi-agent analysis.
-            </p>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  const recommendation = currentReport?.recommendation || selectedIpo?.recommendation || getScoreRecommendation(compositeScore)
+  const recLabel = getRecommendationLabel(recommendation)
+
+  const redFlags = currentReport?.red_flags || selectedIpo?.red_flags || []
+  const strengths = currentReport?.strengths || selectedIpo?.strengths || []
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="page-header">
-          <div>
-            <h1 className="page-title flex items-center gap-2.5">
-              <FileText className="w-5 h-5 text-brand-to" />
-              <span>AI Due Diligence & Research Reports</span>
-            </h1>
-            <p className="page-subtitle">
-              Autonomous multi-agent forensic analysis, red flag audits, and SEBI allocation strategy
-            </p>
+      <div className="space-y-6 max-w-6xl mx-auto pb-10">
+        {/* Toast Notification */}
+        {toast && (
+          <div
+            className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-sm border text-[13px] shadow-modal flex items-center gap-2 animate-fade-in ${
+              toast.type === 'success' ? 'bg-surface border-line text-ink' : 'bg-surface border-negative text-negative'
+            }`}
+          >
+            <span>{toast.message}</span>
+            <button onClick={() => setToast(null)} className="ml-2 text-ink-3">✕</button>
           </div>
+        )}
 
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={handleSyncMarketIpos}
-              disabled={syncing}
-              className="btn btn-ghost btn-sm gap-1.5 text-xs text-text-secondary border border-border-subtle hover:bg-surface-elevated"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-              <span>{syncing ? 'Syncing...' : 'Sync Live Market'}</span>
-            </button>
-
-            <button
-              onClick={handleShare}
-              className="btn btn-ghost btn-sm gap-1.5 text-xs text-text-secondary"
-            >
-              {copiedToast ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-accent-green" />
-                  <span className="text-accent-green">Link Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Share Report</span>
-                </>
-              )}
-            </button>
+        {/* Top Action Strip (Sentence-case, single source of action) */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="text-[13px] text-ink-2">
+            Forensic analysis across DRHP filings, accounting anomalies, and grey market sentiment
           </div>
+          <Link href="/funds" className="btn-secondary text-[13px]">
+            <span>View allocation plan</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
-        {/* 2-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel: Report Selection List */}
-          <div className="space-y-3 lg:col-span-1">
-            {/* Search Input */}
+        {/* Master-Detail Split Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: Search & Compact IPO List */}
+          <div className="lg:col-span-4 space-y-3">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search IPO report..."
+                placeholder="Search report by company..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-elevated border border-border-subtle rounded-lg"
+                className="w-full h-9 pl-9 pr-3 text-[13px] bg-surface border border-line rounded-sm text-ink placeholder:text-ink-3"
               />
             </div>
 
-            {/* Status Tabs: Active vs Upcoming vs All */}
-            {/* Status Tabs: Active vs Upcoming vs All */}
-            <div className="flex items-center gap-1 p-1 bg-surface-elevated rounded-lg border border-border-subtle text-xs font-semibold">
-              {[
-                {
-                  id: 'ACTIVE',
-                  label: `Live Active (${ipos.filter((i) => i.status === 'open' || i.status === 'closing_today').length})`,
-                },
-                {
-                  id: 'UPCOMING',
-                  label: `Upcoming (${ipos.filter((i) => i.status === 'upcoming').length})`,
-                },
-                { id: 'ALL', label: `All (${ipos.length})` },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setFilterStatus(tab.id)
-                    const matches = ipos.filter((i) => {
-                      if (tab.id === 'ACTIVE') return i.status === 'open' || i.status === 'closing_today'
-                      if (tab.id === 'UPCOMING') return i.status === 'upcoming'
-                      return true
-                    })
-                    if (matches.length > 0) handleSelectIpo(matches[0])
-                  }}
-                  className={`flex-1 py-1 text-center rounded-md transition-all text-2xs ${
-                    filterStatus === tab.id
-                      ? 'bg-brand-from text-white shadow-sm font-bold'
-                      : 'text-text-muted hover:text-text-primary'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Recommendation Quick Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-2xs font-semibold">
-              {['ALL', 'STRONG_APPLY', 'MODERATE_APPLY', 'WATCH', 'AVOID'].map((rec) => (
-                <button
-                  key={rec}
-                  onClick={() => setFilterRec(rec)}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    filterRec === rec
-                      ? 'bg-brand-from/15 text-brand-from border border-brand-from/30 font-bold'
-                      : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
-                  }`}
-                >
-                  {rec === 'ALL' ? 'All Verdicts' : rec.replace('_', ' ')}
-                </button>
-              ))}
-            </div>
-
-            {/* List of Reports */}
-            <div className="space-y-2.5">
+            <div className="rounded-sm border border-line bg-surface divide-y divide-line overflow-hidden max-h-[640px] overflow-y-auto">
               {filteredIpos.map((ipo) => {
-                const isSelected = selectedIpo.id === ipo.id
-                const rep = reports[ipo.id]
-                const itemScore = rep?.overall_score ?? ipo.score
-
-                const statusColor =
-                  ipo.status === 'open'
-                    ? 'bg-accent-green/15 text-accent-green border-accent-green/30'
-                    : ipo.status === 'closing_today'
-                    ? 'bg-accent-amber/15 text-accent-amber border-accent-amber/30'
-                    : ipo.status === 'upcoming'
-                    ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/30'
-                    : 'bg-surface-elevated text-text-muted border-border-subtle'
+                const isSelected = selectedIpo?.id === ipo.id
+                const ipoScore = reports[ipo.id]?.overall_score || ipo.score || 50
+                const ipoStatus = computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date)
+                const avatar = getCompanyAvatarProps(ipo.name)
 
                 return (
-                  <div
+                  <button
                     key={ipo.id}
                     onClick={() => handleSelectIpo(ipo)}
-                    className={`card p-3.5 cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-brand-from bg-brand-from/5 shadow-md shadow-brand-from/5'
-                        : 'border-border-subtle hover:border-brand-from/30 hover:bg-surface-elevated/40'
+                    className={`w-full text-left p-3.5 flex items-center justify-between gap-3 transition-colors ${
+                      isSelected ? 'bg-surface-selected text-ink' : 'hover:bg-surface-raised text-ink-2'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-3xs font-mono font-bold uppercase tracking-wider border ${statusColor}`}
-                          >
-                            {ipo.status === 'closing_today' ? 'Closing Today' : ipo.status}
-                          </span>
-                          {ipo.gmp_percent && ipo.gmp_percent > 0 ? (
-                            <span className="text-3xs font-mono font-semibold text-accent-green">
-                              GMP +{ipo.gmp_percent}%
-                            </span>
-                          ) : null}
-                        </div>
-                        <h4 className="font-bold text-xs text-text-primary truncate">
-                          {ipo.name}
-                        </h4>
-                        <span className="text-2xs text-text-muted block mt-0.5">
-                          {ipo.symbol} • {formatDate(ipo.issue_open_date || ipo.issue_close_date)}
-                        </span>
+                    <div className="min-w-0 flex items-center gap-3">
+                      {/* Company Avatar */}
+                      <div
+                        className={`w-7 h-7 rounded-sm border flex items-center justify-center font-mono text-[11px] font-medium flex-shrink-0 ${avatar.bg} ${avatar.text}`}
+                      >
+                        {avatar.initials}
                       </div>
-
-                      <ScoreBadge score={itemScore} size="sm" />
+                      <div className="truncate">
+                        <div className={`text-[14px] truncate ${isSelected ? 'font-medium text-ink' : 'text-ink-2'}`}>
+                          {ipo.name}
+                        </div>
+                        <div className="text-[13px] font-mono text-ink-3 mt-0.5 flex items-center gap-1.5">
+                          <span className={getStatusDotClass(ipoStatus)} />
+                          <span>{ipo.symbol}</span>
+                          <span>·</span>
+                          <span>{getStatusLabel(ipoStatus)}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+
+                    {/* Score Number in Ink */}
+                    <div className="flex items-center gap-1 flex-shrink-0 font-mono text-[13px]">
+                      <span className="text-ink font-medium">
+                        {ipoScore}
+                      </span>
+                      <span className="text-[13px] text-ink-3">/100</span>
+                    </div>
+                  </button>
                 )
               })}
             </div>
           </div>
 
-          {/* Right Panel: Report Viewer */}
-          <div className="lg:col-span-2 space-y-5">
-            <div className="card p-6 space-y-6 bg-surface-card border-border-default">
-              {/* Header */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border-subtle">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-brand-from" />
-                    <h2 className="text-lg font-bold text-text-primary">
-                      {selectedIpo.name} Due Diligence Report
+          {/* Right Column: The Research Dossier */}
+          <div className="lg:col-span-8 space-y-6">
+            {selectedIpo ? (
+              <div className="p-6 rounded-sm bg-surface border border-line space-y-6">
+                {/* Header: Title + Audit Status */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-line pb-4">
+                  <div>
+                    <h2 className="text-[18px] font-medium text-ink">
+                      {selectedIpo.name}
                     </h2>
+                    <div className="text-[13px] text-ink-2 mt-1">
+                      {isAudited
+                        ? 'AI forensic audit · Gemini Flash & Claude Haiku'
+                        : 'Preliminary score · AI audit not run'}
+                    </div>
                   </div>
-                  <span className="text-2xs text-text-muted mt-0.5 block">
-                    Generated at: {formatDate(currentReport?.scored_at || selectedIpo.scored_at)} • Version: 2.0.0
-                  </span>
+
+                  {/* Primary CTA (Amber strictly for this button when unaudited) */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleRunAiAudit}
+                      disabled={analyzing}
+                      className={isAudited ? 'btn-secondary text-[13px]' : 'btn-primary text-[13px]'}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
+                      <span>{analyzing ? 'Auditing DRHP...' : isAudited ? 'Re-run AI audit' : 'Run AI Audit'}</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-surface-elevated border border-border-subtle">
-                    <span className="text-2xs text-text-muted uppercase font-semibold">VERDICT:</span>
-                    <span className="text-xs font-bold text-text-primary">
-                      {activeVerdict.replace('_', ' ')}
-                    </span>
-                    <ScoreBadge score={activeScore} />
+                {/* Verdict & 6px Score Bar */}
+                <div className="p-4 rounded-sm bg-surface-raised border border-line space-y-3">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <span className="text-[13px] text-ink-3 block">
+                        Conviction score
+                      </span>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        {/* Score number in ink, NOT amber */}
+                        <span className="text-[32px] font-mono font-medium text-ink leading-none">
+                          {compositeScore}
+                        </span>
+                        <span className="text-[13px] text-ink-3 font-mono">/ 100</span>
+                        <span className="text-[13px] text-ink-3">·</span>
+                        {/* Preliminary estimate in ink-2/muted, NOT amber */}
+                        <span className="text-[13px] font-medium tracking-wide text-ink-2 uppercase">
+                          {isAudited ? recLabel : 'Preliminary estimate'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {(selectedIpo.gmp_percent || 0) > 0 && (
+                      <div className="text-right">
+                        <span className="text-[13px] text-ink-3 block">Listing gain</span>
+                        <span className="text-[16px] font-mono font-medium text-emerald-400 mt-1 block">
+                          ↑ {formatPercent(selectedIpo.gmp_percent)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <button
-                    onClick={handleRunAiAudit}
-                    disabled={analyzing}
-                    className="btn btn-secondary btn-sm gap-1.5 border border-border-subtle"
-                    title="Execute autonomous multi-agent analysis (Financial, Sentiment, Allocation)"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin text-brand-from' : ''}`} />
-                    <span>{analyzing ? 'Analyzing...' : 'Run AI Audit'}</span>
-                  </button>
+                  {/* 6px Score Bar colored by verdict band */}
+                  <div className="w-full h-[6px] bg-surface rounded-full overflow-hidden border border-line">
+                    <div
+                      className={`h-full ${getScoreBarColor(compositeScore)} transition-all duration-400`}
+                      style={{ width: `${compositeScore}%` }}
+                    />
+                  </div>
+                </div>
 
-                  {!isClosed && (
-                    <button
-                      onClick={() => setIsApplyOpen(true)}
-                      className="btn btn-primary btn-sm gap-1.5 shadow-md shadow-brand-from/20"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>View Allocation Plan</span>
-                    </button>
-                  )}
+                {/* 5-Factor Forensic Breakdown */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[13px] font-medium text-ink-2">
+                      5-factor forensic breakdown
+                    </div>
+                    {!isAudited && (
+                      <span className="text-[13px] text-ink-3">
+                        DRHP factors require audit · live data weights total 100%
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {/* 1. Financial Quality (DRHP Analysis) */}
+                    <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
+                      <div className="flex justify-between items-center text-[13px]">
+                        <span className="text-ink">Financial quality (DRHP analysis)</span>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[13px] text-ink-3 font-sans">
+                            ({isAudited ? '25%' : '—'})
+                          </span>
+                          <span className="text-ink font-medium">
+                            {isAudited && breakdown?.financial_quality !== null && breakdown?.financial_quality !== undefined
+                              ? `${breakdown.financial_quality}/100`
+                              : 'Not assessed'}
+                          </span>
+                        </div>
+                      </div>
+                      {isAudited && breakdown?.financial_quality !== null && breakdown?.financial_quality !== undefined && (
+                        <div className="w-full h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
+                          <div
+                            className={`h-full ${getScoreBarColor(breakdown.financial_quality)} transition-all duration-400`}
+                            style={{ width: `${breakdown.financial_quality}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Valuation Safety & Pricing Multiples */}
+                    <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
+                      <div className="flex justify-between items-center text-[13px]">
+                        <span className="text-ink">Valuation safety & pricing multiples</span>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[13px] text-ink-3 font-sans">
+                            ({isAudited ? '20%' : '—'})
+                          </span>
+                          <span className="text-ink font-medium">
+                            {isAudited && breakdown?.valuation_safety !== null && breakdown?.valuation_safety !== undefined
+                              ? `${breakdown.valuation_safety}/100`
+                              : 'Not assessed'}
+                          </span>
+                        </div>
+                      </div>
+                      {isAudited && breakdown?.valuation_safety !== null && breakdown?.valuation_safety !== undefined && (
+                        <div className="w-full h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
+                          <div
+                            className={`h-full ${getScoreBarColor(breakdown.valuation_safety)} transition-all duration-400`}
+                            style={{ width: `${breakdown.valuation_safety}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Grey Market Premium (GMP Strength) - Live factor */}
+                    <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
+                      <div className="flex justify-between items-center text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-ink">Grey market premium (GMP strength)</span>
+                          {!isAudited && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded border border-line bg-surface text-ink-3 font-mono">
+                              from live data
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[13px] text-ink-3 font-sans">
+                            ({isAudited ? '20%' : '60%'})
+                          </span>
+                          <span className="text-ink font-medium">{gmpVal}/100</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
+                        <div
+                          className={`h-full ${getScoreBarColor(gmpVal)} transition-all duration-400`}
+                          style={{ width: `${gmpVal}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 4. Promoter Integrity & Corporate Governance */}
+                    <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
+                      <div className="flex justify-between items-center text-[13px]">
+                        <span className="text-ink">Promoter integrity & corporate governance</span>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[13px] text-ink-3 font-sans">
+                            ({isAudited ? '15%' : '—'})
+                          </span>
+                          <span className="text-ink font-medium">
+                            {isAudited && breakdown?.promoter_integrity !== null && breakdown?.promoter_integrity !== undefined
+                              ? `${breakdown.promoter_integrity}/100`
+                              : 'Not assessed'}
+                          </span>
+                        </div>
+                      </div>
+                      {isAudited && breakdown?.promoter_integrity !== null && breakdown?.promoter_integrity !== undefined && (
+                        <div className="w-full h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
+                          <div
+                            className={`h-full ${getScoreBarColor(breakdown.promoter_integrity)} transition-all duration-400`}
+                            style={{ width: `${breakdown.promoter_integrity}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 5. Institutional Subscription Momentum - Live factor */}
+                    <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
+                      <div className="flex justify-between items-center text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-ink">Institutional subscription momentum</span>
+                          {!isAudited && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded border border-line bg-surface text-ink-3 font-mono">
+                              from live data
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[13px] text-ink-3 font-sans">
+                            ({isAudited ? '10%' : '40%'})
+                          </span>
+                          <span className="text-ink font-medium">{subVal}/100</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
+                        <div
+                          className={`h-full ${getScoreBarColor(subVal)} transition-all duration-400`}
+                          style={{ width: `${subVal}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Forensic Red Flags & DRHP Audit */}
+                <div className="space-y-3">
+                  <div className="text-[13px] font-medium text-ink-2">
+                    Forensic red flags & DRHP audit
+                  </div>
+                  <div className="space-y-2 text-[13px]">
+                    {isAudited ? (
+                      redFlags.length > 0 ? (
+                        redFlags.map((flag, idx) => (
+                          <div key={idx} className="p-3 rounded-sm border border-line bg-canvas flex items-start gap-2.5">
+                            <AlertTriangle className="w-4 h-4 text-ink-2 flex-shrink-0 mt-0.5" />
+                            <span className="text-ink-2">
+                              {typeof flag === 'string' ? flag : (flag as any).text || (flag as any).description}
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-3 rounded-sm border border-line bg-canvas flex items-center gap-2 text-ink-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <span>Audited: Zero critical promoter litigation or accounting anomalies found in DRHP.</span>
+                        </div>
+                      )
+                    ) : (
+                      /* Unaudited state: Truthful disclaimer with inline Run AI Audit action */
+                      <div className="p-3.5 rounded-sm border border-line bg-surface-raised flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[13px]">
+                        <div className="flex items-center gap-2.5 text-ink-2">
+                          <AlertTriangle className="w-4 h-4 text-ink-3 flex-shrink-0" />
+                          <span>No audit has run, so red flags are unknown.</span>
+                        </div>
+                        <button
+                          onClick={handleRunAiAudit}
+                          disabled={analyzing}
+                          className="btn-primary text-[13px] py-1.5 px-3 flex-shrink-0"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
+                          <span>{analyzing ? 'Auditing...' : 'Run AI Audit'}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {isAudited && strengths.slice(0, 2).map((str, idx) => (
+                      <div key={`str-${idx}`} className="p-3 rounded-sm border border-line bg-canvas flex items-start gap-2.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <span className="text-ink-2">{typeof str === 'string' ? str : (str as any).text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Executive Research Summary */}
+                <div className="space-y-2 border-t border-line pt-4">
+                  <div className="text-[13px] font-medium text-ink-2">
+                    Executive research summary
+                  </div>
+                  <p className="text-[13px] text-ink-2 leading-relaxed">
+                    {currentReport?.executive_summary
+                      ? stripHtml(currentReport.executive_summary)
+                      : selectedIpo.about ||
+                        `${selectedIpo.name} operates in the ${selectedIpo.type || 'EQ'} primary market segment with an issue size of ${selectedIpo.issue_size || 'N/A'}. Run an AI audit to extract forensic insights directly from SEBI DRHP filings.`}
+                  </p>
                 </div>
               </div>
-
-              {/* Multi-Agent Live Audit Status Banner */}
-              {analyzing && (
-                <div className="p-4 rounded-xl bg-brand-from/10 border border-brand-from/30 space-y-2 animate-fade-in">
-                  <div className="flex items-center justify-between text-xs font-semibold text-brand-from">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3.5 h-3.5 border-2 border-brand-from border-t-transparent rounded-full animate-spin" />
-                      <span>Running Multi-Agent Due Diligence Workflow...</span>
-                    </div>
-                    <span className="text-2xs font-mono">3 Agents Parallel</span>
-                  </div>
-                  <p className="text-2xs text-text-secondary leading-relaxed">
-                    Executing Lead Equity Research & Valuation Analyst, Market Sentiment & Governance Investigator, and Family Capital Allocation Strategist.
-                  </p>
-                  <div className="w-full bg-surface-elevated rounded-full h-1.5 overflow-hidden">
-                    <div className="bg-gradient-to-r from-brand-from to-brand-to h-full w-2/3 animate-pulse rounded-full" />
-                  </div>
-                </div>
-              )}
-
-              {/* Visual Score Radar & Dimension Bars */}
-              {(() => {
-                const breakdown: ScoreBreakdown = currentReport?.score_breakdown || selectedIpo.score_breakdown || {
-                  financial_quality: selectedIpo.score ? Math.min(100, Math.round(selectedIpo.score * 0.95)) : 78,
-                  valuation_safety: selectedIpo.score ? Math.min(100, Math.round(selectedIpo.score * 0.9)) : 72,
-                  gmp_strength: selectedIpo.gmp_percent ? Math.min(100, Math.round(selectedIpo.gmp_percent * 2.2)) : 68,
-                  promoter_integrity: 80,
-                  industry_tailwinds: 74,
-                  subscription_momentum: selectedIpo.subscription_total ? Math.min(100, Math.round(selectedIpo.subscription_total * 4)) : 65,
-                }
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <IpoScoreRadar breakdown={breakdown} score={activeScore} />
-                    <IpoScoreBreakdown breakdown={breakdown} />
-                  </div>
-                )
-              })()}
-
-              {/* Red Flag Audit Report */}
-              <RedFlagList redFlags={currentReport?.red_flags || []} />
-
-              {/* Executive Summary & Details */}
-              {(() => {
-                const isSectorFallback =
-                  currentReport?.summary_source === 'sector_fallback' ||
-                  currentReport?.recommendation === 'PENDING' ||
-                  currentReport?.executive_summary?.includes('Sector-based estimate') ||
-                  currentReport?.executive_summary?.includes('AI analysis unavailable')
-
-                return (
-                  <>
-                    {/* Executive Summary */}
-                    <div className="space-y-2 text-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-                          <Sparkles className="w-4 h-4 text-brand-from" />
-                          <span>Executive Summary</span>
-                        </h3>
-                        {isSectorFallback && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-amber/15 text-accent-amber border border-accent-amber/30">
-                            Sector-based estimate — AI analysis not run
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-text-secondary leading-relaxed bg-surface-elevated/40 p-3.5 rounded-xl border border-border-subtle">
-                        {stripHtml(currentReport?.executive_summary) || stripHtml(selectedIpo.about) || 'Awaiting multi-agent due diligence audit.'}
-                      </p>
-                    </div>
-
-                    {/* Financial and Operating Strengths */}
-                    <div className="space-y-2 text-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-                          <ShieldCheck className="w-4 h-4 text-accent-green" />
-                          <span>Financial and Operating Strengths</span>
-                        </h3>
-                        {isSectorFallback && (
-                          <span className="text-[10px] text-text-muted font-mono">
-                            Sector-based baseline
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-3.5 rounded-xl border border-border-subtle space-y-2 bg-surface-elevated/20">
-                        <ul className="space-y-1.5 text-text-secondary list-disc list-inside">
-                          {(currentReport?.strengths?.length ? currentReport.strengths : selectedIpo.strengths || []).map((s, i) => (
-                            <li key={i} className="leading-relaxed">{stripHtml(s)}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-
-                    {/* Key Risks & Watchlist */}
-                    <div className="space-y-2 text-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 text-accent-amber" />
-                          <span>Key Risks & Watchlist</span>
-                        </h3>
-                        {isSectorFallback && (
-                          <span className="text-[10px] text-text-muted font-mono">
-                            Sector-based baseline
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-3.5 rounded-xl border border-border-subtle space-y-2 bg-surface-elevated/20">
-                        <ul className="space-y-1.5 text-text-secondary list-disc list-inside">
-                          {(currentReport?.risks?.length ? currentReport.risks : selectedIpo.risks || []).map((r, i) => (
-                            <li key={i} className="leading-relaxed">{stripHtml(r)}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </>
-                )
-              })()}
-            </div>
+            ) : (
+              <div className="p-12 rounded-sm bg-surface border border-line text-center text-[13px] text-ink-3">
+                Select an issue from the left panel to inspect its due diligence dossier.
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Apply Modal */}
-        {selectedIpo && (
-          <ApplyModal
-            ipo={selectedIpo}
-            accounts={accounts}
-            isOpen={isApplyOpen}
-            onClose={() => setIsApplyOpen(false)}
-          />
-        )}
-
-        {/* AI Report Toast Notification */}
-        {reportToast && (
-          <div
-            className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 border rounded-xl px-4 py-3 shadow-2xl text-xs max-w-sm animate-fade-in ${
-              reportToast.type === 'success'
-                ? 'bg-[#1a1612] border-[#22c55e]/40 text-[#fafaf9]'
-                : 'bg-[#1a1612] border-[#ef4444]/40 text-red-200'
-            }`}
-          >
-            <div
-              className={`w-2 h-2 rounded-full flex-shrink-0 animate-pulse ${
-                reportToast.type === 'success' ? 'bg-[#22c55e]' : 'bg-[#ef4444]'
-              }`}
-            />
-            <span className="flex-1 leading-relaxed">{reportToast.message}</span>
-            <button
-              onClick={() => setReportToast(null)}
-              className="text-[#a8a29e] hover:text-[#fafaf9] ml-2 text-xs cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   )

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
+import { useAuth } from '@/lib/auth-context'
 import {
   LayoutDashboard,
   TrendingUp,
@@ -12,8 +13,6 @@ import {
   FileSpreadsheet,
   FileText,
   Settings,
-  Sparkles,
-  ShieldCheck,
   X,
 } from 'lucide-react'
 
@@ -34,9 +33,14 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const { isGuest } = useAuth()
   const [accountCount, setAccountCount] = useState<number | null>(null)
 
   useEffect(() => {
+    if (isGuest) {
+      setAccountCount(0)
+      return
+    }
     apiClient
       .getAccounts()
       .then((accs) => {
@@ -45,7 +49,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       .catch(() => {
         setAccountCount(0)
       })
-  }, [pathname])
+  }, [pathname, isGuest])
 
   return (
     <>
@@ -53,38 +57,34 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden animate-fade-in"
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
         />
       )}
 
-      {/* Sidebar Aside */}
+      {/* Sidebar (232px fixed width) */}
       <aside
-        className={`sidebar transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        className={`w-[232px] fixed inset-y-0 left-0 z-50 bg-canvas border-r border-line flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-[60px] flex items-center justify-between px-5 border-b border-border-subtle">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-from to-brand-to flex items-center justify-center shadow-md shadow-brand-from/25">
-              <Sparkles className="w-4 h-4 text-white" />
+        <div className="h-12 flex items-center justify-between px-4 border-b border-line">
+          <Link href="/dashboard" className="flex items-center gap-2.5">
+            {/* Amber brand mark */}
+            <div className="w-5 h-5 rounded-[4px] bg-accent flex items-center justify-center flex-shrink-0">
+              <span className="text-[11px] font-bold text-accent-ink leading-none">K</span>
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-sm tracking-tight gradient-text">
-                KAPITL
-              </span>
-              <span className="text-[10px] tracking-wider uppercase text-text-muted font-mono">
-                IPO Intelligence Platform
-              </span>
-            </div>
-          </div>
+            <span className="font-medium text-sm text-ink tracking-tight">
+              Kapitl
+            </span>
+          </Link>
 
           {/* Close button for mobile */}
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="lg:hidden p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
+              className="lg:hidden p-1 rounded text-ink-2 hover:text-ink hover:bg-surface-raised transition-colors"
               aria-label="Close menu"
             >
               <X className="w-4 h-4" />
@@ -92,9 +92,8 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          <div className="section-label">Main Menu</div>
+        {/* Navigation Items (32px high, 16px monochrome stroke icons) */}
+        <nav className="flex-1 px-2 py-3 space-y-0.5">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive =
@@ -106,32 +105,42 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
-                className={`nav-item ${isActive ? 'active' : ''}`}
+                className={`h-8 px-2.5 rounded-sm flex items-center gap-2.5 text-xs transition-colors duration-100 ${
+                  isActive
+                    ? 'bg-surface-selected text-ink font-medium'
+                    : 'text-ink-2 hover:text-ink hover:bg-surface-raised font-normal'
+                }`}
               >
-                <Icon className="w-4 h-4 nav-icon flex-shrink-0" />
-                <span>{item.label}</span>
+                <Icon
+                  className={`w-4 h-4 flex-shrink-0 transition-colors ${
+                    isActive ? 'text-ink' : 'text-ink-3'
+                  }`}
+                  strokeWidth={1.5}
+                />
+                <span className="truncate">{item.label}</span>
               </Link>
             )
           })}
         </nav>
 
-        {/* Footer / Angel One Status Badge */}
-        <div className="p-3 border-t border-border-subtle">
-          <div className="card p-3 bg-surface-elevated/70 border-border-subtle rounded-xl flex items-center gap-2.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-accent-green animate-pulse flex-shrink-0" />
+        {/* Footer / Real Broker Connection State */}
+        <div className="p-3 border-t border-line">
+          <div className="p-2.5 rounded-sm bg-surface border border-line flex items-center gap-2.5">
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                isGuest ? 'bg-ink-3' : 'bg-positive'
+              }`}
+            />
             <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="text-2xs font-semibold text-text-primary truncate">
-                  Angel SmartAPI
-                </span>
-                <ShieldCheck className="w-3 h-3 text-accent-green" />
-              </div>
-              <span className="text-[10px] text-text-muted truncate">
-                {accountCount === null
+              <span className="text-2xs font-medium text-ink truncate">
+                {isGuest ? 'Angel One' : 'Angel SmartAPI'}
+              </span>
+              <span className="text-[11px] text-ink-3 truncate">
+                {isGuest
+                  ? 'Not connected'
+                  : accountCount === null
                   ? 'Connecting...'
-                  : accountCount === 0
-                  ? 'Ready to Link Demats'
-                  : `${accountCount} Account${accountCount > 1 ? 's' : ''} Synced`}
+                  : `${accountCount} Account${accountCount === 1 ? '' : 's'} linked`}
               </span>
             </div>
           </div>

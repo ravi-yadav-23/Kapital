@@ -2,26 +2,29 @@
 
 import React from 'react'
 import { FamilyAccount } from '@/types'
-import { AmountDisplay } from '../shared/AmountDisplay'
-import { ShieldCheck, User, TrendingUp, MoreVertical, Edit2 } from 'lucide-react'
+import { formatINR } from '@/lib/formatters'
+import { Edit2 } from 'lucide-react'
 
 interface AccountsTableProps {
   accounts: FamilyAccount[]
   onEditAccount?: (account: FamilyAccount) => void
 }
 
+function maskClientId(id: string): string {
+  if (!id) return '—'
+  if (id.length <= 5) return id
+  return `${id.slice(0, 2)}•••${id.slice(-3)}`
+}
+
 export function AccountsTable({ accounts, onEditAccount }: AccountsTableProps) {
   return (
     <div className="card p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <User className="w-4 h-4 text-brand-from" />
-          <h3 className="text-sm font-semibold text-text-primary">
-            Family Member Demat Accounts ({accounts.length})
-          </h3>
-        </div>
-        <span className="text-2xs text-text-muted font-mono">
-          Angel One SmartAPI Synced
+        <h3 className="text-sm font-medium text-[var(--ink-1)]">
+          Accounts ({accounts.length})
+        </h3>
+        <span className="text-2xs text-[var(--ink-3)] font-mono">
+          Angel One SmartAPI · Seeded Demo
         </span>
       </div>
 
@@ -30,102 +33,71 @@ export function AccountsTable({ accounts, onEditAccount }: AccountsTableProps) {
           <thead>
             <tr>
               <th>Member Name</th>
-              <th>Angel Client ID</th>
-              <th>Total Demat Value</th>
-              <th>Available (Liquid)</th>
-              <th>ASBA Blocked</th>
+              <th>Client ID</th>
+              <th className="text-right">Total Balance</th>
+              <th className="text-right">Available</th>
+              <th className="text-right">In ASBA</th>
               <th>Category</th>
-              <th>Hit Rate</th>
-              <th>Realized P&L</th>
-              <th>Action</th>
+              <th className="text-right">Hit Rate</th>
+              <th className="text-right">Realized P&L</th>
+              <th className="text-right">Action</th>
             </tr>
           </thead>
           <tbody>
             {accounts.map((acc) => (
-              <tr key={acc.id} className="hover:bg-surface-elevated/70 transition-colors">
+              <tr key={acc.id}>
                 <td>
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-brand-from/15 text-brand-from flex items-center justify-center font-bold text-xs">
-                      {acc.name.slice(0, 1)}
-                    </div>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--positive)] inline-block" />
                     <div>
-                      <div className="font-semibold text-text-primary flex items-center gap-1.5">
-                        <span>{acc.name}</span>
-                        {acc.is_active && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-accent-green inline-block" title="Active" />
-                        )}
-                      </div>
-                      <span className="text-[10px] text-text-muted">{acc.relation}</span>
+                      <span className="font-medium text-[var(--ink-1)]">{acc.name}</span>
+                      <span className="text-2xs text-[var(--ink-3)] block">{acc.relation}</span>
                     </div>
                   </div>
                 </td>
 
-                <td className="font-mono text-2xs text-text-secondary">
-                  {acc.angel_client_id}
+                <td className="font-mono text-2xs text-[var(--ink-2)]">
+                  {maskClientId(acc.angel_client_id)}
                 </td>
 
-                <td>
-                  <AmountDisplay amount={acc.total_balance ?? 0} className="text-xs font-semibold" />
+                <td className="text-right font-mono text-xs text-[var(--ink-1)] tabular-nums">
+                  {formatINR(acc.total_balance ?? 0)}
                 </td>
 
-                <td>
-                  <AmountDisplay
-                    amount={acc.available_balance ?? 0}
-                    className="text-xs font-semibold text-accent-green"
-                  />
+                <td className="text-right font-mono text-xs text-[var(--ink-1)] tabular-nums">
+                  {formatINR(acc.available_balance ?? 0)}
                 </td>
 
-                <td>
+                <td className="text-right font-mono text-xs text-[var(--ink-2)] tabular-nums">
                   {(acc.locked_balance ?? 0) > 0 ? (
-                    <AmountDisplay
-                      amount={acc.locked_balance ?? 0}
-                      className="text-xs font-semibold text-accent-amber"
-                    />
+                    formatINR(acc.locked_balance ?? 0)
                   ) : (
-                    <span className="text-2xs font-mono text-text-muted">₹0 (Free)</span>
+                    <span className="text-[var(--ink-3)]">₹0</span>
                   )}
                 </td>
 
-
                 <td>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
-                      acc.preferred_category === 'BHNI'
-                        ? 'bg-accent-purple/15 text-accent-purple border border-accent-purple/30'
-                        : acc.preferred_category === 'SHNI'
-                        ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/30'
-                        : 'bg-brand-from/15 text-brand-from border border-brand-from/30'
-                    }`}
-                  >
+                  <span className="px-2 py-0.5 rounded text-2xs font-mono uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)]">
                     {acc.preferred_category}
                   </span>
                 </td>
 
-                <td>
-                  <div className="flex items-center gap-1 font-mono text-2xs">
-                    <span className="font-bold text-text-primary">{(acc.allotment_rate ?? 0)}%</span>
-                    <span className="text-text-muted">({(acc.total_allotments ?? 0)}/{(acc.total_applied_ipos ?? 0)})</span>
-                  </div>
+                <td className="text-right font-mono text-xs text-[var(--ink-2)] tabular-nums">
+                  {acc.allotment_rate ?? 0}%
                 </td>
 
-                <td>
-                  <span className="text-accent-green font-mono font-bold text-xs">
-                    +₹{(acc.total_realized_pnl ?? 0).toLocaleString('en-IN')}
-                  </span>
+                <td className="text-right font-mono text-xs text-[var(--positive)] font-medium tabular-nums">
+                  {(acc.total_realized_pnl ?? 0) > 0 ? `+${formatINR(acc.total_realized_pnl ?? 0)}` : '₹0'}
                 </td>
 
-                <td>
-                  {onEditAccount ? (
+                <td className="text-right">
+                  {onEditAccount && (
                     <button
                       onClick={() => onEditAccount(acc)}
-                      className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-card transition-colors"
-                      title="Edit Account Config"
+                      className="btn-ghost p-1 text-[var(--ink-3)] hover:text-[var(--ink-1)] inline-flex"
+                      title="Edit account"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-card transition-colors">
-                      <MoreVertical className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </td>

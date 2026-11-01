@@ -108,12 +108,12 @@ export function IpoScoreBreakdown({ breakdown }: IpoScoreBreakdownProps) {
                   <span className="font-semibold text-text-primary">{item.label}</span>
                   <span className="text-2xs font-mono text-text-muted">({item.weight})</span>
                 </div>
-                <div className="flex items-center gap-1 font-mono">
-                  <span className="font-bold text-text-primary text-xs">
-                    {item.earned}
+                <div className="flex items-center gap-2 font-mono">
+                  <span className="text-2xs text-text-muted font-sans">
+                    ({item.earned}/{item.maxPts} pts)
                   </span>
-                  <span className="text-text-muted text-xs">
-                    / {item.maxPts}
+                  <span className="font-bold text-text-primary text-xs">
+                    {item.score}<span className="text-text-muted text-2xs font-normal">/100</span>
                   </span>
                 </div>
               </div>

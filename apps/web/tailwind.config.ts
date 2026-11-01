@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: ["class", '[data-theme="dark"]'],
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,95 +10,80 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand (Option A: Premium Amber / Gold)
-        brand: {
-          from: "#f59e0b",
-          to:   "#d97706",
-          DEFAULT: "#f59e0b",
-        },
-        // Surface layers (Option A: Warm Near-Black & Warm Dark Brown-Black)
+        // v2 Primary Semantic Tokens
+        canvas: "var(--bg-canvas)",
         surface: {
-          base:     "#0c0a09",
-          DEFAULT:  "#1a1612",
-          elevated: "#241e19",
-          card:     "#1a1612",
+          DEFAULT: "var(--bg-surface)",
+          base: "var(--bg-canvas)",
+          elevated: "var(--bg-raised)",
+          card: "var(--bg-surface)",
+          raised: "var(--bg-raised)",
+          selected: "var(--bg-selected)",
         },
-        // Border palette
-        border: {
-          subtle:  "#2d2520",
-          default: "#3d322b",
-          strong:  "#52433a",
+        line: {
+          DEFAULT: "var(--line)",
+          strong: "var(--line-strong)",
         },
-        // Accent palette
+        ink: {
+          DEFAULT: "var(--ink)",
+          2: "var(--ink-2)",
+          3: "var(--ink-3)",
+        },
         accent: {
-          green:  "#22c55e",
-          red:    "#ef4444",
-          amber:  "#f59e0b",
-          blue:   "#38bdf8",
-          purple: "#c084fc",
-          cyan:   "#2dd4bf",
+          DEFAULT: "var(--accent)",
+          hover: "var(--accent-hover)",
+          ink: "var(--accent-ink)",
+          subtle: "rgba(245, 166, 35, 0.08)",
+          text: "var(--accent-text)",
         },
-        // Text
+        positive: {
+          DEFAULT: "var(--positive)",
+        },
+        negative: {
+          DEFAULT: "var(--negative)",
+        },
+
+        // Backward compatibility bridges
+        brand: {
+          from: "var(--accent)",
+          to: "var(--accent-hover)",
+          DEFAULT: "var(--accent)",
+        },
+        border: {
+          subtle: "var(--line)",
+          default: "var(--line)",
+          strong: "var(--line-strong)",
+        },
         text: {
-          primary:   "#fafaf9",
-          secondary: "#a8a29e",
-          muted:     "#78716c",
-          accent:    "#f59e0b",
-        },
-        // Score tiers
-        score: {
-          strong:   "#22c55e",
-          moderate: "#f59e0b",
-          watch:    "#d97706",
-          avoid:    "#ef4444",
+          primary: "var(--ink)",
+          secondary: "var(--ink-2)",
+          muted: "var(--ink-3)",
+          accent: "var(--accent)",
         },
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "Inter", "sans-serif"],
-        heading: ["var(--font-heading)", "DM Sans", "sans-serif"],
-        mono: ["var(--font-inter)", "monospace"],
+        sans: ["var(--font-geist-sans)", "Geist", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "Geist Mono", "ui-monospace", "monospace"],
       },
       fontSize: {
-        "2xs": ["11px", "15px"],
+        "2xs": ["13px", "18px"],
+        xs: ["13px", "18px"],
+        sm: ["13px", "18px"],
+        base: ["15px", "22px"],
+        md: ["16px", "24px"],
+        lg: ["20px", "28px"],
+        xl: ["24px", "32px"],
+        "2xl": ["28px", "36px"],
+        "3xl": ["32px", "40px"],
+        "4xl": ["36px", "44px"],
       },
       borderRadius: {
-        sm:  "6px",
-        DEFAULT: "8px",
-        md:  "10px",
-        lg:  "12px",
-        xl:  "16px",
-        "2xl": "20px",
+        sm: "var(--radius-sm)",
+        md: "var(--radius-md)",
+        DEFAULT: "var(--radius-sm)",
       },
       boxShadow: {
-        card:  "0 4px 24px rgba(0,0,0,0.5)",
-        glow:  "0 0 40px rgba(245,158,11,0.18)",
-        green: "0 0 20px rgba(34,197,94,0.2)",
-        red:   "0 0 20px rgba(239,68,68,0.2)",
-        amber: "0 0 20px rgba(245,158,11,0.25)",
-      },
-      animation: {
-        "fade-in":    "fade-in 0.3s ease forwards",
-        "slide-left": "slide-in-left 0.25s ease forwards",
-        "glow-pulse": "glow-pulse 3s ease-in-out infinite",
-        "pulse-dot":  "pulse-dot 2s ease-in-out infinite",
-      },
-      keyframes: {
-        "fade-in": {
-          from: { opacity: "0", transform: "translateY(8px)" },
-          to:   { opacity: "1", transform: "translateY(0)" },
-        },
-        "slide-in-left": {
-          from: { opacity: "0", transform: "translateX(-12px)" },
-          to:   { opacity: "1", transform: "translateX(0)" },
-        },
-        "glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(99,102,241,0.1)" },
-          "50%":       { boxShadow: "0 0 30px rgba(99,102,241,0.25)" },
-        },
-        "pulse-dot": {
-          "0%, 100%": { opacity: "1", transform: "scale(1)" },
-          "50%":       { opacity: "0.5", transform: "scale(0.8)" },
-        },
+        modal: "0 1px 3px rgba(0,0,0,0.4)",
       },
     },
   },

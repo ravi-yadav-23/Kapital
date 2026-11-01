@@ -4,17 +4,19 @@ import React, { useState, useMemo } from 'react'
 import { Allotment } from '@/types'
 import { AllotmentCard } from './AllotmentCard'
 import { SellModal } from './SellModal'
-import { Clock, DollarSign, Layers, Search, Sparkles } from 'lucide-react'
+import { formatDate, formatINR, getStatusDotClass } from '@/lib/formatters'
+import { Search, LayoutGrid, List } from 'lucide-react'
 
 interface AllotmentGridProps {
   allotments: Allotment[]
 }
 
-type TabType = 'ACTIVE' | 'SOLD' | 'INACTIVE' | 'ALL'
+type TabType = 'ACTIVE' | 'SOLD' | 'ALL'
 
 export function AllotmentGrid({ allotments }: AllotmentGridProps) {
   const [activeTab, setActiveTab] = useState<TabType>('ACTIVE')
   const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [selectedSellAllotment, setSelectedSellAllotment] = useState<Allotment | null>(null)
 
   const activeCount = useMemo(
@@ -25,14 +27,12 @@ export function AllotmentGrid({ allotments }: AllotmentGridProps) {
     () => allotments.filter((a) => a.status === 'SOLD').length,
     [allotments]
   )
-  const inactiveCount = useMemo(
-    () => allotments.filter((a) => a.status === 'INACTIVE').length,
-    [allotments]
-  )
+  const totalCount = allotments.length
 
   const filteredAllotments = useMemo(() => {
     return allotments.filter((item) => {
-      if (activeTab !== 'ALL' && item.status !== activeTab) return false
+      if (activeTab === 'ACTIVE' && item.status !== 'ACTIVE') return false
+      if (activeTab === 'SOLD' && item.status !== 'SOLD') return false
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
@@ -47,113 +47,184 @@ export function AllotmentGrid({ allotments }: AllotmentGridProps) {
   }, [allotments, activeTab, searchQuery])
 
   return (
-    <div className="space-y-5">
-      {/* Tab Navigation & Search */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Active Tab */}
+    <div className="space-y-4">
+      {/* Tab Navigation, View Toggle & Search */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-default)] pb-3">
+        {/* Understated Text Tabs */}
+        <div className="flex items-center gap-1 font-mono text-xs">
           <button
             onClick={() => setActiveTab('ACTIVE')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded transition-colors ${
               activeTab === 'ACTIVE'
-                ? 'bg-accent-purple/15 text-accent-purple border border-accent-purple/30 shadow-sm'
-                : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
+                ? 'bg-[var(--bg-subtle)] text-[var(--ink-1)] font-medium border border-[var(--border-strong)]'
+                : 'text-[var(--ink-3)] hover:text-[var(--ink-2)]'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Active Allotments</span>
-            <span className="px-1.5 py-0.2 rounded-full text-2xs bg-surface-elevated font-mono">
-              {activeCount}
-            </span>
+            Active ({activeCount})
           </button>
 
-          {/* Executed Sales Tab */}
           <button
             onClick={() => setActiveTab('SOLD')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded transition-colors ${
               activeTab === 'SOLD'
-                ? 'bg-accent-green/15 text-accent-green border border-accent-green/30 shadow-sm'
-                : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
+                ? 'bg-[var(--bg-subtle)] text-[var(--ink-1)] font-medium border border-[var(--border-strong)]'
+                : 'text-[var(--ink-3)] hover:text-[var(--ink-2)]'
             }`}
           >
-            <DollarSign className="w-3.5 h-3.5" />
-            <span>Executed Sales</span>
-            <span className="px-1.5 py-0.2 rounded-full text-2xs bg-surface-elevated font-mono">
-              {soldCount}
-            </span>
+            Sold ({soldCount})
           </button>
 
-          {/* Inactive Tab */}
-          <button
-            onClick={() => setActiveTab('INACTIVE')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'INACTIVE'
-                ? 'bg-surface-elevated text-text-primary border border-border-strong shadow-sm'
-                : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
-            }`}
-          >
-            <span>Unallocated (Refunds)</span>
-            <span className="px-1.5 py-0.2 rounded-full text-2xs bg-surface-elevated font-mono">
-              {inactiveCount}
-            </span>
-          </button>
-
-          {/* All Tab */}
           <button
             onClick={() => setActiveTab('ALL')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded transition-colors ${
               activeTab === 'ALL'
-                ? 'bg-brand-from/15 text-brand-from border border-brand-from/30 shadow-sm'
-                : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
+                ? 'bg-[var(--bg-subtle)] text-[var(--ink-1)] font-medium border border-[var(--border-strong)]'
+                : 'text-[var(--ink-3)] hover:text-[var(--ink-2)]'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>All Records</span>
-            <span className="px-1.5 py-0.2 rounded-full text-2xs bg-surface-elevated font-mono">
-              {allotments.length}
-            </span>
+            All ({totalCount})
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 text-text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search IPO or family member..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-2.5 py-1 text-xs bg-surface-elevated border-border-subtle"
-          />
+        {/* Search & Layout Toggle */}
+        <div className="flex items-center gap-2">
+          <div className="relative w-48 sm:w-56">
+            <Search className="w-3.5 h-3.5 text-[var(--ink-3)] absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search holdings..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-2.5 py-1 text-xs"
+            />
+          </div>
+
+          <div className="flex items-center border border-[var(--border-default)] rounded p-0.5 bg-[var(--bg-surface)]">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1 rounded ${
+                viewMode === 'table'
+                  ? 'bg-[var(--bg-subtle)] text-[var(--ink-1)]'
+                  : 'text-[var(--ink-3)] hover:text-[var(--ink-2)]'
+              }`}
+              title="Table View"
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-1 rounded ${
+                viewMode === 'cards'
+                  ? 'bg-[var(--bg-subtle)] text-[var(--ink-1)]'
+                  : 'text-[var(--ink-3)] hover:text-[var(--ink-2)]'
+              }`}
+              title="Card View"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Cards Grid */}
-      {filteredAllotments.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
-          {filteredAllotments.map((allotment) => (
+      {/* Content */}
+      {filteredAllotments.length === 0 ? (
+        <div className="card p-10 text-center">
+          <p className="text-xs text-[var(--ink-2)]">No active allotments found in this view.</p>
+          <p className="text-2xs text-[var(--ink-3)] mt-1 max-w-sm mx-auto">
+            Mark an order as allotted on the Orders page and it will automatically populate here for listing-day sell execution.
+          </p>
+        </div>
+      ) : viewMode === 'table' ? (
+        <div className="card p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Target IPO</th>
+                  <th>Demat Account</th>
+                  <th>Allotted Shares</th>
+                  <th className="text-right">Invested</th>
+                  <th>Listing Date</th>
+                  <th>Status</th>
+                  <th className="text-right">Gain / P&L</th>
+                  <th className="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAllotments.map((item) => {
+                  const isActive = item.status === 'ACTIVE'
+                  const isSold = item.status === 'SOLD'
+                  const estGain = Math.round((item.invested_amount * (item.roi_percent || 0)) / 100)
+
+                  return (
+                    <tr key={item.id}>
+                      <td className="font-medium text-[var(--ink-1)]">
+                        <div>{item.ipo_name}</div>
+                        <span className="text-2xs font-mono text-[var(--ink-3)]">{item.ipo_symbol}</span>
+                      </td>
+
+                      <td className="text-[var(--ink-2)]">
+                        {item.account_name}
+                      </td>
+
+                      <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums">
+                        {item.allotted_shares} shs @ ₹{item.issue_price}
+                      </td>
+
+                      <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums">
+                        {formatINR(item.invested_amount)}
+                      </td>
+
+                      <td className="font-mono text-2xs text-[var(--ink-3)]">
+                        {formatDate(item.listing_date)}
+                      </td>
+
+                      <td>
+                        <div className="status-pill status-pill-neutral">
+                          <span className={`status-dot ${getStatusDotClass(item.status)}`} />
+                          <span>{isActive ? 'Active' : isSold ? 'Sold' : item.status}</span>
+                        </div>
+                      </td>
+
+                      <td className="text-right font-mono text-xs font-medium tabular-nums text-[var(--positive)]">
+                        {isSold
+                          ? `+${formatINR(item.realized_pnl || 0)} (+${item.roi_percent}%)`
+                          : `+${formatINR(estGain)} (+${item.roi_percent}%)`}
+                      </td>
+
+                      <td className="text-right">
+                        {isActive ? (
+                          <button
+                            onClick={() => setSelectedSellAllotment(item)}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            Stage Sell
+                          </button>
+                        ) : (
+                          <span className="text-2xs font-mono text-[var(--ink-3)]">
+                            Liquidated
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filteredAllotments.map((item) => (
             <AllotmentCard
-              key={allotment.id}
-              allotment={allotment}
-              onSellTrigger={(item) => setSelectedSellAllotment(item)}
+              key={item.id}
+              allotment={item}
+              onSellTrigger={(allot) => setSelectedSellAllotment(allot)}
             />
           ))}
         </div>
-      ) : (
-        <div className="card p-12 text-center text-text-muted flex flex-col items-center justify-center gap-3 bg-surface-elevated/40">
-          <Sparkles className="w-8 h-8 text-text-muted/50" />
-          <div className="space-y-1">
-            <h4 className="text-sm font-semibold text-text-secondary">
-              No allotments in this section
-            </h4>
-            <p className="text-2xs text-text-muted">
-              Allotments will automatically populate here as soon as registrar polling confirms demat allocations.
-            </p>
-          </div>
-        </div>
       )}
 
-      {/* Sell Modal */}
       {selectedSellAllotment && (
         <SellModal
           allotment={selectedSellAllotment}

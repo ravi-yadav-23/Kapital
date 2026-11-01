@@ -4,18 +4,9 @@ import React, { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import {
-  Settings,
-  Shield,
-  Cpu,
-  Bell,
-  Sliders,
-  Key,
   CheckCircle2,
   RefreshCw,
   Send,
-  Smartphone,
-  Mail,
-  MessageSquare,
   Lock,
 } from 'lucide-react'
 
@@ -116,72 +107,67 @@ export default function SettingsPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="page-header">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="page-title flex items-center gap-2.5">
-              <Settings className="w-5 h-5 text-brand-from" />
-              <span>Platform Settings & API Config</span>
+            <h1 className="text-xl font-medium text-[var(--ink-1)] tracking-tight">
+              Settings
             </h1>
-            <p className="page-subtitle">
-              Manage Angel One SmartAPI credentials, ASBA UPI defaults, AI keys, and alert channels
-            </p>
           </div>
 
           <div className="flex items-center gap-2">
             {savedToast && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-green/15 text-accent-green border border-accent-green/30 text-xs font-semibold animate-fade-in">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Preferences Saved!</span>
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded text-2xs font-mono text-[var(--positive)] bg-[var(--bg-subtle)] border border-[var(--positive)]">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Saved</span>
               </div>
             )}
             {errorToast && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-red/15 text-accent-red border border-accent-red/30 text-xs font-semibold animate-fade-in">
-                <Lock className="w-4 h-4" />
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded text-2xs font-mono text-[var(--negative)] bg-[var(--bg-subtle)] border border-[var(--negative)]">
+                <Lock className="w-3.5 h-3.5" />
                 <span>{errorToast}</span>
               </div>
             )}
+            <button
+              onClick={handleSave}
+              type="button"
+              className="btn btn-primary btn-sm"
+            >
+              Save Settings
+            </button>
           </div>
         </div>
 
         <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 1. ASBA UPI & Broker Guardrails */}
-          <div className="card space-y-4 bg-surface-card border-border-default">
-            <div className="flex items-center gap-2 text-sm font-bold text-text-primary pb-2 border-b border-border-subtle">
-              <Sliders className="w-4 h-4 text-brand-from" />
-              <span>ASBA Mandate & Bidding Guardrails</span>
-            </div>
+          {/* 1. ASBA UPI & Bidding Guardrails */}
+          <div className="card p-5 space-y-4">
+            <h3 className="text-sm font-medium text-[var(--ink-1)] pb-2 border-b border-[var(--border-default)]">
+              ASBA Mandate & Bidding Guardrails
+            </h3>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-4 text-xs">
               <div>
-                <label className="text-2xs font-semibold text-text-muted uppercase block mb-1">
+                <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">
                   Default UPI ID (VPA) for Mandates
                 </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={defaultUpi}
-                    onChange={(e) => setDefaultUpi(e.target.value)}
-                    placeholder="e.g. yourname@okhdfcbank"
-                    className="w-full text-xs font-mono"
-                  />
-                  <button
-                    type="submit"
-                    className="btn btn-primary btn-sm flex-shrink-0"
-                  >
-                    Save
-                  </button>
-                </div>
-                <span className="text-[11px] text-text-muted block mt-1">
-                  Used for 1-click mandate staging across all family demat accounts.
+                <input
+                  type="text"
+                  value={defaultUpi}
+                  onChange={(e) => setDefaultUpi(e.target.value)}
+                  placeholder="e.g. name@bank"
+                  className="w-full text-xs font-mono"
+                />
+                <span className="text-2xs text-[var(--ink-3)] block mt-1">
+                  Used for 1-click mandate staging across all family Demat accounts.
                 </span>
               </div>
 
-              <div className="pt-3 border-t border-border-subtle">
+              <div className="pt-3 border-t border-[var(--border-default)]">
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-2xs font-semibold text-text-muted uppercase">
+                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)]">
                     Max Capital Exposure per Single IPO
                   </label>
-                  <span className="font-mono font-bold text-brand-from">{maxAllocationPct}%</span>
+                  <span className="font-mono text-xs font-medium text-[var(--ink-1)]">{maxAllocationPct}%</span>
                 </div>
                 <input
                   type="range"
@@ -190,19 +176,19 @@ export default function SettingsPage() {
                   step={5}
                   value={maxAllocationPct}
                   onChange={(e) => setMaxAllocationPct(parseInt(e.target.value))}
-                  className="w-full accent-brand-from"
+                  className="w-full h-1.5 bg-[var(--bg-subtle)] rounded appearance-none cursor-pointer accent-[var(--accent)]"
                 />
-                <span className="text-[11px] text-text-muted block mt-1">
-                  PuLP optimizer will cap total deployment to at most {maxAllocationPct}% of available family corpus in any single issue.
+                <span className="text-2xs text-[var(--ink-3)] block mt-1">
+                  PuLP optimizer caps total deployment to at most {maxAllocationPct}% of available family corpus in any single issue.
                 </span>
               </div>
 
-              <div className="pt-3 border-t border-border-subtle">
+              <div className="pt-3 border-t border-[var(--border-default)]">
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-2xs font-semibold text-text-muted uppercase">
+                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)]">
                     Pre-Listing Limit Sell Buffer (09:00 AM)
                   </label>
-                  <span className="font-mono font-bold text-accent-green">-{limitBufferPct}%</span>
+                  <span className="font-mono text-xs font-medium text-[var(--positive)]">-{limitBufferPct}%</span>
                 </div>
                 <input
                   type="range"
@@ -211,79 +197,70 @@ export default function SettingsPage() {
                   step={1}
                   value={limitBufferPct}
                   onChange={(e) => setLimitBufferPct(parseInt(e.target.value))}
-                  className="w-full accent-accent-green"
+                  className="w-full h-1.5 bg-[var(--bg-subtle)] rounded appearance-none cursor-pointer accent-[var(--positive)]"
                 />
-                <span className="text-[11px] text-text-muted block mt-1">
-                  Places limit sell order at {limitBufferPct}% below estimated listing price to guarantee auction fill.
+                <span className="text-2xs text-[var(--ink-3)] block mt-1">
+                  Places limit sell order at {limitBufferPct}% below estimated listing price to guarantee execution in pre-open auction.
                 </span>
               </div>
             </div>
           </div>
 
-          {/* 2. Angel One SmartAPI Session & NSE Compliance */}
-          <div className="card space-y-4 bg-surface-card border-border-default">
-            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
-              <div className="flex items-center gap-2 text-sm font-bold text-text-primary">
-                <Shield className="w-4 h-4 text-accent-green" />
-                <span>Angel One SmartAPI Session</span>
-              </div>
-
-              <span className="px-2 py-0.5 rounded-full text-2xs font-bold font-mono bg-accent-green/15 text-accent-green border border-accent-green/30">
+          {/* 2. Angel One SmartAPI Session */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-default)]">
+              <h3 className="text-sm font-medium text-[var(--ink-1)]">
+                Angel One SmartAPI Session
+              </h3>
+              <span className="font-mono text-2xs text-[var(--ink-3)]">
                 {accountsCount} {accountsCount === 1 ? 'Account' : 'Accounts'} Synced
               </span>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3 rounded-xl bg-surface-elevated/70 border border-border-subtle space-y-1.5">
+              <div className="p-3 rounded bg-[var(--bg-subtle)] border border-[var(--border-default)] space-y-1.5 font-mono text-2xs">
                 <div className="flex justify-between">
-                  <span className="text-text-muted">NSE Static Elastic IP:</span>
-                  <span className="font-mono text-text-primary font-bold">
+                  <span className="text-[var(--ink-3)]">NSE Static Elastic IP:</span>
+                  <span className="text-[var(--ink-1)]">
                     {process.env.NEXT_PUBLIC_STATIC_IP || '128.185.168.216'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">TOTP Session Expiry:</span>
-                  <span className="font-mono text-accent-green font-semibold">Active (Expires in 17h 42m)</span>
+                  <span className="text-[var(--ink-3)]">Broker Session:</span>
+                  <span className="text-[var(--positive)]">Sandbox Seeded Mode</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Order Rate Limit:</span>
-                  <span className="font-mono text-text-secondary">10 orders/sec (Max cap)</span>
+                  <span className="text-[var(--ink-3)]">Order Rate Limit:</span>
+                  <span className="text-[var(--ink-2)]">10 orders/sec</span>
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div>
                 <button
                   type="button"
                   onClick={handleRefreshTokens}
                   disabled={isRefreshingAuth}
-                  className="btn btn-ghost btn-sm w-full justify-center gap-2 text-xs"
+                  className="btn btn-secondary btn-sm w-full justify-center gap-2 text-xs"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingAuth ? 'animate-spin text-brand-from' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingAuth ? 'animate-spin' : ''}`} />
                   <span>
                     {isRefreshingAuth
-                      ? 'Refreshing All TOTP Sessions...'
-                      : `Re-Authenticate ${accountsCount} Demat ${accountsCount === 1 ? 'Account' : 'Accounts'}`}
+                      ? 'Re-Authenticating Sessions...'
+                      : `Re-Authenticate ${accountsCount} Demat Accounts`}
                   </span>
                 </button>
               </div>
             </div>
 
-            {/* AI Due Diligence Engine Configuration */}
-            <div className="pt-3 border-t border-border-subtle space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-bold text-text-primary">
-                  <Cpu className="w-4 h-4 text-brand-to" />
-                  <span>AI Due Diligence & Scoring Engine</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-2xs font-bold uppercase bg-brand-from/15 text-brand-from border border-brand-from/30">
-                  {aiProvider} active
-                </span>
-              </div>
+            {/* AI Engine Configuration */}
+            <div className="pt-3 border-t border-[var(--border-default)] space-y-3">
+              <h3 className="text-sm font-medium text-[var(--ink-1)]">
+                AI Due Diligence Configuration
+              </h3>
 
-              <div className="space-y-2.5 text-xs">
-                {/* Provider Selector */}
+              <div className="space-y-2 text-xs">
                 <div>
-                  <label className="block text-text-secondary font-medium mb-1">Active AI Provider</label>
+                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">Provider</label>
                   <select
                     value={aiProvider}
                     onChange={(e) => {
@@ -293,55 +270,50 @@ export default function SettingsPage() {
                       if (p === 'gemini') setAiModel('gemini-1.5-flash')
                       if (p === 'anthropic') setAiModel('claude-3-5-haiku-20241022')
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface-elevated border border-border-subtle text-text-primary focus:border-brand-from focus:outline-none"
+                    className="w-full text-xs"
                   >
-                    <option value="groq">Groq Cloud (Fast & Free Testing)</option>
+                    <option value="groq">Groq Cloud (Fast Inference)</option>
                     <option value="gemini">Google Gemini (AI Studio)</option>
-                    <option value="anthropic">Anthropic Claude (Production Grade)</option>
+                    <option value="anthropic">Anthropic Claude (Production)</option>
                   </select>
                 </div>
 
-                {/* Model Selector */}
                 <div>
-                  <label className="block text-text-secondary font-medium mb-1">Model Architecture</label>
+                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">Model</label>
                   <select
                     value={aiModel}
                     onChange={(e) => setAiModel(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface-elevated border border-border-subtle text-text-primary focus:border-brand-from focus:outline-none"
+                    className="w-full text-xs"
                   >
                     {aiProvider === 'groq' && (
                       <>
-                        <option value="openai/gpt-oss-120b">GPT-OSS 120B (Deep Institutional Analyst)</option>
-                        <option value="openai/gpt-oss-20b">GPT-OSS 20B (Ultra-Fast Screening)</option>
-                        <option value="qwen/qwen3.6-27b">Qwen 3.6 27B (High-Precision Reasoning)</option>
-                        <option value="groq/compound">Groq Compound (Agentic Multi-Model)</option>
+                        <option value="openai/gpt-oss-120b">GPT-OSS 120B (Deep Due Diligence)</option>
+                        <option value="openai/gpt-oss-20b">GPT-OSS 20B (Fast Screening)</option>
+                        <option value="qwen/qwen3.6-27b">Qwen 3.6 27B</option>
                       </>
                     )}
                     {aiProvider === 'gemini' && (
                       <>
-                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast & Structured)</option>
-                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Research)</option>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Default)</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                       </>
                     )}
                     {aiProvider === 'anthropic' && (
                       <>
-                        <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Fast DRHP extraction)</option>
-                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Maximum depth)</option>
+                        <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Default)</option>
+                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
                       </>
                     )}
                   </select>
                 </div>
 
-                {/* API Key Input */}
                 <div>
-                  <label className="block text-text-secondary font-medium mb-1">
-                    {aiProvider === 'groq' && 'Groq API Key (gsk_...)'}
-                    {aiProvider === 'gemini' && 'Google Gemini API Key (AIza...)'}
-                    {aiProvider === 'anthropic' && 'Anthropic API Key (sk-ant-...)'}
+                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">
+                    API Key Override
                   </label>
                   <input
                     type="password"
-                    placeholder={`Enter ${aiProvider} API key or set in .env`}
+                    placeholder={`Enter ${aiProvider} API key (optional)`}
                     value={
                       aiProvider === 'groq'
                         ? groqApiKey
@@ -354,98 +326,82 @@ export default function SettingsPage() {
                       if (aiProvider === 'gemini') setGeminiApiKey(e.target.value)
                       if (aiProvider === 'anthropic') setAnthropicApiKey(e.target.value)
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface-elevated border border-border-subtle text-text-primary focus:border-brand-from focus:outline-none font-mono text-xs"
+                    className="w-full text-xs font-mono"
                   />
-                  <p className="text-2xs text-text-muted mt-1">
-                    Saved preferences are persisted in PostgreSQL. You can change models anytime.
-                  </p>
                 </div>
               </div>
             </div>
           </div>
 
           {/* 3. Notification Channels */}
-          <div className="card space-y-4 bg-surface-card border-border-default lg:col-span-2">
-            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
-              <div className="flex items-center gap-2 text-sm font-bold text-text-primary">
-                <Bell className="w-4 h-4 text-accent-purple" />
-                <span>Instant Alert Channels (Allotments & Refunds)</span>
-              </div>
+          <div className="card p-5 space-y-4 lg:col-span-2">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-default)]">
+              <h3 className="text-sm font-medium text-[var(--ink-1)]">
+                Notification Channels
+              </h3>
 
               <button
                 type="button"
                 onClick={handleSendTestAlert}
-                className="btn btn-ghost btn-sm text-2xs gap-1.5"
+                className="btn btn-secondary btn-sm text-xs gap-1.5"
               >
                 {testAlertSent ? (
                   <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-accent-green" />
-                    <span className="text-accent-green font-semibold">Test Alert Sent!</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[var(--positive)]" />
+                    <span>Test Sent</span>
                   </>
                 ) : (
                   <>
-                    <Send className="w-3 h-3" />
-                    <span>Send Test Notification</span>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Test Notification</span>
                   </>
                 )}
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              {/* Telegram */}
-              <div className="p-3.5 rounded-xl bg-surface-elevated/50 border border-border-subtle flex items-start justify-between gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded bg-[var(--bg-subtle)] border border-[var(--border-default)] flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-text-primary">
-                    <MessageSquare className="w-4 h-4 text-brand-from" />
-                    <span>Telegram Bot</span>
-                  </div>
-                  <p className="text-[11px] text-text-muted">
-                    Instant alerts for allotment status, refunds & listing day 09:00 AM triggers.
+                  <span className="font-medium text-[var(--ink-1)] block">Telegram Bot</span>
+                  <p className="text-2xs text-[var(--ink-3)]">
+                    Allotment status, refunds, and listing-day pre-open triggers.
                   </p>
                 </div>
                 <input
                   type="checkbox"
                   checked={telegramAlerts}
                   onChange={(e) => setTelegramAlerts(e.target.checked)}
-                  className="w-4 h-4 accent-brand-from mt-1 cursor-pointer"
+                  className="w-4 h-4 accent-[var(--accent)] mt-0.5 cursor-pointer"
                 />
               </div>
 
-              {/* WhatsApp */}
-              <div className="p-3.5 rounded-xl bg-surface-elevated/50 border border-border-subtle flex items-start justify-between gap-3">
+              <div className="p-3 rounded bg-[var(--bg-subtle)] border border-[var(--border-default)] flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-text-primary">
-                    <Smartphone className="w-4 h-4 text-accent-green" />
-                    <span>WhatsApp Updates</span>
-                  </div>
-                  <p className="text-[11px] text-text-muted">
-                    Morning recommendation brief & UPI mandate approval reminders.
+                  <span className="font-medium text-[var(--ink-1)] block">WhatsApp Updates</span>
+                  <p className="text-2xs text-[var(--ink-3)]">
+                    Morning brief & UPI mandate approval alerts.
                   </p>
                 </div>
                 <input
                   type="checkbox"
                   checked={whatsappAlerts}
                   onChange={(e) => setWhatsappAlerts(e.target.checked)}
-                  className="w-4 h-4 accent-accent-green mt-1 cursor-pointer"
+                  className="w-4 h-4 accent-[var(--accent)] mt-0.5 cursor-pointer"
                 />
               </div>
 
-              {/* Email */}
-              <div className="p-3.5 rounded-xl bg-surface-elevated/50 border border-border-subtle flex items-start justify-between gap-3">
+              <div className="p-3 rounded bg-[var(--bg-subtle)] border border-[var(--border-default)] flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-text-primary">
-                    <Mail className="w-4 h-4 text-accent-amber" />
-                    <span>Email Statements</span>
-                  </div>
-                  <p className="text-[11px] text-text-muted">
-                    Monthly P&L summaries and tax ledger exports for family accounts.
+                  <span className="font-medium text-[var(--ink-1)] block">Email Statements</span>
+                  <p className="text-2xs text-[var(--ink-3)]">
+                    Monthly P&L summaries and family tax ledger exports.
                   </p>
                 </div>
                 <input
                   type="checkbox"
                   checked={emailAlerts}
                   onChange={(e) => setEmailAlerts(e.target.checked)}
-                  className="w-4 h-4 accent-accent-amber mt-1 cursor-pointer"
+                  className="w-4 h-4 accent-[var(--accent)] mt-0.5 cursor-pointer"
                 />
               </div>
             </div>

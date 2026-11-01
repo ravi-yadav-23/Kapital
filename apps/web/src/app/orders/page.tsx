@@ -1,29 +1,23 @@
 'use client'
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
 import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { IpoOrder, OrderStatus } from '@/types'
-import { EmptyState } from '@/components/shared/EmptyState'
-import { formatINR, formatDateTime } from '@/lib/formatters'
+import { formatINR, formatDateTime, getStatusDotClass, getStatusPillClass } from '@/lib/formatters'
 import {
-  FileSpreadsheet,
-  CheckCircle2,
-  Clock,
-  Send,
-  XCircle,
-  Ban,
-  RotateCcw,
   Download,
   Search,
-  Filter,
-  Trash2,
+  RotateCcw,
+  MoreHorizontal,
+  X,
+  AlertTriangle,
 } from 'lucide-react'
 
 const STATUS_OPTIONS: Array<{ value: 'ALL' | OrderStatus; label: string }> = [
   { value: 'ALL', label: 'All statuses' },
-  { value: 'PENDING', label: 'Pending (Intent Recorded)' },
+  { value: 'PENDING', label: 'Pending (Intent)' },
   { value: 'APPLIED', label: 'Applied in Broker' },
   { value: 'CONFIRMED', label: 'Confirmed (Staged)' },
   { value: 'SUBMITTED', label: 'Submitted' },
@@ -33,56 +27,12 @@ const STATUS_OPTIONS: Array<{ value: 'ALL' | OrderStatus; label: string }> = [
   { value: 'CANCELLED', label: 'Cancelled' },
 ]
 
-function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  const map: Record<
-    string,
-    { className: string; icon: React.ReactNode }
-  > = {
-    PENDING: {
-      className: 'text-accent-amber bg-accent-amber/10 border border-accent-amber/30',
-      icon: <Clock className="w-3 h-3" />,
-    },
-    APPLIED: {
-      className: 'text-accent-blue bg-accent-blue/10 border border-accent-blue/30',
-      icon: <Send className="w-3 h-3" />,
-    },
-    SUBMITTED: {
-      className: 'text-accent-blue bg-accent-blue/10 border border-accent-blue/30',
-      icon: <Send className="w-3 h-3" />,
-    },
-    CONFIRMED: {
-      className: 'text-accent-green bg-accent-green/10 border border-accent-green/30',
-      icon: <CheckCircle2 className="w-3 h-3" />,
-    },
-    ALLOTTED: {
-      className: 'text-brand-from bg-brand-from/15 border border-brand-from/30',
-      icon: <CheckCircle2 className="w-3 h-3" />,
-    },
-    NOT_ALLOTTED: {
-      className: 'text-text-muted bg-surface-elevated border border-border-subtle',
-      icon: <XCircle className="w-3 h-3 text-text-muted" />,
-    },
-    REJECTED: {
-      className: 'text-accent-red bg-accent-red/10 border border-accent-red/30',
-      icon: <XCircle className="w-3 h-3" />,
-    },
-    CANCELLED: {
-      className: 'text-text-muted bg-surface-elevated border border-border-subtle',
-      icon: <Ban className="w-3 h-3" />,
-    },
-  }
-  const cfg = map[status] || {
-    className: 'text-text-muted bg-surface-elevated border border-border-subtle',
-    icon: <Clock className="w-3 h-3" />,
-  }
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 text-2xs font-semibold px-2 py-0.5 rounded-full ${cfg.className}`}
-    >
-      {cfg.icon}
-      <span>{status}</span>
-    </span>
-  )
+interface ConfirmModalState {
+  isOpen: boolean
+  orderId: string
+  action: 'cancel' | 'delete'
+  title: string
+  message: string
 }
 
 export default function OrdersPage() {
@@ -93,6 +43,9 @@ export default function OrdersPage() {
   const [ipo, setIpo] = useState('ALL')
   const [searchQuery, setSearchQuery] = useState('')
   const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | '7D' | '30D'>('ALL')
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   const fetchOrders = useCallback(() => {
     apiClient.getOrders().then((data) => {
@@ -109,11 +62,26 @@ export default function OrdersPage() {
     fetchOrders()
   })
 
+  // Close overflow menu on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setActiveMenuId(null)
+      }
+    }
+    if (activeMenuId) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [activeMenuId])
+
   const handleCancelOrder = async (orderId: string) => {
     try {
       await apiClient.cancelOrder(orderId)
-      const data = await apiClient.getOrders()
-      setOrders(data)
+      fetchOrders()
+      setConfirmModal(null)
     } catch (err: any) {
       alert(err.message || 'Failed to cancel order')
     }
@@ -122,19 +90,18 @@ export default function OrdersPage() {
   const handleMarkApplied = async (orderId: string) => {
     try {
       await apiClient.markOrderApplied(orderId)
-      const data = await apiClient.getOrders()
-      setOrders(data)
+      fetchOrders()
+      setActiveMenuId(null)
     } catch (err: any) {
       alert(err.message || 'Failed to mark order as applied')
     }
   }
 
   const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm('Remove this application record from history? Any associated ASBA locked balance will be restored.')) return
     try {
       await apiClient.deleteOrder(orderId)
-      const data = await apiClient.getOrders()
-      setOrders(data)
+      fetchOrders()
+      setConfirmModal(null)
     } catch (err: any) {
       alert(err.message || 'Failed to delete order')
     }
@@ -143,8 +110,8 @@ export default function OrdersPage() {
   const handleAllotmentResult = async (orderId: string, result: 'ALLOTTED' | 'NOT_ALLOTTED') => {
     try {
       await apiClient.setOrderAllotmentResult(orderId, result)
-      const data = await apiClient.getOrders()
-      setOrders(data)
+      fetchOrders()
+      setActiveMenuId(null)
     } catch (err: any) {
       alert(err.message || 'Failed to update allotment result')
     }
@@ -212,45 +179,42 @@ export default function OrdersPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="page-header">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="page-title flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-brand-from" />
-              <span>Order & Application Tracker</span>
+            <h1 className="text-xl font-medium text-[var(--ink-1)] tracking-tight">
+              Orders
             </h1>
-            <p className="page-subtitle">
-              Track ASBA capital allocation, manual broker submissions, and allotment outcomes
-            </p>
           </div>
 
           <button
             onClick={exportCsv}
             disabled={filtered.length === 0}
-            className="btn btn-ghost btn-sm gap-1.5 text-xs border-border-subtle hover:text-text-primary"
+            className="btn btn-secondary btn-sm gap-1.5 self-start sm:self-auto"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
           </button>
         </div>
 
-        {/* Filter Controls Bar */}
-        <div className="card p-4 space-y-3 bg-surface-card border-border-default">
+        {/* Filter Toolbar */}
+        <div className="card p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Date Presets */}
-            <div className="flex items-center gap-1.5 text-2xs font-semibold">
+            <div className="flex items-center gap-1 text-2xs font-mono">
               {[
                 { key: 'ALL', label: 'All Time' },
                 { key: 'TODAY', label: 'Today' },
-                { key: '7D', label: 'Last 7 Days' },
-                { key: '30D', label: 'Last 30 Days' },
+                { key: '7D', label: '7D' },
+                { key: '30D', label: '30D' },
               ].map((p) => (
                 <button
                   key={p.key}
                   onClick={() => setDatePreset(p.key as any)}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded transition-colors ${
                     datePreset === p.key
-                      ? 'bg-brand-from/15 text-brand-from border border-brand-from/30'
-                      : 'text-text-muted hover:text-text-secondary hover:bg-surface-elevated'
+                      ? 'bg-[var(--bg-subtle)] text-[var(--ink-1)] font-medium border border-[var(--border-strong)]'
+                      : 'text-[var(--ink-3)] hover:text-[var(--ink-2)]'
                   }`}
                 >
                   {p.label}
@@ -260,20 +224,20 @@ export default function OrdersPage() {
 
             {/* Search */}
             <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-[var(--ink-3)] absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search IPO, account, order ID..."
+                placeholder="Search IPO, account, ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-2.5 py-1 text-xs bg-surface-elevated border-border-subtle"
+                className="w-full pl-8 pr-2.5 py-1 text-xs"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-2 border-t border-border-subtle text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-[var(--border-default)] text-xs">
             <div>
-              <label className="text-2xs font-semibold text-text-muted uppercase block mb-1">
+              <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">
                 Account
               </label>
               <select
@@ -291,7 +255,7 @@ export default function OrdersPage() {
             </div>
 
             <div>
-              <label className="text-2xs font-semibold text-text-muted uppercase block mb-1">
+              <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">
                 Status
               </label>
               <select
@@ -308,7 +272,7 @@ export default function OrdersPage() {
             </div>
 
             <div>
-              <label className="text-2xs font-semibold text-text-muted uppercase block mb-1">
+              <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">
                 IPO
               </label>
               <select
@@ -329,127 +293,217 @@ export default function OrdersPage() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="btn btn-ghost btn-sm w-full justify-center gap-1.5"
+                className="btn btn-ghost btn-sm w-full justify-center gap-1.5 text-xs text-[var(--ink-3)] hover:text-[var(--ink-1)]"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Reset Filters</span>
+                <span>Reset</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Data Table */}
-        <div className="card space-y-3 p-0 overflow-hidden bg-surface-card border-border-default">
+        {/* High-Density Data Table */}
+        <div className="card p-0 overflow-hidden">
           {loading ? (
             <div className="p-6">
               <div className="card h-48 skeleton border-0" />
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState
-              title="No orders match these filters"
-              message="Try another status, account, IPO, or date range."
-            />
+            <div className="p-12 text-center">
+              <p className="text-xs text-[var(--ink-2)]">No orders match these filters.</p>
+              <p className="text-2xs text-[var(--ink-3)] mt-1">
+                Try selecting a different status, account, or resetting the date filter.
+              </p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>IPO</th>
+                    <th>Target IPO</th>
                     <th>Account</th>
                     <th>Category</th>
-                    <th>Lots</th>
-                    <th>Amount</th>
+                    <th className="text-right">Lots</th>
+                    <th className="text-right">Amount</th>
                     <th>Status</th>
-                    <th>Angel Order ID</th>
+                    <th>Broker Order ID</th>
                     <th>Date</th>
-                    <th className="text-right">Actions</th>
+                    <th className="text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((ord) => (
-                    <tr key={ord.id}>
-                      <td className="font-semibold text-text-primary">{ord.ipo_name}</td>
-                      <td>{ord.account_name}</td>
-                      <td>
-                        <span className="px-2 py-0.5 rounded text-2xs font-semibold bg-surface-elevated text-text-accent">
-                          {ord.category}
-                        </span>
-                      </td>
-                      <td>{ord.lots}</td>
-                      <td className="font-semibold text-text-primary">
-                        {formatINR(ord.amount)}
-                      </td>
-                      <td>
-                        <div className="space-y-0.5">
-                          <OrderStatusBadge status={ord.status} />
-                          {ord.reject_reason && (
-                            <p className="text-[10px] text-accent-red max-w-[200px] mt-0.5">
-                              {ord.reject_reason}
-                            </p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="text-2xs text-brand-from font-semibold">{ord.angel_order_id}</td>
-                      <td className="text-2xs text-text-muted">
-                        {formatDateTime(ord.placed_at)}
-                      </td>
-                      <td className="text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {ord.status === 'PENDING' && (
-                            <button
-                              type="button"
-                              onClick={() => handleMarkApplied(ord.id)}
-                              title="Confirm you have submitted this bid in your broker app (Angel One, Zerodha, etc.)"
-                              className="px-2 py-1 text-[10px] font-bold rounded-lg bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 border border-accent-blue/30 transition-all"
-                            >
-                              Mark Applied
-                            </button>
-                          )}
-                          {['CONFIRMED', 'PENDING', 'SUBMITTED', 'APPLIED'].includes(ord.status) && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleCancelOrder(ord.id)}
-                                title="Cancel application and release locked ASBA funds back to available balance"
-                                className="px-2 py-1 text-[10px] font-bold rounded-lg bg-accent-red/10 text-accent-red hover:bg-accent-red/20 border border-accent-red/30 transition-all"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleAllotmentResult(ord.id, 'NOT_ALLOTTED')}
-                                title="Mark as Not Allotted and unblock ASBA funds"
-                                className="px-2 py-1 text-[10px] font-medium rounded-lg bg-surface-elevated text-text-secondary hover:text-text-primary border border-border-subtle hover:border-border-default transition-all"
-                              >
-                                Not Allotted
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleAllotmentResult(ord.id, 'ALLOTTED')}
-                                title="Mark as Allotted and stage for listing-day sell"
-                                className="px-2 py-1 text-[10px] font-bold rounded-lg bg-accent-green/10 text-accent-green hover:bg-accent-green/20 border border-accent-green/30 transition-all"
-                              >
-                                Allotted
-                              </button>
-                            </>
-                          )}
+                  {filtered.map((ord) => {
+                    const dotClass = getStatusDotClass(ord.status)
+                    const isMenuOpen = activeMenuId === ord.id
+
+                    return (
+                      <tr key={ord.id} className="relative h-[52px]">
+                        <td className="font-medium text-ink">
+                          {ord.ipo_name}
+                        </td>
+                        <td className="text-ink-2">
+                          {ord.account_name}
+                        </td>
+                        <td>
+                          <span className="px-2 py-0.5 rounded text-[13px] font-mono font-medium uppercase bg-surface-raised text-ink-2 border border-line">
+                            {ord.category}
+                          </span>
+                        </td>
+                        <td className="text-right font-mono text-[13px] text-ink-2 tabular-nums">
+                          {ord.lots}
+                        </td>
+                        <td className="text-right font-mono text-[13px] text-ink font-medium tabular-nums">
+                          {formatINR(ord.amount)}
+                        </td>
+                        <td>
+                          <span className={getStatusPillClass(ord.status)}>
+                            <span className={getStatusDotClass(ord.status)} />
+                            <span>{ord.status}</span>
+                          </span>
+                        </td>
+                        <td className="font-mono text-[13px] text-ink-3">
+                          {ord.angel_order_id || '—'}
+                        </td>
+                        <td className="font-mono text-[13px] text-ink-3">
+                          {formatDateTime(ord.placed_at)}
+                        </td>
+                        <td className="text-right relative">
                           <button
                             type="button"
-                            onClick={() => handleDeleteOrder(ord.id)}
-                            title="Delete order record permanently"
-                            className="p-1 rounded-lg text-text-muted hover:text-accent-red hover:bg-surface-elevated transition-colors"
+                            onClick={() => setActiveMenuId(isMenuOpen ? null : ord.id)}
+                            className="btn-ghost p-1.5 text-ink-3 hover:text-ink inline-flex"
+                            title="Actions"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <MoreHorizontal className="w-4 h-4" />
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+
+                          {/* Row Actions Popover Menu */}
+                          {isMenuOpen && (
+                            <div
+                              ref={menuRef}
+                              className="absolute right-0 top-8 z-30 w-44 rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-lg py-1 text-left text-xs"
+                            >
+                              {ord.status === 'PENDING' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkApplied(ord.id)}
+                                  className="w-full px-3 py-1.5 text-left text-[var(--ink-1)] hover:bg-[var(--bg-subtle)]"
+                                >
+                                  Mark Applied
+                                </button>
+                              )}
+
+                              {['CONFIRMED', 'PENDING', 'SUBMITTED', 'APPLIED'].includes(ord.status) && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAllotmentResult(ord.id, 'ALLOTTED')}
+                                    className="w-full px-3 py-1.5 text-left text-[var(--positive)] hover:bg-[var(--bg-subtle)]"
+                                  >
+                                    Mark Allotted
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAllotmentResult(ord.id, 'NOT_ALLOTTED')}
+                                    className="w-full px-3 py-1.5 text-left text-[var(--ink-2)] hover:bg-[var(--bg-subtle)]"
+                                  >
+                                    Mark Not Allotted
+                                  </button>
+                                  <div className="h-px bg-[var(--border-default)] my-1" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuId(null)
+                                      setConfirmModal({
+                                        isOpen: true,
+                                        orderId: ord.id,
+                                        action: 'cancel',
+                                        title: 'Cancel IPO Application',
+                                        message: `Are you sure you want to cancel the application for ${ord.ipo_name} (${ord.account_name})? Any active ASBA lock will be released.`,
+                                      })
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-[var(--negative)] hover:bg-[var(--bg-subtle)]"
+                                  >
+                                    Cancel Order
+                                  </button>
+                                </>
+                              )}
+
+                              <div className="h-px bg-[var(--border-default)] my-1" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMenuId(null)
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    orderId: ord.id,
+                                    action: 'delete',
+                                    title: 'Delete Order Record',
+                                    message: `Permanently delete this order record for ${ord.ipo_name}? This cannot be undone.`,
+                                  })
+                                }}
+                                className="w-full px-3 py-1.5 text-left text-[var(--negative)] hover:bg-[var(--bg-subtle)]"
+                              >
+                                Delete Record
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </div>
+
+        {/* Confirmation Modal */}
+        {confirmModal?.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+            <div className="card p-5 max-w-sm w-full space-y-4 bg-[var(--bg-elevated)] border border-[var(--border-strong)]">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2 text-[var(--ink-1)]">
+                  <AlertTriangle className="w-4 h-4 text-[var(--negative)] shrink-0" />
+                  <h3 className="text-sm font-medium">{confirmModal.title}</h3>
+                </div>
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  className="btn-ghost p-1 text-[var(--ink-3)] hover:text-[var(--ink-1)]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-[var(--ink-2)] leading-relaxed">
+                {confirmModal.message}
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(null)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Keep Order
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirmModal.action === 'cancel') {
+                      handleCancelOrder(confirmModal.orderId)
+                    } else {
+                      handleDeleteOrder(confirmModal.orderId)
+                    }
+                  }}
+                  className="btn btn-destructive btn-sm"
+                >
+                  Confirm {confirmModal.action === 'cancel' ? 'Cancellation' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

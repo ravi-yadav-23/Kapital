@@ -225,17 +225,15 @@ export default function IpoDetailPage() {
                           <span className="text-ink font-sans">{dim.label}</span>
                           <div className="flex items-center gap-2 font-mono">
                             <span className="text-[12px] text-ink-3 font-sans">
-                              (Weight: {dim.weight})
+                              Weight: {dim.weight}
                             </span>
                             {earned !== null && (
-                              <span className="text-[12px] text-ink-2 font-mono">
+                              <span className="text-ink font-medium tabular-nums">
                                 {earned}/{dim.maxPts} pts
                               </span>
                             )}
-                            <span className="text-ink font-medium tabular-nums">
-                              {dim.score !== null && dim.score !== undefined
-                                ? `${dim.score}/100`
-                                : 'Not assessed'}
+                            <span className="text-[12px] text-ink-3 tabular-nums font-mono">
+                              ({dim.score !== null && dim.score !== undefined ? `${dim.score}/100` : 'Not assessed'})
                             </span>
                           </div>
                         </div>

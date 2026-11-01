@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { ChevronDown, HelpCircle, ShieldCheck, Zap, Scale, DollarSign } from 'lucide-react'
+import { ChevronDown, ShieldCheck, Zap, Scale, DollarSign } from 'lucide-react'
 
 interface FaqItem {
   question: string
@@ -30,14 +30,14 @@ const FAQS: FaqItem[] = [
     icon: DollarSign,
     question: 'How does Kapitl keep AI analysis costs under ₹200/month?',
     answer:
-      'Rather than streaming entire 400-page DRHP PDFs through expensive frontier LLMs on every query, Kapitl employs an intelligent hybrid pipeline: Python-based PyPDF/LlamaIndex chunks and filters key financial tables, auditor notes, and peer comps first. Only targeted high-signal extracts are passed to Gemini 2.5 Flash and Claude 3.5 with strict prompt caching, keeping monthly AI operating costs under ₹200 per active user.',
+      'Rather than streaming entire 400-page DRHP PDFs through expensive frontier LLMs on every query, Kapitl employs an intelligent hybrid pipeline: PyPDF and structured table extraction filter key financial statements and auditor notes first. Targeted high-signal extracts are passed to Claude Haiku and Gemini Flash-Lite with prompt caching, keeping operating costs under ₹200/month.',
   },
   {
     category: 'AUTOMATION & BROKERS',
     icon: Zap,
     question: 'How does automated 09:00 AM listing day execution work via SmartAPI?',
     answer:
-      'Kapitl integrates with Angel One SmartAPI using TOTP session management. On listing morning, between 09:00 AM and 09:45 AM (NSE/BSE pre-open price discovery call auction), Kapitl checks your configured exit strategy (e.g., "Exit at pre-open price if GMP > 15%", or "Set 5% trailing stop"). Once discovered, pre-open limit orders are queued directly at exchange tick, capturing gains before intraday post-listing volatility.',
+      'Kapitl integrates with Angel One SmartAPI using TOTP session management. On listing morning, between 09:00 AM and 09:45 AM (NSE/BSE pre-open price discovery call auction), pre-open limit exit orders are queued directly at exchange tick, capturing listing gains without manual app login friction.',
   },
 ]
 
@@ -49,70 +49,52 @@ export function FaqSection() {
   }
 
   return (
-    <section className="py-20 border-t border-[#2d2520] bg-[#0c0a09]">
+    <section className="py-16 border-t border-[var(--border-default)]">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1a1612] border border-[#2d2520] text-xs font-semibold text-[#f59e0b] mb-4">
-            <HelpCircle className="w-3.5 h-3.5" /> FREQUENTLY ASKED QUESTIONS
-          </div>
-          <h2 className="font-heading text-3xl sm:text-4xl font-bold tracking-tight text-[#fafaf9]">
+        <div className="max-w-2xl mb-12">
+          <span className="text-2xs uppercase font-mono tracking-wider text-[var(--ink-3)] block mb-1">
+            Frequently Asked Questions
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-medium tracking-tight text-[var(--ink-1)]">
             Everything you need to know about Kapitl
           </h2>
-          <p className="mt-4 text-[#a8a29e] text-base">
-            Technical answers on ASBA fund safety, SEBI compliance, AI architecture, and broker integrations.
+          <p className="mt-3 text-sm text-[var(--ink-2)] leading-relaxed">
+            Technical answers on ASBA fund security, SEBI regulations, AI architecture, and broker integrations.
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {FAQS.map((faq, index) => {
             const isOpen = openIndex === index
-            const Icon = faq.icon
 
             return (
               <div
                 key={faq.question}
-                className={`border rounded-2xl transition-all duration-200 overflow-hidden ${
-                  isOpen
-                    ? 'bg-[#1a1612] border-[#f59e0b]/40 shadow-lg shadow-[#f59e0b]/5'
-                    : 'bg-[#14100c] border-[#2d2520] hover:border-[#3d322b]'
-                }`}
+                className="card p-0 overflow-hidden transition-colors"
               >
                 <button
                   onClick={() => toggle(index)}
-                  className="w-full text-left p-6 flex items-start justify-between gap-4 cursor-pointer focus:outline-none"
+                  className="w-full text-left p-5 flex items-center justify-between gap-4 cursor-pointer focus:outline-none"
                 >
-                  <div className="flex items-start gap-3.5">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                        isOpen
-                          ? 'bg-[#f59e0b]/15 text-[#f59e0b] border-[#f59e0b]/30'
-                          : 'bg-[#0c0a09] text-[#a8a29e] border-[#2d2520]'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-mono tracking-wider font-semibold text-[#f59e0b]">
-                        {faq.category}
-                      </span>
-                      <h3 className="font-heading text-base sm:text-lg font-bold text-[#fafaf9] mt-0.5">
-                        {faq.question}
-                      </h3>
-                    </div>
+                  <div className="space-y-1">
+                    <span className="text-2xs uppercase font-mono text-[var(--ink-3)] block">
+                      {faq.category}
+                    </span>
+                    <h3 className="text-sm font-medium text-[var(--ink-1)]">
+                      {faq.question}
+                    </h3>
                   </div>
 
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center border border-[#2d2520] shrink-0 text-[#a8a29e] transition-transform duration-200 ${
-                      isOpen ? 'rotate-180 bg-[#0c0a09] text-[#fafaf9]' : ''
+                  <ChevronDown
+                    className={`w-4 h-4 text-[var(--ink-3)] transition-transform duration-200 shrink-0 ${
+                      isOpen ? 'rotate-180 text-[var(--ink-1)]' : ''
                     }`}
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </div>
+                  />
                 </button>
 
                 {isOpen && (
-                  <div className="px-6 pb-6 pt-0 text-sm text-[#a8a29e] leading-relaxed border-t border-[#2d2520]/60 mt-2">
-                    <p className="pt-4">{faq.answer}</p>
+                  <div className="px-5 pb-5 pt-1 text-xs text-[var(--ink-2)] leading-relaxed border-t border-[var(--border-default)]">
+                    {faq.answer}
                   </div>
                 )}
               </div>
