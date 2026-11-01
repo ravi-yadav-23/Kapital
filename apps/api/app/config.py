@@ -53,10 +53,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self):
+        import os
         val_sec = (self.secret_key or "").strip()
         val_pin = (self.admin_pin or "").strip()
+        is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
-        if self.environment == "production":
+        if self.environment == "production" and not is_serverless:
             # Secret key checks
             if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
                 raise ValueError(
@@ -81,8 +83,11 @@ class Settings(BaseSettings):
                     "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
                 )
         else:
-            if not val_sec:
-                self.secret_key = _INSECURE_DEFAULT_KEY
+            if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
+                if is_serverless:
+                    self.secret_key = secrets.token_hex(32)
+                else:
+                    self.secret_key = _INSECURE_DEFAULT_KEY
         return self
 
     # Database

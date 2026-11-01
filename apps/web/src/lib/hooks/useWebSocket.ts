@@ -34,6 +34,12 @@ export function useWebSocket(onMessage?: MessageHandler) {
     // Otherwise, derive from NEXT_PUBLIC_API_URL by switching protocol and appending /ws path.
     let wsUrl: string
     const explicitWsUrl = process.env.NEXT_PUBLIC_WS_URL
+
+    // Vercel serverless functions do not support persistent WebSockets; avoid noisy connection failures
+    if (!explicitWsUrl && window.location.hostname.endsWith('.vercel.app')) {
+      return
+    }
+
     if (explicitWsUrl) {
       wsUrl = explicitWsUrl.replace(/\/$/, '') + (explicitWsUrl.endsWith('/ws') ? '' : '/ws')
     } else {
