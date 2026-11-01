@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --test src/__tests__/**/*.test.ts",
     "start": "next start",
     "start:3009": "next start -p 3009",
     "lint": "next lint"
