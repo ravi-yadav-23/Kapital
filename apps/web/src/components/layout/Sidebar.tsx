@@ -123,27 +123,31 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           })}
         </nav>
 
-        {/* Footer / Real Broker Connection State */}
+        {/* Footer / Broker & Workspace State (clean link to Settings, no awkward floating banner) */}
         <div className="p-3 border-t border-line">
-          <div className="p-2.5 rounded-sm bg-surface border border-line flex items-center gap-2.5">
+          <Link
+            href="/settings"
+            onClick={onClose}
+            className="p-2 rounded-sm bg-surface-raised/50 hover:bg-surface-raised border border-line/80 flex items-center gap-2.5 transition-colors group"
+          >
             <span
               className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                isGuest ? 'bg-ink-3' : 'bg-positive'
+                isGuest ? 'bg-amber-400' : 'bg-positive'
               }`}
             />
             <div className="flex flex-col min-w-0">
-              <span className="text-2xs font-medium text-ink truncate">
-                {isGuest ? 'Angel One' : 'Angel SmartAPI'}
+              <span className="text-[11px] font-medium text-ink truncate group-hover:text-accent transition-colors">
+                {isGuest ? 'Demo Workspace' : 'Angel SmartAPI'}
               </span>
-              <span className="text-[11px] text-ink-3 truncate">
+              <span className="text-[10px] text-ink-3 truncate">
                 {isGuest
-                  ? 'Not connected'
+                  ? '6 Sample Demats · Link Broker'
                   : accountCount === null
                   ? 'Connecting...'
                   : `${accountCount} Account${accountCount === 1 ? '' : 's'} linked`}
               </span>
             </div>
-          </div>
+          </Link>
         </div>
       </aside>
     </>

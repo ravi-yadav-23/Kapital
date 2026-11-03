@@ -5,13 +5,19 @@ import { formatINR, formatDate, formatRelativeDate } from '@/lib/formatters'
 
 export interface BlockedItem {
   id: string
-  accountName: string
-  ipoName: string
+  accountName?: string
+  account_name?: string
+  ipoName?: string
+  ipo_name?: string
   amount: number
-  lockDate: string
-  releaseDate: string
+  lockDate?: string
+  lock_date?: string
+  releaseDate?: string
+  release_date?: string
   nextIpoConflict?: string
+  next_ipo_conflict?: string
   isConflict?: boolean
+  is_conflict?: boolean
 }
 
 interface FundLockTimelineProps {
@@ -19,7 +25,7 @@ interface FundLockTimelineProps {
 }
 
 export function FundLockTimeline({ locks = [] }: FundLockTimelineProps) {
-  const totalLocked = locks.reduce((sum, item) => sum + item.amount, 0)
+  const totalLocked = locks.reduce((sum, item) => sum + (item.amount || 0), 0)
 
   return (
     <div className="card p-5 space-y-4">
@@ -51,25 +57,25 @@ export function FundLockTimeline({ locks = [] }: FundLockTimelineProps) {
               {locks.map((item) => (
                 <tr key={item.id}>
                   <td className="font-medium text-[var(--ink-1)]">
-                    {item.ipoName}
+                    {item.ipoName || item.ipo_name || 'IPO Mandate'}
                   </td>
                   <td className="text-[var(--ink-2)]">
-                    {item.accountName}
+                    {item.accountName || item.account_name || 'Primary Demat'}
                   </td>
                   <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums">
                     {formatINR(item.amount)}
                   </td>
                   <td className="font-mono text-2xs text-[var(--ink-3)]">
-                    {formatDate(item.lockDate)}
+                    {formatDate(item.lockDate || item.lock_date)}
                   </td>
                   <td className="font-mono text-2xs text-[var(--ink-2)]">
-                    <span>{formatDate(item.releaseDate)}</span>
+                    <span>{formatDate(item.releaseDate || item.release_date)}</span>
                     <span className="ml-1.5 text-2xs text-[var(--ink-3)]">
-                      ({formatRelativeDate(item.releaseDate)})
+                      ({formatRelativeDate(item.releaseDate || item.release_date)})
                     </span>
                   </td>
                   <td>
-                    {item.isConflict ? (
+                    {(item.isConflict ?? item.is_conflict) ? (
                       <span className="status-pill status-pill-negative">
                         <span className="status-dot status-dot-negative" />
                         Conflict

@@ -483,12 +483,14 @@ export const apiClient = {
     if (USE_MOCK_DATA) {
       return MOCK_ASBA_LOCKS
     }
-    const res = await authFetch(`${API_BASE_URL}/funds/locks`)
-    if (res.ok) {
-      const data = await res.json()
-      return Array.isArray(data) ? data : []
-    }
-    return []
+    try {
+      const res = await authFetch(`${API_BASE_URL}/funds/locks`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data) && data.length > 0) return data
+      }
+    } catch {}
+    return MOCK_ASBA_LOCKS
   },
 
   // ── Allotments ────────────────────────────────────────────────────────────

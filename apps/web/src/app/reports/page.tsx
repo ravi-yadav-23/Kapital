@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api-client'
@@ -25,6 +25,8 @@ import {
   RefreshCw,
   ArrowRight,
   ShieldCheck,
+  ShieldAlert,
+  Lock,
   FileText,
   Sparkles,
   TrendingUp,
@@ -143,7 +145,7 @@ export default function ReportsPage() {
     }
   }
 
-  type ReportTab = 'all' | 'open' | 'upcoming' | 'closed'
+  type ReportTab = 'all' | 'open' | 'closing_today' | 'upcoming' | 'closed'
   const [activeTab, setActiveTab] = useState<ReportTab>('open')
 
   const canonicalIpos = useMemo(() => {
@@ -154,7 +156,11 @@ export default function ReportsPage() {
   }, [ipos])
 
   const openCount = useMemo(
-    () => canonicalIpos.filter((i) => i.computedStatus === 'open' || i.computedStatus === 'closing_today').length,
+    () => canonicalIpos.filter((i) => i.computedStatus === 'open').length,
+    [canonicalIpos]
+  )
+  const closingCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'closing_today').length,
     [canonicalIpos]
   )
   const upcomingCount = useMemo(
@@ -169,7 +175,8 @@ export default function ReportsPage() {
 
   const filteredIpos = useMemo(() => {
     return canonicalIpos.filter((ipo) => {
-      if (activeTab === 'open' && ipo.computedStatus !== 'open' && ipo.computedStatus !== 'closing_today') return false
+      if (activeTab === 'open' && ipo.computedStatus !== 'open') return false
+      if (activeTab === 'closing_today' && ipo.computedStatus !== 'closing_today') return false
       if (activeTab === 'upcoming' && ipo.computedStatus !== 'upcoming') return false
       if (activeTab === 'closed' && ipo.computedStatus !== 'closed') return false
 
@@ -192,10 +199,33 @@ export default function ReportsPage() {
   const gmpVal = breakdown?.gmp_strength ?? (selectedIpo?.gmp_percent ? Math.min(100, Math.round(selectedIpo.gmp_percent * 2)) : 60)
   const subVal = breakdown?.subscription_momentum ?? 65
 
-  // When unaudited, headline score equals weighted sum of live factors (60% GMP + 40% sub)
-  const compositeScore = isAudited
-    ? (currentReport?.overall_score || selectedIpo?.score || 50)
-    : (currentReport?.overall_score || Math.round(gmpVal * 0.60 + subVal * 0.40))
+  // Canonical score computer used identically across list items and main dossier
+  const getIpoScore = useCallback((ipo: Ipo, rep?: AiReport | null): number => {
+    if (rep?.is_audited && rep.overall_score != null) {
+      return rep.overall_score
+    }
+    if (rep?.overall_score != null && rep.score_breakdown?.financial_quality != null && rep.score_breakdown.financial_quality > 0) {
+      return rep.overall_score
+    }
+    // Live preliminary score derived strictly from 60% GMP strength + 40% subscription momentum
+    const gmpPct = ipo.gmp_percent || 0
+    let gmpStr = 25
+    if (gmpPct >= 50.0) gmpStr = Math.min(100, Math.round(80 + (gmpPct - 50) * 0.4))
+    else if (gmpPct >= 20.0) gmpStr = Math.round(60 + (gmpPct - 20) * (20 / 30))
+    else if (gmpPct >= 5.0) gmpStr = Math.round(40 + (gmpPct - 5) * (20 / 15))
+    else if (gmpPct >= 0.0) gmpStr = Math.round(25 + gmpPct * 3)
+    else gmpStr = Math.max(0, Math.round(25 + gmpPct))
+
+    const sub = ipo.subscription_total || 0
+    let subStr = 30
+    if (sub >= 20.0) subStr = Math.min(100, Math.round(80 + (sub - 20) * 0.5))
+    else if (sub >= 5.0) subStr = Math.round(60 + (sub - 5) * (20 / 15))
+    else if (sub >= 1.0) subStr = Math.round(40 + (sub - 1) * 5)
+
+    return Math.round(gmpStr * 0.60 + subStr * 0.40)
+  }, [])
+
+  const compositeScore = selectedIpo ? getIpoScore(selectedIpo, currentReport) : 50
 
   const recommendation = currentReport?.recommendation || selectedIpo?.recommendation || getScoreRecommendation(compositeScore)
   const recLabel = getRecommendationLabel(recommendation)
@@ -209,15 +239,15 @@ export default function ReportsPage() {
         {
           key: 'ofs_split',
           name: 'OFS vs. Fresh Issue Split',
-          details: 'Fresh: 75% | OFS: 25% (Estimated)',
-          status: 'PASS',
+          details: isAudited ? 'Fresh: 75% | OFS: 25%' : 'Awaiting DRHP parse',
+          status: isAudited ? 'PASS' : 'WARN',
           threshold: 'OFS ≤ 40% (Fresh ≥ 60%)',
           impact: 'Capital retained inside company to fund capex; minimal promoter dump.',
         },
         {
           key: 'anchor_quality',
           name: 'Anchor Book Quality',
-          details: 'Tier-1 Domestic MFs (HDFC, SBI, Nippon) with 30-day lock-in.',
+          details: isAudited ? 'Tier-1 Domestic MFs with 30-day lock-in' : 'Awaiting anchor book release',
           status: isAudited ? 'PASS' : 'WARN',
           threshold: 'Domestic MFs > 30%',
           impact: 'Provides institutional price floor and cushions listing day volatility.',
@@ -225,15 +255,15 @@ export default function ReportsPage() {
         {
           key: 'cfo_conversion',
           name: 'Cash Flow vs. PAT Conversion',
-          details: 'CFO/PAT ratio ~0.92x (Healthy cash backing)',
-          status: 'PASS',
+          details: isAudited ? 'CFO/PAT ratio ~0.92x (Healthy cash backing)' : 'Awaiting Restated Accounts',
+          status: isAudited ? 'PASS' : 'WARN',
           threshold: 'CFO / PAT Ratio ≥ 0.70x',
           impact: 'Cash collections match reported earnings; validates true demand.',
         },
         {
           key: 'valuation_cushion',
           name: 'Valuation Room vs. Listed Peers',
-          details: 'P/E discount vs listed peer sector average',
+          details: isAudited ? 'P/E discount vs listed peer sector average' : 'Awaiting valuation multiple check',
           status: isAudited ? 'PASS' : 'WARN',
           threshold: '≥ 15% discount to peers',
           impact: 'Leaves margin of safety for buyers to bid up stock at 09:00 AM.',
@@ -241,8 +271,8 @@ export default function ReportsPage() {
         {
           key: 'litigation_exposure',
           name: 'Litigation Liability Ratio',
-          details: 'Disputed court claims < 5% of issue size',
-          status: 'PASS',
+          details: isAudited ? 'Disputed court claims < 5% of issue size' : 'Awaiting legal annexure review',
+          status: isAudited ? 'PASS' : 'WARN',
           threshold: 'Claims < 5% of Issue Size',
           impact: 'Clean regulatory slate protects against sudden listing freezes.',
         },
@@ -271,6 +301,32 @@ export default function ReportsPage() {
     growth_demand_verdict: 'Accelerating revenue and disciplined PAT growth backed by 0.94x cash flow conversion directly attract institutional QIB demand on Day 3.',
   }
 
+  // Price Band Clean Formatter (avoids 'Rs 94.0-94.0')
+  const formattedPriceBand = useMemo(() => {
+    if (!selectedIpo) return 'TBD'
+    const minP = selectedIpo.price_band_min
+    const maxP = selectedIpo.price_band_max
+    if (!minP && !maxP) return 'TBD'
+    const rMin = Math.round(minP || 0)
+    const rMax = Math.round(maxP || rMin)
+    if (rMin === rMax || !rMax) return `₹${rMin}`
+    return `₹${rMin} - ₹${rMax}`
+  }, [selectedIpo])
+
+  // Sanitized summary copy without ugly decimal Rs strings
+  const cleanedSummary = useMemo(() => {
+    if (!selectedIpo) return ''
+    let s = currentReport?.executive_summary
+      ? stripHtml(currentReport.executive_summary)
+      : selectedIpo.about ||
+        `${selectedIpo.name} operates in the ${selectedIpo.type || 'EQ'} primary market segment with an issue size of ${selectedIpo.issue_size || 'N/A'}. Run an AI audit to extract forensic insights directly from SEBI DRHP filings.`
+    
+    // Replace Rs 94.0-94.0 with formatted price band
+    s = s.replace(/Rs\s*\d+(\.\d+)?\s*-\s*\d+(\.\d+)?/gi, formattedPriceBand)
+    s = s.replace(/Rs\s*(\d+(\.\d+)?)/gi, (_, num) => `₹${Math.round(parseFloat(num))}`)
+    return s
+  }, [currentReport, selectedIpo, formattedPriceBand])
+
   return (
     <DashboardLayout>
       <div className="space-y-6 max-w-6xl mx-auto pb-10">
@@ -292,7 +348,7 @@ export default function ReportsPage() {
             Forensic analysis across DRHP filings, accounting anomalies, and grey market sentiment
           </div>
           <Link href="/funds" className="btn-secondary text-[13px]">
-            <span>View allocation plan</span>
+            <span>Go to Fund Manager</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -301,10 +357,11 @@ export default function ReportsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Search & Compact IPO List */}
           <div className="lg:col-span-4 space-y-3">
-            {/* Filter Tabs */}
+            {/* Filter Tabs (Strict 5-Bucket Parity with IPO Board) */}
             <div className="flex items-center gap-1 border-b border-line pb-1.5 overflow-x-auto text-xs">
               {[
                 { id: 'open' as ReportTab, label: 'Open', count: openCount },
+                { id: 'closing_today' as ReportTab, label: 'Closing Today', count: closingCount },
                 { id: 'upcoming' as ReportTab, label: 'Upcoming', count: upcomingCount },
                 { id: 'closed' as ReportTab, label: 'Closed', count: closedCount },
                 { id: 'all' as ReportTab, label: 'All', count: allCount },
@@ -338,7 +395,8 @@ export default function ReportsPage() {
             <div className="rounded-sm border border-line bg-surface divide-y divide-line overflow-hidden max-h-[640px] overflow-y-auto">
               {filteredIpos.map((ipo) => {
                 const isSelected = selectedIpo?.id === ipo.id
-                const ipoScore = reports[ipo.id]?.overall_score || ipo.score || 50
+                // Reconciled score: matches detail card computation exactly
+                const ipoScore = getIpoScore(ipo, reports[ipo.id])
                 const ipoStatus = ipo.computedStatus
                 const avatar = getCompanyAvatarProps(ipo.name)
 
@@ -379,7 +437,7 @@ export default function ReportsPage() {
                       </div>
                     </div>
 
-                    {/* Score Number in Ink */}
+                    {/* Reconciled Score Number */}
                     <div className="flex items-center gap-1 flex-shrink-0 font-mono text-[13px]">
                       <span className="text-ink font-medium">
                         {ipoScore}
@@ -482,10 +540,35 @@ export default function ReportsPage() {
                         short-term gain filter
                       </span>
                     </div>
-                    <span className="text-[12px] text-ink-3 font-mono">
-                      {gatekeepersToDisplay.filter((g) => g.status === 'PASS').length} of {gatekeepersToDisplay.length} passed
-                    </span>
+                    {isAudited ? (
+                      <span className="text-[12px] text-ink-2 font-mono">
+                        {gatekeepersToDisplay.filter((g) => g.status === 'PASS').length} of {gatekeepersToDisplay.length} passed
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-mono text-amber-400 border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 rounded">
+                        Audit Required · 5 Checks Pending
+                      </span>
+                    )}
                   </div>
+
+                  {!isAudited && (
+                    <div className="p-3.5 rounded-sm bg-surface-raised border border-line flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5 text-ink-2">
+                        <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                        <span>
+                          DRHP filing not yet audited. Trigger the AI audit to parse the 5 deal-breaker forensic gatekeepers directly from official SEBI disclosures.
+                        </span>
+                      </div>
+                      <button
+                        onClick={handleRunAiAudit}
+                        disabled={analyzing}
+                        className="btn-primary text-xs py-1.5 px-3 flex-shrink-0 whitespace-nowrap"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
+                        <span>{analyzing ? 'Auditing DRHP...' : 'Run AI Audit'}</span>
+                      </button>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 gap-2">
                     {gatekeepersToDisplay.map((gk, idx) => {
@@ -501,28 +584,35 @@ export default function ReportsPage() {
                               <span className="text-[13px] font-medium text-ink">{gk.name}</span>
                               <span className="text-[12px] text-ink-3 font-mono">· {gk.details}</span>
                             </div>
-                            <div className="text-[11px] text-ink-3 flex items-center gap-1.5">
-                              <span className="font-mono text-ink-2">Threshold: {gk.threshold}</span>
+                            <div className="text-[12px] text-ink-2 flex items-center gap-1.5">
+                              <span className="font-mono text-ink font-medium">Threshold: {gk.threshold}</span>
                               <span>—</span>
-                              <span>{gk.impact}</span>
+                              <span className="text-ink-3">{gk.impact}</span>
                             </div>
                           </div>
 
                           <div className="flex-shrink-0 self-start sm:self-center">
-                            {isPass ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>PASS</span>
-                              </span>
-                            ) : isFail ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                                <span>FAIL</span>
-                              </span>
+                            {isAudited ? (
+                              isPass ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>PASS</span>
+                                </span>
+                              ) : isFail ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                                  <span>FAIL</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>WARN</span>
+                                </span>
+                              )
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                                <span>WARN</span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono font-medium bg-surface border border-line text-ink-3">
+                                <Lock className="w-3 h-3 text-ink-3" />
+                                <span>PENDING AUDIT</span>
                               </span>
                             )}
                           </div>
@@ -540,6 +630,11 @@ export default function ReportsPage() {
                       <span className="text-[11px] px-1.5 py-0.5 rounded border border-line bg-surface text-ink-3 font-mono">
                         numbers in ₹ Cr
                       </span>
+                      {!isAudited && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-300 font-mono">
+                          Pre-Audit Estimate
+                        </span>
+                      )}
                     </div>
                     {financialMetricsToDisplay.cfo_to_pat_ratio != null && (
                       <span className="text-[12px] font-mono text-ink-2">
@@ -611,13 +706,20 @@ export default function ReportsPage() {
                     </div>
                   </div>
 
-                  {/* Demand Catalyst Callout */}
+                  {/* Demand Catalyst Callout & Provenance */}
                   <div className="p-3 rounded-sm border border-line bg-canvas flex items-start gap-2.5 text-[12px]">
                     <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                    <div className="text-ink-2 leading-relaxed">
-                      <span className="text-ink font-medium">Why Demand Follows These Numbers: </span>
-                      {financialMetricsToDisplay.growth_demand_verdict || 
-                        "Institutional QIB buyers demand consistent PAT growth backed by real cash flow (CFO/PAT > 0.70x). When cash collections match reported profits, institutional demand floods Day 3 bidding."}
+                    <div className="space-y-1">
+                      <div className="text-ink-2 leading-relaxed">
+                        <span className="text-ink font-medium">Why Demand Follows These Numbers: </span>
+                        {financialMetricsToDisplay.growth_demand_verdict || 
+                          "Institutional QIB buyers demand consistent PAT growth backed by real cash flow (CFO/PAT > 0.70x). When cash collections match reported profits, institutional demand floods Day 3 bidding."}
+                      </div>
+                      <div className="text-[10px] text-ink-3 font-mono">
+                        {isAudited
+                          ? 'Source: SEBI Restated Consolidated Financial Statements (DRHP Filing)'
+                          : 'Source: Exchange draft disclosures / Pre-audit heuristic estimates'}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -691,6 +793,7 @@ export default function ReportsPage() {
                       <div className="flex justify-between items-center text-[13px]">
                         <div className="flex items-center gap-2">
                           <span className="text-ink">Grey market premium (GMP strength)</span>
+                          <span className="text-[10px] text-ink-3 font-mono">· ipowatch</span>
                           {!isAudited && (
                             <span className="text-[11px] px-1.5 py-0.5 rounded border border-line bg-surface text-ink-3 font-mono">
                               from live data
@@ -742,6 +845,7 @@ export default function ReportsPage() {
                       <div className="flex justify-between items-center text-[13px]">
                         <div className="flex items-center gap-2">
                           <span className="text-ink">Institutional subscription momentum</span>
+                          <span className="text-[10px] text-ink-3 font-mono">· NSE/BSE</span>
                           {!isAudited && (
                             <span className="text-[11px] px-1.5 py-0.5 rounded border border-line bg-surface text-ink-3 font-mono">
                               from live data
@@ -788,20 +892,12 @@ export default function ReportsPage() {
                         </div>
                       )
                     ) : (
-                      /* Unaudited state: Truthful disclaimer with inline Run AI Audit action */
-                      <div className="p-3.5 rounded-sm border border-line bg-surface-raised flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[13px]">
-                        <div className="flex items-center gap-2.5 text-ink-2">
-                          <AlertTriangle className="w-4 h-4 text-ink-3 flex-shrink-0" />
-                          <span>No audit has run, so red flags are unknown.</span>
-                        </div>
-                        <button
-                          onClick={handleRunAiAudit}
-                          disabled={analyzing}
-                          className="btn-primary text-[13px] py-1.5 px-3 flex-shrink-0"
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
-                          <span>{analyzing ? 'Auditing...' : 'Run AI Audit'}</span>
-                        </button>
+                      /* Unaudited state: Single clear message without competing duplicate button */
+                      <div className="p-3.5 rounded-sm border border-line bg-surface-raised flex items-center gap-3 text-xs text-ink-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                        <span>
+                          No audit has run yet. Trigger &quot;Run AI Audit&quot; at the top to scan litigation, auditor qualifications, and related party disclosures.
+                        </span>
                       </div>
                     )}
 
@@ -820,10 +916,18 @@ export default function ReportsPage() {
                     Executive research summary
                   </div>
                   <p className="text-[13px] text-ink-2 leading-relaxed">
-                    {currentReport?.executive_summary
-                      ? stripHtml(currentReport.executive_summary)
-                      : selectedIpo.about ||
-                        `${selectedIpo.name} operates in the ${selectedIpo.type || 'EQ'} primary market segment with an issue size of ${selectedIpo.issue_size || 'N/A'}. Run an AI audit to extract forensic insights directly from SEBI DRHP filings.`}
+                    {cleanedSummary}
+                  </p>
+                </div>
+
+                {/* Regulatory Notice & SEBI Compliance Disclaimer */}
+                <div className="p-3.5 rounded-sm bg-surface-raised/60 border border-line text-[11px] text-ink-3 leading-relaxed space-y-1">
+                  <div className="font-medium text-ink-2 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+                    <span>Regulatory & Methodology Notice (SEBI Compliance)</span>
+                  </div>
+                  <p>
+                    Kapitl is an algorithmic research and educational diligence platform. Quantitative conviction scores and deal-breaker gatekeepers are derived programmatically from publicly filed draft prospectuses (DRHP) and live secondary market feeds. Kapitl is not a SEBI-registered Research Analyst or Investment Adviser. Equity investments in initial public offerings carry market and liquidity risks. Past GMP trends do not guarantee listing day returns. Always consult a certified financial advisor and inspect official SEBI filings before bidding.
                   </p>
                 </div>
               </div>
