@@ -110,9 +110,14 @@ export default function ReportsPage() {
     setSelectedIpo(ipo)
     if (!reports[ipo.id]) {
       try {
-        const rep = await apiClient.getReportById(ipo.id)
+        const rep = await apiClient.getReportById(ipo.id, ipo.slug, ipo.symbol, ipo.name)
         if (rep) {
-          setReports((prev) => ({ ...prev, [ipo.id]: rep }))
+          setReports((prev) => ({
+            ...prev,
+            [ipo.id]: rep,
+            [rep.ipo_id]: rep,
+            ...(ipo.symbol ? { [ipo.symbol]: rep } : {}),
+          }))
         }
       } catch (err) {
         console.error('Failed to fetch report:', err)
@@ -124,9 +129,22 @@ export default function ReportsPage() {
     if (!selectedIpo) return
     setAnalyzing(true)
     try {
-      const rep = await apiClient.generateReport(selectedIpo.id)
+      const rep = await apiClient.generateReport(
+        selectedIpo.id,
+        selectedIpo.slug,
+        selectedIpo.symbol,
+        selectedIpo.name
+      )
       if (rep) {
-        setReports((prev) => ({ ...prev, [selectedIpo.id]: rep }))
+        setReports((prev) => ({
+          ...prev,
+          [selectedIpo.id]: rep,
+          [rep.ipo_id]: rep,
+          ...(selectedIpo.symbol ? { [selectedIpo.symbol]: rep } : {}),
+        }))
+        if (rep.ipo_id && rep.ipo_id !== selectedIpo.id) {
+          setSelectedIpo((prev) => (prev ? { ...prev, id: rep.ipo_id } : prev))
+        }
         setToast({
           message: `AI due diligence audit completed for ${selectedIpo.name}!`,
           type: 'success',

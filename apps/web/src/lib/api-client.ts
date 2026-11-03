@@ -291,7 +291,17 @@ export const apiClient = {
     }
 
     try {
-      const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
+      let res = await authFetch(`${API_BASE_URL}/ipos/${encodeURIComponent(id)}`)
+      if (res.status === 404) {
+        const cachedItem = findInCachedList()
+        if (cachedItem?.symbol && cachedItem.symbol !== id) {
+          const retryRes = await authFetch(`${API_BASE_URL}/ipos/${encodeURIComponent(cachedItem.symbol)}`)
+          if (retryRes.ok) res = retryRes
+        } else if (cachedItem?.slug && cachedItem.slug !== id) {
+          const retryRes = await authFetch(`${API_BASE_URL}/ipos/${encodeURIComponent(cachedItem.slug)}`)
+          if (retryRes.ok) res = retryRes
+        }
+      }
       if (res.status === 404 || !res.ok) {
         return findInCachedList() || mockFallback
       }
@@ -728,25 +738,57 @@ export const apiClient = {
     return MOCK_REPORTS
   },
 
-  async getReportById(id: string): Promise<AiReport | null> {
+  async getReportById(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport | null> {
     const mockRep = MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null
     if (USE_MOCK_DATA) {
       return mockRep
     }
-    try {
-      const res = await authFetch(`${API_BASE_URL}/reports/${id}`)
-      if (res.ok) {
-        return await res.json()
-      }
-    } catch {}
-    return mockRep
+    const params = new URLSearchParams()
+    if (slug) params.set('slug', slug)
+    if (symbol) params.set('symbol', symbol)
+    if (name) params.set('name', name)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+
+    const fetchRep = async (target: string) => {
+      try {
+        const res = await authFetch(`${API_BASE_URL}/reports/${encodeURIComponent(target)}${qs}`)
+        if (res.ok) return await res.json()
+      } catch {}
+      return null
+    }
+
+    let rep = await fetchRep(id)
+    if (!rep && slug && slug !== id) {
+      rep = await fetchRep(slug)
+    }
+    if (!rep && symbol && symbol !== id && symbol !== slug) {
+      rep = await fetchRep(symbol)
+    }
+    return rep || mockRep
   },
 
-  async generateReport(id: string): Promise<AiReport> {
-    const res = await authFetch(`${API_BASE_URL}/reports/${id}/generate`, {
-      method: 'POST',
-    }, 45000)
-    return handleResponse(res, null as any)
+  async generateReport(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport> {
+    const params = new URLSearchParams()
+    if (slug) params.set('slug', slug)
+    if (symbol) params.set('symbol', symbol)
+    if (name) params.set('name', name)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+
+    const postGen = async (target: string) => {
+      return await authFetch(`${API_BASE_URL}/reports/${encodeURIComponent(target)}/generate${qs}`, {
+        method: 'POST',
+      }, 45000)
+    }
+
+    let res = await postGen(id)
+    if (res.status === 404 && slug && slug !== id) {
+      res = await postGen(slug)
+    }
+    if (res.status === 404 && symbol && symbol !== id && symbol !== slug) {
+      res = await postGen(symbol)
+    }
+
+    return handleMutationResponse<AiReport>(res)
   },
 
   // ── Settings ──────────────────────────────────────────────────────────────

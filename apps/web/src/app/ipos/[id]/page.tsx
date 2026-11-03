@@ -45,13 +45,18 @@ export default function IpoDetailPage() {
   useEffect(() => {
     if (id) {
       setLoading(true)
-      Promise.all([
-        apiClient.getIpoById(id).catch(() => null),
-        apiClient.getAccounts().catch(() => []),
-        apiClient.getReportById(id).catch(() => null),
-      ])
-        .then(([ipoData, accsData, repData]) => {
+      apiClient.getIpoById(id)
+        .then(async (ipoData) => {
           if (ipoData) setIpo(ipoData)
+          const [accsData, repData] = await Promise.all([
+            apiClient.getAccounts().catch(() => []),
+            apiClient.getReportById(
+              id,
+              ipoData?.slug,
+              ipoData?.symbol,
+              ipoData?.name
+            ).catch(() => null),
+          ])
           if (accsData && accsData.length > 0) setAccounts(accsData)
           if (repData) setReport(repData)
         })

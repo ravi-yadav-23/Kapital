@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.db.database import get_db
 from app.models.ipo import Ipo
@@ -49,7 +49,13 @@ async def list_ai_reports(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{ipo_id}", response_model=AiReportResponse)
-async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
+async def get_ai_report(
+    ipo_id: str,
+    symbol: Optional[str] = Query(None),
+    slug: Optional[str] = Query(None),
+    name: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Get full AI Due Diligence & Red Flag audit report for a specific IPO.
     Fetches the single-run cached report from the database if available.
@@ -58,11 +64,18 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
     res = await db.execute(stmt)
     ipo = res.scalar_one_or_none()
 
-    if not ipo:
-        # Check if benchmark IPOs need to be seeded
-        await seed_initial_ipos_and_reports(db)
-        res = await db.execute(stmt)
-        ipo = res.scalar_one_or_none()
+    if not ipo and symbol:
+        ipo = (await db.execute(select(Ipo).where(Ipo.symbol == symbol.upper()))).scalar_one_or_none()
+
+    if not ipo and slug:
+        ipo = (await db.execute(select(Ipo).where(Ipo.slug == slug.lower()))).scalar_one_or_none()
+
+    if not ipo and name:
+        from app.services.ipo_service import normalize_entity_name
+        stmt_name = select(Ipo).where(
+            (Ipo.name.ilike(f"%{name}%")) | (func.lower(Ipo.name) == name.lower())
+        )
+        ipo = (await db.execute(stmt_name)).scalars().first()
 
     if not ipo:
         try:
@@ -77,6 +90,12 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
             ipo = res_alias.scalars().first()
         except Exception:
             pass
+
+    if not ipo:
+        # Check if benchmark IPOs need to be seeded
+        await seed_initial_ipos_and_reports(db)
+        res = await db.execute(stmt)
+        ipo = res.scalar_one_or_none()
 
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
@@ -93,6 +112,9 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/{ipo_id}/generate", response_model=AiReportResponse)
 async def trigger_ai_analysis(
     ipo_id: str,
+    symbol: Optional[str] = Query(None),
+    slug: Optional[str] = Query(None),
+    name: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user_optional),
 ):
@@ -106,10 +128,18 @@ async def trigger_ai_analysis(
     res = await db.execute(stmt)
     ipo = res.scalar_one_or_none()
 
-    if not ipo:
-        await seed_initial_ipos_and_reports(db)
-        res = await db.execute(stmt)
-        ipo = res.scalar_one_or_none()
+    if not ipo and symbol:
+        ipo = (await db.execute(select(Ipo).where(Ipo.symbol == symbol.upper()))).scalar_one_or_none()
+
+    if not ipo and slug:
+        ipo = (await db.execute(select(Ipo).where(Ipo.slug == slug.lower()))).scalar_one_or_none()
+
+    if not ipo and name:
+        from app.services.ipo_service import normalize_entity_name
+        stmt_name = select(Ipo).where(
+            (Ipo.name.ilike(f"%{name}%")) | (func.lower(Ipo.name) == name.lower())
+        )
+        ipo = (await db.execute(stmt_name)).scalars().first()
 
     if not ipo:
         try:
@@ -124,6 +154,11 @@ async def trigger_ai_analysis(
             ipo = res_alias.scalars().first()
         except Exception:
             pass
+
+    if not ipo:
+        await seed_initial_ipos_and_reports(db)
+        res = await db.execute(stmt)
+        ipo = res.scalar_one_or_none()
 
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
