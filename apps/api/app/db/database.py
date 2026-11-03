@@ -64,6 +64,13 @@ async def init_db():
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Safe non-destructive column check for ai_reports
+            from sqlalchemy import text
+            for col in ["financial_metrics", "gatekeepers"]:
+                try:
+                    await conn.execute(text(f"ALTER TABLE ai_reports ADD COLUMN {col} JSON"))
+                except Exception:
+                    pass
         logger.info(f"[DB] All tables verified and ready ({engine.url.drivername})")
 
         try:

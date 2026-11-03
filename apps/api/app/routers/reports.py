@@ -67,7 +67,13 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
 
-    return await report_service.get_or_generate_report(db, ipo, force_refresh=False)
+    stmt_rep = select(AiReport).where(AiReport.ipo_id == ipo.id)
+    res_rep = await db.execute(stmt_rep)
+    existing = res_rep.scalar_one_or_none()
+    if existing:
+        return report_service.format_report_response(existing, ipo)
+
+    return report_service.build_fallback_report_response(ipo)
 
 
 @router.post("/{ipo_id}/generate", response_model=AiReportResponse)
@@ -99,14 +105,8 @@ async def trigger_ai_analysis(
     res_rep = await db.execute(stmt_rep)
     existing = res_rep.scalar_one_or_none()
 
-    is_admin = bool(user and user.get("role") == "ADMIN" and not user.get("is_guest"))
-
-    if existing and not is_admin:
-        # For non-admin or guest users, return the existing cached report immediately
-        return report_service.format_report_response(existing, ipo)
-
-    # If admin and existing, allow force_refresh; otherwise generate once and persist to DB
-    return await report_service.get_or_generate_report(db, ipo, force_refresh=(is_admin and existing is not None))
+    # Always generate or re-generate when user explicitly triggers POST /generate
+    return await report_service.get_or_generate_report(db, ipo, force_refresh=True)
 
 
 

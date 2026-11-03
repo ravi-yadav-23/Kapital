@@ -33,6 +33,8 @@ class AiReport(BaseModel):
     pe_ratio = Column(Float, nullable=True)
     peer_avg_pe = Column(Float, nullable=True)
     ofs_percentage = Column(Float, nullable=True)  # Offer For Sale % vs Fresh Issue
+    financial_metrics = Column(JSON, default=dict, nullable=True)
+    gatekeepers = Column(JSON, default=list, nullable=True)
     
     scored_at = Column(String(50), nullable=True)
 

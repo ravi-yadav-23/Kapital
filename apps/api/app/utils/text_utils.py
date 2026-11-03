@@ -30,8 +30,9 @@ def clean_text(raw: Optional[str]) -> str:
     # 2. Decode HTML entities (e.g. &nbsp;, &#xFEFF;, &amp;)
     text = html.unescape(text)
 
-    # 3. Remove zero-width characters and BOM
+    # 3. Remove zero-width characters, BOM, and normalize dashes
     text = re.sub(r'[\ufeff\u200b\u200c\u200d\xa0]', ' ', text)
+    text = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015]', '-', text)
 
     # 4. Strip any remaining HTML tags
     text = re.sub(r'<[^>]+>', ' ', text)

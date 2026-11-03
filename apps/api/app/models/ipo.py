@@ -23,9 +23,9 @@ class Ipo(BaseModel):
     issue_size = Column(String(100), nullable=True)
     issue_size_cr = Column(Float, nullable=True)
 
-    # Critical ASBA & Issue Dates
-    issue_open_date = Column(Date, nullable=False)
-    issue_close_date = Column(Date, nullable=False)
+    # Critical ASBA & Issue Dates (nullable for preliminary DRHP filings without declared dates)
+    issue_open_date = Column(Date, nullable=True)
+    issue_close_date = Column(Date, nullable=True)
     allotment_date = Column(Date, nullable=True)
     refund_date = Column(Date, nullable=True)
     listing_date = Column(Date, nullable=True)

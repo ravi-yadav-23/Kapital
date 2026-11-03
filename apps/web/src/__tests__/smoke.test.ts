@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeIpoStatus } from '../lib/formatters.ts';
+import { computeIpoStatus } from '../lib/formatters';
 
 // Test core conviction verdict scoring rules
 function calculateConvictionVerdict(score: number): { label: string; action: string } {

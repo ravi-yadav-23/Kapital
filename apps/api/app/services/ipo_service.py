@@ -14,15 +14,74 @@ import re
 
 
 
-def normalize_entity_name(name: str) -> str:
-    """Normalize company name to canonical stem: lowercase, remove legal suffixes, remove non-alphanumerics."""
+import difflib
+
+# Standard stop words and legal entities for financial markets
+LEGAL_STOP_WORDS = {
+    'ltd', 'limited', 'india', 'pvt', 'private', 'corporation', 'corp', 'inc', 'incorporated', 'co', 'company'
+}
+
+def extract_meaningful_tokens(name: str) -> list[str]:
+    """Tokenize and remove non-alphanumeric noise and legal suffixes."""
     if not name:
-        return ""
-    # Remove common legal suffixes and words
-    cleaned = re.sub(r'\b(ltd|limited|india|pvt|private|corporation|corp|enterprises|industries)\b', '', name, flags=re.IGNORECASE)
-    # Remove non-alphanumerics
-    cleaned = re.sub(r'[^a-zA-Z0-9]', '', cleaned).lower()
-    return cleaned
+        return []
+    words = re.findall(r'[a-zA-Z0-9]+', name.lower())
+    return [w for w in words if w not in LEGAL_STOP_WORDS]
+
+def normalize_entity_name(name: str) -> str:
+    """Standard stem of company name."""
+    tokens = extract_meaningful_tokens(name)
+    return ''.join(tokens)
+
+def compute_entity_similarity(
+    name1: str,
+    name2: str,
+    price1: Optional[float] = None,
+    price2: Optional[float] = None,
+) -> tuple[bool, float]:
+    """
+    Production-grade multi-signal entity matching algorithm:
+    1. Token Containment: Handles truncated titles (e.g. 'Vedant Poly Fabs' vs 'Vedant Poly Fabs Solutions').
+    2. Sequence Similarity: Character-level Levenshtein/Gestalt matching.
+    3. Distinctiveness Guard: Prevents false positives across conglomerates (e.g. 'Tata Motors' vs 'Tata Steel').
+    4. Market Metadata Confirmation: Validates price band alignment if available.
+    """
+    t1 = set(extract_meaningful_tokens(name1))
+    t2 = set(extract_meaningful_tokens(name2))
+    if not t1 or not t2:
+        return False, 0.0
+
+    common = t1 & t2
+    min_tokens = min(len(t1), len(t2))
+    containment = len(common) / min_tokens if min_tokens > 0 else 0.0
+
+    s1_clean = ' '.join(extract_meaningful_tokens(name1))
+    s2_clean = ' '.join(extract_meaningful_tokens(name2))
+    seq_ratio = difflib.SequenceMatcher(None, s1_clean, s2_clean).ratio()
+
+    # Base match score
+    score = max(containment, seq_ratio)
+
+    # Conglomerate collision guard:
+    # If only 1 generic brand token matches (e.g. 'Tata', 'Reliance', 'Adani', 'BLS') but the companies
+    # have multiple tokens, require high sequence similarity to prevent merging sister subsidiaries.
+    if len(common) <= 1 and min_tokens > 1:
+        return False, score
+
+    # Market metadata confirmation: Check if issue prices match within 15%
+    price_aligned = False
+    if price1 and price2 and price1 > 0 and price2 > 0:
+        if abs(price1 - price2) / max(price1, price2) <= 0.15:
+            price_aligned = True
+
+    # Decisive match criteria:
+    # A) All core tokens of the shorter name are present in the longer name (>= 2 tokens)
+    # B) Overall text sequence similarity >= 80%
+    # C) Token containment >= 70% corroborated by matching issue prices
+    if (containment >= 0.85 and len(common) >= 2) or (seq_ratio >= 0.80) or (containment >= 0.70 and price_aligned):
+        return True, score
+
+    return False, score
 
 
 def _format_date(d: Optional[date]) -> Optional[str]:
@@ -242,27 +301,56 @@ class IpoService:
             res_alias = await db.execute(stmt_alias)
             existing = res_alias.scalar_one_or_none()
 
-        # ── Tier 3: Canonical Stem Auto-Discovery & Self-Learning ──────
-        if not existing and norm_key:
+        # ── Tier 3: Multi-Signal Entity Resolution & Auto-Discovery ──────────
+        if not existing and raw_name:
             res_all = await db.execute(select(Ipo))
-            for cand in res_all.scalars().all():
+            all_candidates = res_all.scalars().all()
+            
+            incoming_price = float(ipo_dict.get("price_band_max") or ipo_dict.get("price_band_min") or 0.0)
+
+            # 3A. Direct Stem Equality
+            for cand in all_candidates:
                 cand_norm = normalize_entity_name(cand.name)
                 if cand_norm and cand_norm == norm_key:
                     existing = cand
-                    # Auto-register this variation in Tier 2 alias table!
-                    try:
+                    break
+
+            # 3B. Multi-Signal Token Containment & Sequence Similarity
+            if not existing:
+                best_match = None
+                highest_sim = 0.0
+
+                for cand in all_candidates:
+                    cand_price = float(cand.price_band_max or cand.price_band_min or 0.0)
+                    is_matched, sim_score = compute_entity_similarity(
+                        name1=raw_name,
+                        name2=cand.name,
+                        price1=incoming_price,
+                        price2=cand_price,
+                    )
+                    if is_matched and sim_score > highest_sim:
+                        highest_sim = sim_score
+                        best_match = cand
+
+                if best_match:
+                    existing = best_match
+
+            # Self-learning alias registration for future O(1) Tier 2 lookup
+            if existing and norm_key:
+                try:
+                    stmt_check = select(IpoAlias).where(IpoAlias.normalized_alias == norm_key)
+                    if not (await db.execute(stmt_check)).scalar_one_or_none():
                         new_alias = IpoAlias(
                             id=str(uuid.uuid4()),
                             ipo_id=existing.id,
                             alias=raw_name,
                             normalized_alias=norm_key,
-                            source="ipowatch" if is_secondary else "ipoalerts",
+                            source="ipowatch" if is_secondary else "groww" if is_groww else "ipoalerts",
                         )
                         db.add(new_alias)
                         await db.flush()
-                    except Exception:
-                        pass
-                    break
+                except Exception:
+                    pass
 
         def parse_date(val: Any) -> Optional[date]:
             if isinstance(val, date):
@@ -274,14 +362,17 @@ class IpoService:
                     return None
             return None
 
-        open_dt = parse_date(ipo_dict.get("issue_open_date")) or date.today()
-        close_dt = parse_date(ipo_dict.get("issue_close_date")) or date.today()
+        open_raw = ipo_dict.get("issue_open_date")
+        close_raw = ipo_dict.get("issue_close_date")
+        open_dt = parse_date(open_raw)
+        close_dt = parse_date(close_raw)
         allot_dt = parse_date(ipo_dict.get("allotment_date"))
         refund_dt = parse_date(ipo_dict.get("refund_date"))
         listing_dt = parse_date(ipo_dict.get("listing_date"))
 
         # ── Compute Authentic IST Status via the Canonical Function ───
-        open_dt, close_dt = normalize_ipo_dates(open_dt, close_dt)
+        if open_dt and close_dt:
+            open_dt, close_dt = normalize_ipo_dates(open_dt, close_dt)
         computed_status = compute_ipo_status(open_dt, close_dt)
 
         # ── Merge and Enrich Existing Record ───────────────────────────
@@ -297,8 +388,10 @@ class IpoService:
                 existing.logo_url = ipo_dict["logo_url"]
 
             existing.status = computed_status
-            existing.issue_open_date = open_dt
-            existing.issue_close_date = close_dt
+            if open_dt is not None or not existing.issue_open_date:
+                existing.issue_open_date = open_dt
+            if close_dt is not None or not existing.issue_close_date:
+                existing.issue_close_date = close_dt
             if ipo_dict.get("allotment_date"):
                 existing.allotment_date = allot_dt
             if ipo_dict.get("listing_date"):

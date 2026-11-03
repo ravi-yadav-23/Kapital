@@ -86,7 +86,7 @@ export function computeIpoStatus(
   closeDate: string | null | undefined,
   todayStr?: string
 ): 'upcoming' | 'open' | 'closing_today' | 'closed' {
-  if (!closeDate) return 'upcoming'
+  if (!closeDate || !openDate) return 'upcoming'
 
   const today = todayStr || getTodayIST()
 
@@ -103,11 +103,12 @@ export function computeIpoStatus(
   if (open && close && open > close) {
     const [oY, oM, oD] = open.split('-').map(Number)
     const [cY, cM, cD] = close.split('-').map(Number)
-    if (oY === cY && oM === cM && oD > cD) {
+    if (oD > cD) {
       const prevMonth = oM === 1 ? 12 : oM - 1
       const prevYear = oM === 1 ? oY - 1 : oY
       open = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(oD).padStart(2, '0')}`
-    } else {
+    }
+    if (open > close) {
       const tmp = open
       open = close
       close = tmp

@@ -63,6 +63,27 @@ class ScoreBreakdownSchema(BaseModel):
         elif self.promoter_integrity is None and self.lock_in_conflict is not None:
             self.promoter_integrity = self.lock_in_conflict
 
+class FinancialYearItem(BaseModel):
+    year: str  # FY24, FY25, FY26
+    amount_cr: float  # Value in ₹ Crores
+
+class FinancialMetricsSchema(BaseModel):
+    revenue_growth_yoy: Optional[str] = None
+    revenue_history: List[FinancialYearItem] = []
+    pat_growth_yoy: Optional[str] = None
+    pat_history: List[FinancialYearItem] = []
+    cfo_history: List[FinancialYearItem] = []
+    cfo_to_pat_ratio: Optional[float] = None
+    growth_demand_verdict: Optional[str] = None
+
+class GatekeeperCheckSchema(BaseModel):
+    key: str
+    name: str
+    details: str
+    status: str  # PASS, WARN, FAIL
+    threshold: str
+    impact: str
+
 class AiReportResponse(BaseModel):
     id: str
     ipo_id: str
@@ -77,6 +98,11 @@ class AiReportResponse(BaseModel):
     strengths: List[str] = []
     risks: List[str] = []
     red_flags: List[RedFlagSchema] = []
+    financial_metrics: Optional[FinancialMetricsSchema] = None
+    gatekeepers: List[GatekeeperCheckSchema] = []
+    pe_ratio: Optional[float] = None
+    peer_avg_pe: Optional[float] = None
+    ofs_percentage: Optional[float] = None
     gmp_percent: Optional[float] = None
     estimated_listing_price: Optional[float] = None
     scored_at: Optional[str] = None

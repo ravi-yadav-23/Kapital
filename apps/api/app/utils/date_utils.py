@@ -49,7 +49,9 @@ def normalize_ipo_dates(
 
     if d_open and d_close and d_open > d_close:
         # Check if single-month parse caused rollover inversion (day_open > day_close)
-        if d_open.day > d_close.day and d_open.month == d_close.month and d_open.year == d_close.year:
+        # Handles both same-month inversion (e.g. Nov 30 to Nov 3 -> Oct 30 to Nov 3)
+        # and cross-month inversion where day_open > day_close
+        if d_open.day > d_close.day:
             if d_open.month > 1:
                 try:
                     d_open = d_open.replace(month=d_open.month - 1)
@@ -61,8 +63,9 @@ def normalize_ipo_dates(
                     d_open = d_open.replace(year=d_open.year - 1, month=12)
                 except ValueError:
                     pass
-        elif d_open > d_close:
-            # If still inverted for any other reason, swap them to prevent impossible issue windows
+        
+        # If still inverted after rollover correction, swap them
+        if d_open and d_close and d_open > d_close:
             d_open, d_close = d_close, d_open
 
     return d_open, d_close
@@ -82,7 +85,7 @@ def compute_ipo_status(
 
     d_open, d_close = normalize_ipo_dates(open_date, close_date)
 
-    if not d_close:
+    if not d_close or not d_open:
         return "upcoming"
 
     if d_close < today:

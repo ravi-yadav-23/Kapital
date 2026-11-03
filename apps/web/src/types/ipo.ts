@@ -56,6 +56,7 @@ export interface Ipo {
   lot_size:        number            // minQty from API
   min_investment:  number            // lot_size × price_band_max
   issue_size:      string            // e.g. "4800cr"
+  issue_size_cr?:  number
 
   // Dates
   issue_open_date:   string          // ISO date
