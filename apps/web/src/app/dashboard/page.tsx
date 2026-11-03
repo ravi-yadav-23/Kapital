@@ -74,7 +74,7 @@ export default function DashboardPage() {
 
   // Check true open IPOs closing today (urgent deadline first)
   const closingTodayIpos = ipos.filter(
-    (i) => computeIpoStatus(i.issue_open_date, i.issue_close_date) === 'closing_today'
+    (i) => computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date) === 'closing_today'
   )
   closingTodayIpos.forEach((ipo) => {
     attentionItems.push({
@@ -104,7 +104,7 @@ export default function DashboardPage() {
 
   // Check open IPOs with bidding active
   const openIpos = ipos.filter(
-    (i) => computeIpoStatus(i.issue_open_date, i.issue_close_date) === 'open'
+    (i) => computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date) === 'open'
   )
   openIpos.slice(0, 2).forEach((ipo) => {
     if (attentionItems.length < 5) {
@@ -139,7 +139,7 @@ export default function DashboardPage() {
   const pipelineIssues = ipos
     .map((ipo) => ({
       ...ipo,
-      computedStatus: computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date),
+      computedStatus: computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date, undefined, ipo.status, ipo.allotment_date),
     }))
     .filter((i) => i.computedStatus !== 'closed')
     .slice(0, 6)
@@ -149,7 +149,7 @@ export default function DashboardPage() {
     ? pipelineIssues
     : ipos.slice(0, 6).map((ipo) => ({
         ...ipo,
-        computedStatus: computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date),
+        computedStatus: computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date, undefined, ipo.status, ipo.allotment_date),
       }))
 
   // ── Capital Distribution Calculations ─────────────────────────────────────

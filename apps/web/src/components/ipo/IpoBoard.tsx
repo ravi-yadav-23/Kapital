@@ -49,7 +49,13 @@ export function IpoBoard({
     () =>
       ipos.map((i) => ({
         ...i,
-        status: computeIpoStatus(i.issue_open_date, i.issue_close_date),
+        status: computeIpoStatus(
+          i.issue_open_date,
+          i.issue_close_date,
+          undefined,
+          i.status,
+          i.allotment_date
+        ),
       })),
     [ipos]
   )

@@ -91,7 +91,13 @@ export default function IpoDetailPage() {
     )
   }
 
-  const effectiveStatus = computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date)
+  const effectiveStatus = computeIpoStatus(
+    ipo.issue_open_date,
+    ipo.issue_close_date,
+    undefined,
+    ipo.status,
+    ipo.allotment_date
+  )
   const isOpen = effectiveStatus === 'open' || effectiveStatus === 'closing_today'
   const isUpcoming = effectiveStatus === 'upcoming'
 

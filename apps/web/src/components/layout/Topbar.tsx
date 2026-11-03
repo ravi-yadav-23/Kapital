@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
+import { apiClient } from '@/lib/api-client'
 import {
   Bell,
   RefreshCw,
@@ -33,7 +34,37 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [syncToast, setSyncToast] = useState<{ message: string; success: boolean } | null>(null)
+  const [lastSyncTime, setLastSyncTime] = useState<number>(() => Date.now() - 120_000)
+  const [syncLabel, setSyncLabel] = useState('Synced 2m ago')
   const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Dynamic relative timestamp for sync button
+  useEffect(() => {
+    const updateLabel = () => {
+      const diff = Math.max(0, Date.now() - lastSyncTime)
+      if (diff < 60_000) {
+        setSyncLabel('Synced just now')
+      } else if (diff < 120_000) {
+        setSyncLabel('Synced 1m ago')
+      } else {
+        const mins = Math.floor(diff / 60_000)
+        setSyncLabel(`Synced ${mins}m ago`)
+      }
+    }
+    updateLabel()
+    const timer = setInterval(updateLabel, 30_000)
+    return () => clearInterval(timer)
+  }, [lastSyncTime])
+
+  // Auto-dismiss sync toast after 3 seconds
+  useEffect(() => {
+    if (!syncToast) return
+    const timer = setTimeout(() => {
+      setSyncToast(null)
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [syncToast])
 
   // Initialize theme from DOM or localStorage
   useEffect(() => {
@@ -80,11 +111,38 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
     }
   }
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    if (isRefreshing) return
     setIsRefreshing(true)
-    setTimeout(() => {
+    setSyncToast(null)
+
+    try {
+      // Invalidate client-side SWR caches
+      apiClient.clearCache()
+
+      // Trigger live sync or data fetch
+      if (!isGuest) {
+        await apiClient.syncIpos().catch(() => null)
+      } else {
+        await apiClient.getIpos('all').catch(() => null)
+      }
+
+      // Dispatch global refresh so active views update immediately
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('kapitl:ws-event', { detail: { type: 'IPOS_SYNCED' } })
+        )
+      }
+
+      setLastSyncTime(Date.now())
+      setSyncLabel('Synced just now')
+      setSyncToast({ message: 'Synced successfully', success: true })
+    } catch (err) {
+      console.error('Failed to sync market data:', err)
+      setSyncToast({ message: 'Sync not succeeded', success: false })
+    } finally {
       setIsRefreshing(false)
-    }, 800)
+    }
   }
 
   const getPageTitle = () => {
@@ -146,15 +204,36 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
           <Search className="w-4 h-4" />
         </button>
 
-        {/* Sync Button */}
-        <button
-          onClick={handleRefresh}
-          className="h-8 px-2.5 rounded-sm border border-line text-xs text-ink-2 hover:text-ink hover:bg-surface-raised flex items-center gap-1.5 transition-colors"
-          title="Sync market data"
-        >
-          <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-ink' : 'text-ink-3'}`} />
-          <span className="hidden sm:inline text-2xs">Synced 2m ago</span>
-        </button>
+        {/* Sync Button & Feedback Toast */}
+        <div className="relative">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="h-8 px-2.5 rounded-sm border border-line text-xs text-ink-2 hover:text-ink hover:bg-surface-raised flex items-center gap-1.5 transition-colors disabled:opacity-75"
+            title="Sync market data"
+          >
+            <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-ink' : 'text-ink-3'}`} />
+            <span className="hidden sm:inline text-2xs">{syncLabel}</span>
+          </button>
+
+          {syncToast && (
+            <div
+              role="status"
+              className={`absolute right-0 top-10 z-50 flex items-center gap-2 px-3 py-1.5 rounded-sm border text-xs shadow-md whitespace-nowrap animate-fade-in ${
+                syncToast.success
+                  ? 'bg-surface border-line text-ink'
+                  : 'bg-surface border-negative/40 text-negative'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  syncToast.success ? 'bg-positive' : 'bg-negative'
+                }`}
+              />
+              <span className="text-[11px] font-medium">{syncToast.message}</span>
+            </div>
+          )}
+        </div>
 
         {/* Notifications */}
         <button

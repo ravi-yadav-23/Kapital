@@ -227,6 +227,9 @@ async def fetch_ipos_from_groww() -> List[Dict[str, Any]]:
                     open_d = item.get("openingDate")
                     close_d = item.get("closingDate")
                     allot_d = item.get("allotmentDate")
+                    # Heal corrupted Groww closingDate (Groww sometimes populates closingDate with listingDate)
+                    if allot_d and close_d and close_d > allot_d:
+                        close_d = allot_d
                     list_ts = item.get("listingTimestamp")
                     list_d = datetime.datetime.fromtimestamp(list_ts / 1000, tz=ist).strftime("%Y-%m-%d") if list_ts else None
                     slug = item.get("searchId") or re.sub(r'[^a-zA-Z0-9]+', '-', name).strip('-').lower()

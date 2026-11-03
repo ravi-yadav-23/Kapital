@@ -269,7 +269,7 @@ export const apiClient = {
           ipo.id === id ||
           ipo.slug === id ||
           ipo.symbol?.toLowerCase() === id.toLowerCase()
-      ) || MOCK_IPOS[0] || null
+      ) || null
 
     if (USE_MOCK_DATA) {
       return mockFallback
@@ -278,16 +278,28 @@ export const apiClient = {
     const cached = getCached<Ipo>(cacheKey)
     if (cached) return cached
 
+    const findInCachedList = (): Ipo | null => {
+      const cachedList = getCached<Ipo[]>('ipos:all') || []
+      return (
+        cachedList.find(
+          (ipo) =>
+            ipo.id === id ||
+            ipo.slug === id ||
+            ipo.symbol?.toLowerCase() === id.toLowerCase()
+        ) || null
+      )
+    }
+
     try {
       const res = await authFetch(`${API_BASE_URL}/ipos/${id}`)
       if (res.status === 404 || !res.ok) {
-        return mockFallback
+        return findInCachedList() || mockFallback
       }
       const data = await handleResponse(res, mockFallback)
       if (data) setCached(cacheKey, data)
-      return data || mockFallback
+      return data || findInCachedList() || mockFallback
     } catch {
-      return mockFallback
+      return findInCachedList() || mockFallback
     }
   },
 

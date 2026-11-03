@@ -50,10 +50,10 @@ export default function ReportsPage() {
     const all = apiClient.getCachedIpos()?.length ? apiClient.getCachedIpos()! : MOCK_IPOS
     return (
       all.find((i) => {
-        const st = computeIpoStatus(i.issue_open_date, i.issue_close_date)
+        const st = computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date)
         return st === 'open' || st === 'closing_today'
       }) ||
-      all.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date) === 'upcoming') ||
+      all.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date) === 'upcoming') ||
       all[0] ||
       null
     )
@@ -83,10 +83,10 @@ export default function ReportsPage() {
       if (allIpos && allIpos.length > 0 && !selectedIpo) {
         const activeFirst =
           allIpos.find((i) => {
-            const st = computeIpoStatus(i.issue_open_date, i.issue_close_date)
+            const st = computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date)
             return st === 'open' || st === 'closing_today'
           }) ||
-          allIpos.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date) === 'upcoming') ||
+          allIpos.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date) === 'upcoming') ||
           allIpos[0]
         setSelectedIpo(activeFirst)
       }
@@ -151,7 +151,13 @@ export default function ReportsPage() {
   const canonicalIpos = useMemo(() => {
     return ipos.map((i) => ({
       ...i,
-      computedStatus: computeIpoStatus(i.issue_open_date, i.issue_close_date),
+      computedStatus: computeIpoStatus(
+        i.issue_open_date,
+        i.issue_close_date,
+        undefined,
+        i.status,
+        i.allotment_date
+      ),
     }))
   }, [ipos])
 

@@ -84,8 +84,12 @@ export function getTodayIST(): string {
 export function computeIpoStatus(
   openDate: string | null | undefined,
   closeDate: string | null | undefined,
-  todayStr?: string
+  todayStr?: string,
+  backendStatus?: string | null,
+  allotmentDate?: string | null
 ): 'upcoming' | 'open' | 'closing_today' | 'closed' {
+  if (backendStatus === 'closed') return 'closed'
+
   if (!closeDate || !openDate) return 'upcoming'
 
   const today = todayStr || getTodayIST()
@@ -98,6 +102,15 @@ export function computeIpoStatus(
 
   let open = openDate ? parseDateOnly(openDate) : null
   let close = parseDateOnly(closeDate)
+  const allot = allotmentDate ? parseDateOnly(allotmentDate) : null
+
+  // If allotment is today or in the past, bidding has definitely closed
+  if (allot && today >= allot) return 'closed'
+
+  // If close date exceeds allotment date, it was corrupted by listing date (e.g. Groww closed feed)
+  if (allot && close > allot) {
+    close = allot
+  }
 
   // Self-heal inverted cross-month dates (e.g. 2026-11-30 to 2026-11-03 becomes 2026-10-30 to 2026-11-03)
   if (open && close && open > close) {

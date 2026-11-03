@@ -246,6 +246,20 @@ class IpoService:
         ipo = result.scalar_one_or_none()
 
         if not ipo:
+            # Check by alias mapping if UUID or slug not directly matched
+            try:
+                stmt_alias = (
+                    select(Ipo)
+                    .join(IpoAlias, Ipo.id == IpoAlias.ipo_id)
+                    .options(selectinload(Ipo.report), selectinload(Ipo.schedules))
+                    .where((IpoAlias.alias.ilike(f"%{ipo_id}%")) | (IpoAlias.normalized_alias == normalize_entity_name(ipo_id)))
+                )
+                res_alias = await db.execute(stmt_alias)
+                ipo = res_alias.scalars().first()
+            except Exception:
+                pass
+
+        if not ipo:
             from sqlalchemy import func
             total_ipos = await db.scalar(select(func.count(Ipo.id)))
             if not total_ipos:
@@ -371,9 +385,15 @@ class IpoService:
         listing_dt = parse_date(ipo_dict.get("listing_date"))
 
         # ── Compute Authentic IST Status via the Canonical Function ───
+        if allot_dt and close_dt and close_dt > allot_dt:
+            close_dt = allot_dt
         if open_dt and close_dt:
             open_dt, close_dt = normalize_ipo_dates(open_dt, close_dt)
-        computed_status = compute_ipo_status(open_dt, close_dt)
+
+        if ipo_dict.get("status") == "closed" or (allot_dt and date.today() >= allot_dt):
+            computed_status = "closed"
+        else:
+            computed_status = compute_ipo_status(open_dt, close_dt)
 
         # ── Merge and Enrich Existing Record ───────────────────────────
         if existing:
@@ -464,8 +484,10 @@ class IpoService:
             await db.flush()
             return existing
 
-        # ── Insert Brand New Master Record ─────────────────────────────
-        new_id = ipo_dict.get("id") or str(uuid.uuid4())
+        # ── Insert Brand New Master Record with Deterministic UUID ───
+        canonical_seed = incoming_slug or (incoming_symbol or raw_name).lower()
+        deterministic_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"kapitl:ipo:{canonical_seed}"))
+        new_id = ipo_dict.get("id") or deterministic_uuid
         ipo_obj = Ipo(
             id=new_id,
             isin=incoming_isin,

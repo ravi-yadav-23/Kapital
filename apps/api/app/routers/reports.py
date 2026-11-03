@@ -65,6 +65,20 @@ async def get_ai_report(ipo_id: str, db: AsyncSession = Depends(get_db)):
         ipo = res.scalar_one_or_none()
 
     if not ipo:
+        try:
+            from app.models.ipo import IpoAlias
+            from app.services.ipo_service import normalize_entity_name
+            stmt_alias = (
+                select(Ipo)
+                .join(IpoAlias, Ipo.id == IpoAlias.ipo_id)
+                .where((IpoAlias.alias.ilike(f"%{ipo_id}%")) | (IpoAlias.normalized_alias == normalize_entity_name(ipo_id)))
+            )
+            res_alias = await db.execute(stmt_alias)
+            ipo = res_alias.scalars().first()
+        except Exception:
+            pass
+
+    if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
 
     stmt_rep = select(AiReport).where(AiReport.ipo_id == ipo.id)
@@ -96,6 +110,20 @@ async def trigger_ai_analysis(
         await seed_initial_ipos_and_reports(db)
         res = await db.execute(stmt)
         ipo = res.scalar_one_or_none()
+
+    if not ipo:
+        try:
+            from app.models.ipo import IpoAlias
+            from app.services.ipo_service import normalize_entity_name
+            stmt_alias = (
+                select(Ipo)
+                .join(IpoAlias, Ipo.id == IpoAlias.ipo_id)
+                .where((IpoAlias.alias.ilike(f"%{ipo_id}%")) | (IpoAlias.normalized_alias == normalize_entity_name(ipo_id)))
+            )
+            res_alias = await db.execute(stmt_alias)
+            ipo = res_alias.scalars().first()
+        except Exception:
+            pass
 
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")

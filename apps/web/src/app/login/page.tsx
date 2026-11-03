@@ -17,7 +17,7 @@ import { useAuth, GoogleAuthResponse } from '@/lib/auth-context'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { isAuthenticated, loginWithGoogle, verifyTotp, loginAsGuest } = useAuth()
+  const { isAuthenticated, isGuest, loginWithGoogle, verifyTotp, loginAsGuest } = useAuth()
 
   const [stage, setStage] = useState<'login' | 'setup_2fa' | 'verify_2fa'>('login')
   const [authData, setAuthData] = useState<GoogleAuthResponse | null>(null)
@@ -32,27 +32,61 @@ export default function LoginPage() {
   const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
 
   useEffect(() => {
-    if (isAuthenticated) {
+    // Only redirect away from login if authenticated as a real user.
+    // If the user is currently in guest/demo mode, let them stay on login to sign in with their real account.
+    if (isAuthenticated && !isGuest) {
       router.push('/dashboard')
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isGuest, router])
+
+  const handleGoogleCredentialResponse = async (response: any) => {
+    setErrorMsg(null)
+    setIsLoading(true)
+
+    try {
+      const data = await loginWithGoogle(response.credential)
+      setAuthData(data)
+
+      if (data.status === 'SETUP_2FA') {
+        setStage('setup_2fa')
+      } else {
+        setStage('verify_2fa')
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Google authentication failed.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCredentialResponseRef = useRef(handleGoogleCredentialResponse)
+  handleCredentialResponseRef.current = handleGoogleCredentialResponse
 
   useEffect(() => {
     const initGoogle = () => {
-      if (typeof window === 'undefined' || !(window as any).google?.accounts?.id) return false
-      if (!GOOGLE_CLIENT_ID) {
+      if (typeof window === 'undefined') return false
+      const google = (window as any).google
+      if (!google?.accounts?.id || !GOOGLE_CLIENT_ID) {
         return false
       }
       try {
-        ;(window as any).google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleCredentialResponse,
-          auto_select: false,
-        })
+        // Initialize Google Identity Services exactly once across the window lifecycle to avoid [GSI_LOGGER] multiple init warnings
+        if (!(window as any).__googleIdInitialized) {
+          google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: (res: any) => {
+              if (handleCredentialResponseRef.current) {
+                handleCredentialResponseRef.current(res)
+              }
+            },
+            auto_select: false,
+          })
+          ;(window as any).__googleIdInitialized = true
+        }
 
         if (googleBtnRef.current && stage === 'login') {
           googleBtnRef.current.innerHTML = ''
-          ;(window as any).google.accounts.id.renderButton(googleBtnRef.current, {
+          google.accounts.id.renderButton(googleBtnRef.current, {
             theme: 'filled_black',
             size: 'large',
             shape: 'rectangular',
@@ -78,26 +112,6 @@ export default function LoginPage() {
       return () => clearInterval(interval)
     }
   }, [stage, GOOGLE_CLIENT_ID])
-
-  const handleGoogleCredentialResponse = async (response: any) => {
-    setErrorMsg(null)
-    setIsLoading(true)
-
-    try {
-      const data = await loginWithGoogle(response.credential)
-      setAuthData(data)
-
-      if (data.status === 'SETUP_2FA') {
-        setStage('setup_2fa')
-      } else {
-        setStage('verify_2fa')
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Google authentication failed.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleTotpSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

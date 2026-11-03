@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeIpoStatus } from '../lib/formatters';
+import { computeIpoStatus } from '../lib/formatters.ts';
 
 // Test core conviction verdict scoring rules
 function calculateConvictionVerdict(score: number): { label: string; action: string } {
@@ -53,6 +53,18 @@ describe('Kapitl Core Scoring & Verdict Engine', () => {
 
     // Closed
     assert.strictEqual(computeIpoStatus('2026-10-27', '2026-10-29', today), 'closed');
+
+    // Corrupted listing date in closeDate with allotment date on or before today (e.g. Antala Industries)
+    assert.strictEqual(
+      computeIpoStatus('2026-10-29', '2026-11-05', '2026-11-03', null, '2026-11-03'),
+      'closed'
+    );
+
+    // Backend status marked closed strictly enforced
+    assert.strictEqual(
+      computeIpoStatus('2026-10-29', '2026-11-05', '2026-11-03', 'closed', '2026-11-03'),
+      'closed'
+    );
   });
 });
 
