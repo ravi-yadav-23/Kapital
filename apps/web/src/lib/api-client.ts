@@ -471,34 +471,39 @@ export const apiClient = {
       }
     }
 
-    const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
-      method: 'POST',
-    })
-    const data = await handleResponse<any>(res, MOCK_ALLOCATION_PLAN)
-    const result: AllocationPlan = {
-      plan_id: data?.plan_id || `plan-${Date.now()}`,
-      generated_at: data?.generated_at || new Date().toISOString(),
-      total_capital_deployed: data?.total_capital_deployed || 0,
-      entries: Array.isArray(data?.entries) ? data.entries : [],
-      skipped_ipos: Array.isArray(data?.skipped_ipos) ? data.skipped_ipos : [],
-      warnings: Array.isArray(data?.warnings)
-        ? data.warnings
-        : data?.status === 'INSUFFICIENT_FUNDS'
-        ? ['Family Demat accounts have insufficient liquid balance for active IPOs. Update balances or deposit funds to allocate.']
-        : data?.status === 'NO_ACTIVE_ISSUES'
-        ? ['No active IPO bidding windows open today. Capital preserved liquid for upcoming issues.']
-        : [],
-    }
-
-    if (typeof window !== 'undefined' && result.entries.length > 0) {
-      try {
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: result, timestamp: Date.now() }))
-      } catch {
-        // Ignore cache storage errors
+    try {
+      const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
+        method: 'POST',
+      }, 15000)
+      const data = await handleResponse<any>(res, MOCK_ALLOCATION_PLAN)
+      const result: AllocationPlan = {
+        plan_id: data?.plan_id || `plan-${Date.now()}`,
+        generated_at: data?.generated_at || new Date().toISOString(),
+        total_capital_deployed: data?.total_capital_deployed || 0,
+        entries: Array.isArray(data?.entries) ? data.entries : [],
+        skipped_ipos: Array.isArray(data?.skipped_ipos) ? data.skipped_ipos : [],
+        warnings: Array.isArray(data?.warnings)
+          ? data.warnings
+          : data?.status === 'INSUFFICIENT_FUNDS'
+          ? ['Family Demat accounts have insufficient liquid balance for active IPOs. Update balances or deposit funds to allocate.']
+          : data?.status === 'NO_ACTIVE_ISSUES'
+          ? ['No active IPO bidding windows open today. Capital preserved liquid for upcoming issues.']
+          : [],
       }
-    }
 
-    return result
+      if (typeof window !== 'undefined' && result.entries.length > 0) {
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: result, timestamp: Date.now() }))
+        } catch {
+          // Ignore cache storage errors
+        }
+      }
+
+      return result
+    } catch (err) {
+      console.warn('[Kapitl API] Allocation optimization fallback to mock/empty plan:', err)
+      return MOCK_ALLOCATION_PLAN
+    }
   },
 
   async getAsbaLocks(): Promise<any[]> {

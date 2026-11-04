@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Response
 import asyncio
+import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,9 +14,11 @@ from app.services.account_service import account_service
 from app.services.ipo_service import ipo_service
 from app.services.allotment_service import allotment_service
 from app.services.optimizer_service import AllocationOptimizer
-from app.services.demo_dataset import demo_dataset
+from app.services.demo_dataset import demo_dataset, DEMO_ACCOUNTS
 
 from app.middleware.auth import get_current_user_optional, require_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/funds", tags=["funds"])
 
@@ -164,74 +168,87 @@ async def run_pulp_optimization(
     user: Optional[dict] = Depends(get_current_user_optional),
 ):
     """Execute PuLP MILP solver to compute optimal capital distribution using real accounts and active IPOs."""
-    db_accounts = await account_service.get_all_accounts(db)
-    db_ipos = await ipo_service.get_all_ipos(db)
-
     is_guest = not user or user.get("is_guest")
-    using_demo = bool(is_guest or not db_accounts)
-    if using_demo:
-        accounts_data = [
+    try:
+        db_accounts = await account_service.get_all_accounts(db)
+        db_ipos = await ipo_service.get_all_ipos(db)
+
+        using_demo = bool(is_guest or not db_accounts)
+        if using_demo:
+            accounts_data = [
+                {
+                    "id": a["id"],
+                    "name": a["name"],
+                    "relation": a.get("relation", "Self"),
+                    "angel_client_id": a.get("angel_client_id", ""),
+                    "available_liquid_balance": a.get("available_balance", 0.0),
+                    "preferred_category": a.get("preferred_category", "RETAIL"),
+                    "is_active": a.get("is_active", True),
+                }
+                for a in DEMO_ACCOUNTS
+            ]
+        else:
+            accounts_data = [
+                {
+                    "id": a.id,
+                    "name": a.name,
+                    "relation": a.relation,
+                    "angel_client_id": a.angel_client_id,
+                    "available_liquid_balance": a.available_balance,
+                    "preferred_category": a.preferred_category or "RETAIL",
+                    "is_active": a.is_active,
+                }
+                for a in db_accounts
+            ]
+
+        ipos_data = [
             {
-                "id": a["id"],
-                "name": a["name"],
-                "relation": a.get("relation", "Self"),
-                "angel_client_id": a.get("angel_client_id", ""),
-                "available_liquid_balance": a.get("available_balance", 0.0),
-                "preferred_category": a.get("preferred_category", "RETAIL"),
-                "is_active": a.get("is_active", True),
+                "id": ipo.id,
+                "name": ipo.name,
+                "symbol": ipo.symbol,
+                "status": ipo.status,
+                "type": getattr(ipo, "type", "EQ"),
+                "issue_type": getattr(ipo, "type", "EQ"),
+                # All date fields needed for ASBA conflict detection
+                "issue_open_date": str(ipo.issue_open_date) if ipo.issue_open_date else None,
+                "issue_close_date": str(ipo.issue_close_date) if ipo.issue_close_date else None,
+                "allotment_date": str(ipo.allotment_date) if ipo.allotment_date else None,
+                "refund_date": str(ipo.refund_date) if ipo.refund_date else None,
+                "listing_date": str(ipo.listing_date) if ipo.listing_date else None,
+                "lot_size": ipo.lot_size or 1,
+                "price_band_min": ipo.price_band_min or 100.0,
+                "price_band_max": ipo.price_band_max or 100.0,
+                "min_investment": ipo.min_investment or ((ipo.lot_size or 1) * (ipo.price_band_max or 100.0)),
+                "gmp_percent": ipo.gmp_percent or 0.0,
+                "score": ipo.score or 50,
             }
-            for a in demo_dataset.DEMO_ACCOUNTS
-        ]
-    else:
-        accounts_data = [
-            {
-                "id": a.id,
-                "name": a.name,
-                "relation": a.relation,
-                "angel_client_id": a.angel_client_id,
-                "available_liquid_balance": a.available_balance,
-                "preferred_category": a.preferred_category or "RETAIL",
-                "is_active": a.is_active,
-            }
-            for a in db_accounts
+            for ipo in db_ipos
         ]
 
-    ipos_data = [
-        {
-            "id": ipo.id,
-            "name": ipo.name,
-            "symbol": ipo.symbol,
-            "status": ipo.status,
-            "type": getattr(ipo, "type", "EQ"),
-            "issue_type": getattr(ipo, "type", "EQ"),
-            # All date fields needed for ASBA conflict detection
-            "issue_open_date": str(ipo.issue_open_date) if ipo.issue_open_date else None,
-            "issue_close_date": str(ipo.issue_close_date) if ipo.issue_close_date else None,
-            "allotment_date": str(ipo.allotment_date) if ipo.allotment_date else None,
-            "refund_date": str(ipo.refund_date) if ipo.refund_date else None,
-            "listing_date": str(ipo.listing_date) if ipo.listing_date else None,
-            "lot_size": ipo.lot_size or 1,
-            "price_band_min": ipo.price_band_min or 100.0,
-            "price_band_max": ipo.price_band_max or 100.0,
-            "min_investment": ipo.min_investment or ((ipo.lot_size or 1) * (ipo.price_band_max or 100.0)),
-            "gmp_percent": ipo.gmp_percent or 0.0,
-            "score": ipo.score or 50,
-        }
-        for ipo in db_ipos
-    ]
-
-    # Run solver in thread pool to avoid blocking FastAPI async event loop
-    plan = await asyncio.to_thread(
-        AllocationOptimizer.solve_allocation,
-        accounts=accounts_data,
-        ipos=ipos_data,
-    )
-    if using_demo:
-        plan.is_demo = True
-        plan.warnings = [
-            "DEMO MODE: Showing sample allocation plan with demo family accounts. Add your real family accounts to see your personalized allocation."
-        ] + plan.warnings
-    return plan
+        # Run solver in thread pool to avoid blocking FastAPI async event loop
+        plan = await asyncio.to_thread(
+            AllocationOptimizer.solve_allocation,
+            accounts=accounts_data,
+            ipos=ipos_data,
+        )
+        if using_demo:
+            plan.is_demo = True
+            plan.warnings = [
+                "DEMO MODE: Showing sample allocation plan with demo family accounts. Add your real family accounts to see your personalized allocation."
+            ] + plan.warnings
+        return plan
+    except Exception as exc:
+        logger.error(f"Failed to run PuLP optimization: {exc}", exc_info=True)
+        return AllocationPlanResponse(
+            plan_id=f"plan-err-{int(datetime.now(timezone.utc).timestamp())}",
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            total_capital_deployed=0.0,
+            entries=[],
+            skipped_ipos=[],
+            warnings=[f"Optimization unavailable at this moment: {str(exc)}"],
+            status="NO_ACTIVE_ISSUES",
+            is_demo=bool(is_guest),
+        )
 
 
 @router.get("/locks", response_model=List[AsbaLockResponse])

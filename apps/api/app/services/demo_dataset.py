@@ -403,6 +403,11 @@ DEMO_ALLOTMENTS: List[Dict[str, Any]] = [
 
 
 class DemoDatasetService:
+    DEMO_ACCOUNTS = DEMO_ACCOUNTS
+    DEMO_ORDERS = DEMO_ORDERS
+    DEMO_ALLOTMENTS = DEMO_ALLOTMENTS
+    DEMO_ASBA_LOCKS = DEMO_ASBA_LOCKS
+
     @staticmethod
     def get_accounts() -> List[AccountResponse]:
         return [AccountResponse(**acc) for acc in DEMO_ACCOUNTS]

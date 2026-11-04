@@ -115,3 +115,27 @@ async def test_guest_can_access_and_generate_ai_reports(client: AsyncClient, see
     assert cached_rep["ipo_id"] == first_ipo_id
 
 
+@pytest.mark.asyncio
+async def test_guest_can_run_pulp_optimization(client: AsyncClient, seed_data):
+    # Guest user without login token can run optimizer without 500 error
+    res_no_auth = await client.post("/api/funds/optimize")
+    assert res_no_auth.status_code == 200
+    plan_no_auth = res_no_auth.json()
+    assert "entries" in plan_no_auth
+    assert plan_no_auth.get("is_demo") is True
+
+    # Guest user with guest login token
+    guest_res = await client.post("/api/auth/guest-login")
+    assert guest_res.status_code == 200
+    token = guest_res.json()["access_token"]
+    res_guest = await client.post(
+        "/api/funds/optimize",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res_guest.status_code == 200
+    plan_guest = res_guest.json()
+    assert "entries" in plan_guest
+    assert plan_guest.get("is_demo") is True
+
+
+
