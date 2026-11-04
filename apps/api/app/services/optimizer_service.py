@@ -177,7 +177,7 @@ class AllocationOptimizer:
 
         # ── 4. Filter accounts with sufficient effective balance ───────────────
         if active_ipos:
-            min_lot_cost = min((ipo.get("min_investment", 14000) for ipo in active_ipos), default=14000)
+            min_lot_cost = min((cls._compute_lot_cost_and_lots(ipo)[1] for ipo in active_ipos), default=14000)
         else:
             min_lot_cost = 14000
 
@@ -259,7 +259,8 @@ class AllocationOptimizer:
     def _compute_lot_cost_and_lots(ipo: Dict[str, Any]) -> Tuple[float, float, int, int]:
         """
         Returns (lot_cost, min_inv, shni_lots, bhni_lots).
-        Safely computes sHNI (> ₹2L) and bHNI (> ₹10L) lot counts based on actual lot cost.
+        Safely computes sHNI (> ₹2L) and bHNI (> ₹10L) lot counts based on actual lot cost,
+        and enforces SEBI minimum retail investment rules for SME IPOs (>= ₹2,00,000).
         """
         min_inv = float(ipo.get("min_investment") or 0.0)
         lot_size = float(ipo.get("lot_size") or 0.0)
@@ -270,8 +271,29 @@ class AllocationOptimizer:
         if min_inv < 1000.0:
             min_inv = lot_cost
 
-        # sHNI requires strictly > ₹200,000
-        shni_lots = int(200000.0 / lot_cost) + 1
+        # Detect SME issues
+        is_sme = (
+            str(ipo.get("type", "")).upper() == "SME"
+            or bool(ipo.get("is_sme"))
+            or "SME" in str(ipo.get("name", "")).upper()
+            or (lot_size >= 100 and lot_cost >= 40000.0)
+        )
+
+        if is_sme:
+            # SEBI SME Rule: Minimum individual retail application must be >= ₹2,00,000
+            # Usually 2 trading lots (e.g. 2,400 shares @ ₹94 = ₹2,25,600)
+            if lot_cost < 200000.0:
+                retail_lots = max(2, int(200000.0 / lot_cost) + (1 if 200000.0 % lot_cost != 0 else 0))
+                min_inv = retail_lots * lot_cost
+            else:
+                retail_lots = 1
+                min_inv = lot_cost
+            # sHNI in SME requires strictly > ₹200,000
+            shni_lots = max(retail_lots + 1 if min_inv <= 200000.0 else retail_lots, int(200000.0 / lot_cost) + 1)
+        else:
+            # Mainboard: Retail is 1 lot
+            shni_lots = int(200000.0 / lot_cost) + 1
+
         # bHNI requires strictly > ₹1,000,000
         bhni_lots = int(1000000.0 / lot_cost) + 1
 
@@ -371,6 +393,8 @@ class AllocationOptimizer:
             for ipo in active_ipos:
                 i_id = ipo["id"]
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(ipo)
+                retail_lots = max(1, int(round(min_inv / lot_cost)))
+                lot_sz = int(ipo.get("lot_size") or (1000 if "SME" in str(ipo.get("name", "")).upper() else 1))
                 gmp_pct = ipo.get("gmp_percent", 20.0) or 20.0
                 score = ipo.get("score", 50) or 50
 
@@ -393,6 +417,8 @@ class AllocationOptimizer:
                         ipo_name=ipo["name"],
                         category="bHNI",
                         lots=bhni_lots,
+                        shares=bhni_lots * lot_sz,
+                        lot_size=lot_sz,
                         amount=amount,
                         expected_return_pct=round(gmp_pct, 2),
                         reason=f"bHNI high-conviction deployment (+{gmp_pct}% GMP, score {score}){reservation_note}",
@@ -407,6 +433,8 @@ class AllocationOptimizer:
                         ipo_name=ipo["name"],
                         category="sHNI",
                         lots=shni_lots,
+                        shares=shni_lots * lot_sz,
+                        lot_size=lot_sz,
                         amount=amount,
                         expected_return_pct=round(gmp_pct, 2),
                         reason=f"sHNI lottery edge (+{gmp_pct}% GMP, score {score}){reservation_note}",
@@ -419,7 +447,9 @@ class AllocationOptimizer:
                         ipo_id=i_id,
                         ipo_name=ipo["name"],
                         category="RETAIL",
-                        lots=1,
+                        lots=retail_lots,
+                        shares=retail_lots * lot_sz,
+                        lot_size=lot_sz,
                         amount=min_inv,
                         expected_return_pct=round(gmp_pct, 2),
                         reason=f"Retail allotment odds maximization (+{gmp_pct}% GMP, score {score}){reservation_note}",
@@ -463,6 +493,8 @@ class AllocationOptimizer:
 
             for target_ipo in sorted_ipos:
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
+                retail_lots = max(1, int(round(min_inv / lot_cost)))
+                lot_sz = int(target_ipo.get("lot_size") or (1000 if "SME" in str(target_ipo.get("name", "")).upper() else 1))
                 gmp_pct = target_ipo.get("gmp_percent", 20.0) or 20.0
                 score = target_ipo.get("score", 50) or 50
                 shni_cost = shni_lots * lot_cost
@@ -476,6 +508,8 @@ class AllocationOptimizer:
                         ipo_name=target_ipo["name"],
                         category="bHNI",
                         lots=bhni_lots,
+                        shares=bhni_lots * lot_sz,
+                        lot_size=lot_sz,
                         amount=bhni_cost,
                         expected_return_pct=round(gmp_pct, 2),
                         reason=f"bHNI high-conviction deployment (+{gmp_pct}% GMP, score {score}){reservation_note}",
@@ -490,6 +524,8 @@ class AllocationOptimizer:
                         ipo_name=target_ipo["name"],
                         category="sHNI",
                         lots=shni_lots,
+                        shares=shni_lots * lot_sz,
+                        lot_size=lot_sz,
                         amount=shni_cost,
                         expected_return_pct=round(gmp_pct, 2),
                         reason=f"sHNI lottery edge (+{gmp_pct}% GMP, score {score}){reservation_note}",
@@ -503,7 +539,9 @@ class AllocationOptimizer:
                         ipo_id=target_ipo["id"],
                         ipo_name=target_ipo["name"],
                         category="RETAIL",
-                        lots=1,
+                        lots=retail_lots,
+                        shares=retail_lots * lot_sz,
+                        lot_size=lot_sz,
                         amount=min_inv,
                         expected_return_pct=round(gmp_pct, 2),
                         reason=f"Retail allotment odds maximization (+{gmp_pct}% GMP, score {score}){reservation_note}",

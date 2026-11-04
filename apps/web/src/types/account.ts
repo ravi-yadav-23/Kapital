@@ -66,6 +66,8 @@ export interface AllocationEntry {
   ipo_name:      string
   category:      AccountCategory | 'sHNI' | 'bHNI' | string
   lots:          number
+  shares?:       number                  // total shares allocated (lots * lot_size)
+  lot_size?:     number                  // trading lot size of the IPO
   amount:        number
   expected_return_pct: number            // optimizer's expected ROI estimate
   confidence?:   'HIGH' | 'MEDIUM' | 'LOW'

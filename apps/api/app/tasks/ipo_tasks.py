@@ -125,7 +125,11 @@ async def fetch_ipos_from_groww() -> List[Dict[str, Any]]:
                     min_p = float(cats[0].get("minPrice") or 0.0)
                     max_p = float(cats[0].get("maxPrice") or min_p or 100.0)
                     lot = int(cats[0].get("lotSize") or (1000 if is_sme else 1))
-                    min_inv = round(lot * max_p, 2)
+                    if is_sme and (lot * max_p) < 200000.0 and (lot * max_p) > 0:
+                        min_lots = max(2, int(200000.0 / (lot * max_p)) + (1 if 200000.0 % (lot * max_p) != 0 else 0))
+                        min_inv = round(min_lots * lot * max_p, 2)
+                    else:
+                        min_inv = round(lot * max_p, 2)
 
                     status = compute_ipo_status(open_d, close_d)
                     slug = item.get("searchId") or re.sub(r'[^a-zA-Z0-9]+', '-', name).strip('-').lower()

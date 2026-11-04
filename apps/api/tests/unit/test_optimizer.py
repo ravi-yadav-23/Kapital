@@ -101,3 +101,40 @@ def test_asba_capital_reservation_and_conflicts():
     assert len(ravi_entries) == 1
     assert ravi_entries[0].amount <= 500000.0
 
+
+def test_sme_ipo_allocation_and_share_calculations():
+    """Verify that SME IPOs enforce SEBI minimum 2-lot threshold (>= 2L) and compute accurate share counts."""
+    accounts = [
+        {"id": "a_ramesh", "name": "Ramesh", "available_liquid_balance": 300000.0, "is_active": True, "preferred_category": "RETAIL"},
+        {"id": "a_sunita", "name": "Sunita", "available_liquid_balance": 150000.0, "is_active": True, "preferred_category": "RETAIL"},
+    ]
+    ipos = [
+        {
+            "id": "ipo_vedant",
+            "name": "Vedant Poly Fabs Solutions SME",
+            "type": "SME",
+            "status": "open",
+            "lot_size": 1200,
+            "price_band_min": 88.0,
+            "price_band_max": 94.0,
+            "min_investment": 225600.0,
+            "score": 60,
+            "gmp_percent": 16.0,
+        }
+    ]
+
+    plan = AllocationOptimizer.solve_allocation(accounts, ipos)
+    assert plan.status == "OPTIMAL"
+    # Ramesh has >= 2.25L so he qualifies for the SME minimum 2-lot allocation
+    ramesh_alloc = [e for e in plan.entries if e.account_id == "a_ramesh"]
+    assert len(ramesh_alloc) == 1
+    assert ramesh_alloc[0].lots == 2
+    assert ramesh_alloc[0].shares == 2400
+    assert ramesh_alloc[0].lot_size == 1200
+    assert ramesh_alloc[0].amount == 225600.0
+
+    # Sunita only has 1.5L available, so she must NOT be allocated (below the SEBI SME 2L minimum)
+    sunita_alloc = [e for e in plan.entries if e.account_id == "a_sunita"]
+    assert len(sunita_alloc) == 0
+
+

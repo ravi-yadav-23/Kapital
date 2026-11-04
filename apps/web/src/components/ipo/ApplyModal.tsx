@@ -53,22 +53,28 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
 
   const cutoffPrice = ipo.price_band_max || 100
   const lotSize = ipo.lot_size || 1
+  const singleLotCost = lotSize * cutoffPrice
+  const isSme = ipo.type === 'SME' || (ipo.name && ipo.name.includes('SME')) || (lotSize >= 100 && singleLotCost >= 40000)
+  const minSmeRetailLots = isSme && singleLotCost < 200000 ? Math.max(2, Math.ceil(200000 / singleLotCost)) : 1
+  const minRetailLots = isSme ? minSmeRetailLots : 1
+
   const sharesPerApplication = lots * lotSize
   const amountPerAccount = sharesPerApplication * cutoffPrice
   const totalAmount = amountPerAccount * selectedAccountIds.length
 
-  const isRetailOver = category === 'RETAIL' && amountPerAccount > 200000
-  const isShniUnder = category === 'SHNI' && amountPerAccount <= 200000
+  const isRetailUnder = category === 'RETAIL' && isSme && lots < minRetailLots
+  const isRetailOver = category === 'RETAIL' && (isSme ? lots > minRetailLots && amountPerAccount > 250000 : amountPerAccount > 200000)
+  const isShniUnder = category === 'SHNI' && (isSme ? lots <= minRetailLots : amountPerAccount <= 200000)
   const isShniOver = category === 'SHNI' && amountPerAccount > 1000000
   const isBhniUnder = category === 'BHNI' && amountPerAccount <= 1000000
-  const hasCategoryViolation = isRetailOver || isShniUnder || isShniOver || isBhniUnder
+  const hasCategoryViolation = isRetailUnder || isRetailOver || isShniUnder || isShniOver || isBhniUnder
 
   const handleCategoryChange = (cat: AccountCategory) => {
     setCategory(cat)
     if (cat === 'RETAIL') {
-      setLots(1)
+      setLots(minRetailLots)
     } else if (cat === 'SHNI') {
-      const minLots = Math.ceil(200001 / (lotSize * cutoffPrice))
+      const minLots = Math.max(minRetailLots + (isSme ? 1 : 0), Math.ceil(200001 / (lotSize * cutoffPrice)))
       setLots(minLots)
     } else if (cat === 'BHNI') {
       const minLots = Math.ceil(1000001 / (lotSize * cutoffPrice))
@@ -103,8 +109,12 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
     }
 
     // Category check
+    if (isRetailUnder) {
+      setErrorMessage(`SEBI SME regulations require a minimum of ${minRetailLots} lots (${formatINR(minRetailLots * singleLotCost)}) for individual applications.`)
+      return
+    }
     if (isRetailOver) {
-      setErrorMessage(`Retail application amount (${formatINR(amountPerAccount)}) exceeds the SEBI ceiling of ₹2,00,000. Please reduce lots or switch to sHNI.`)
+      setErrorMessage(isSme ? `SME individual retail allows maximum ${minRetailLots} lots. Switch to sHNI for larger bids.` : `Retail application amount (${formatINR(amountPerAccount)}) exceeds the SEBI ceiling of ₹2,00,000. Please reduce lots or switch to sHNI.`)
       return
     }
     if (isShniUnder || isShniOver) {
@@ -453,7 +463,8 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
                 <div className="p-2 rounded bg-accent-amber/10 border border-accent-amber/30 text-2xs text-accent-amber flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>
-                    {isRetailOver && `Exceeds SEBI Retail limit (₹2,00,000). Max ${Math.floor(200000 / (lotSize * cutoffPrice))} lots.`}
+                    {isRetailUnder && `SEBI SME rule requires minimum ${minRetailLots} lots (${formatINR(minRetailLots * singleLotCost)}) for individual applications.`}
+                    {isRetailOver && (isSme ? `SME individual retail allows maximum ${minRetailLots} lots. Switch to sHNI for larger bids.` : `Exceeds SEBI Retail limit (₹2,00,000). Max ${Math.floor(200000 / (lotSize * cutoffPrice))} lots.`)}
                     {isShniUnder && `sHNI requires > ₹2,00,000. Min ${Math.ceil(200001 / (lotSize * cutoffPrice))} lots.`}
                     {isShniOver && `sHNI cannot exceed ₹10,00,000. Switch to bHNI.`}
                     {isBhniUnder && `bHNI requires > ₹10,00,000. Min ${Math.ceil(1000001 / (lotSize * cutoffPrice))} lots.`}

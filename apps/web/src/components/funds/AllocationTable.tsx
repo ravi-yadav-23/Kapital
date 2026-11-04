@@ -111,33 +111,36 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, index) => (
-                <tr key={index}>
-                  <td className="font-medium text-[var(--ink-1)]">
-                    {entry.ipo_name}
-                  </td>
-                  <td className="text-[var(--ink-2)]">
-                    {entry.account_name}
-                  </td>
-                  <td>
-                    <span className="px-2 py-0.5 rounded text-2xs font-mono font-medium uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)]">
-                      {entry.category}
-                    </span>
-                  </td>
-                  <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums">
-                    {entry.lots} lot{entry.lots > 1 ? 's' : ''} ({entry.lots * 14} shs)
-                  </td>
-                  <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums">
-                    {formatINR(entry.amount)}
-                  </td>
-                  <td className="text-right font-mono text-xs text-[var(--positive)] font-medium tabular-nums">
-                    {formatPercent(entry.expected_return_pct)}
-                  </td>
-                  <td className="text-xs text-[var(--ink-3)] max-w-xs truncate">
-                    {entry.reason || 'Maximizes allotment probability & returns'}
-                  </td>
-                </tr>
-              ))}
+              {entries.map((entry, index) => {
+                const shareCount = entry.shares ?? (entry.lot_size ? entry.lots * entry.lot_size : (entry.ipo_name?.includes('SME') ? entry.lots * 1200 : entry.lots * 14))
+                return (
+                  <tr key={index}>
+                    <td className="font-medium text-[var(--ink-1)]">
+                      {entry.ipo_name}
+                    </td>
+                    <td className="text-[var(--ink-2)]">
+                      {entry.account_name}
+                    </td>
+                    <td>
+                      <span className="px-2 py-0.5 rounded text-2xs font-mono font-medium uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)]">
+                        {entry.category}
+                      </span>
+                    </td>
+                    <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums">
+                      {entry.lots} lot{entry.lots > 1 ? 's' : ''} ({shareCount.toLocaleString('en-IN')} shs)
+                    </td>
+                    <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums">
+                      {formatINR(entry.amount)}
+                    </td>
+                    <td className="text-right font-mono text-xs text-[var(--positive)] font-medium tabular-nums">
+                      {formatPercent(entry.expected_return_pct)}
+                    </td>
+                    <td className="text-xs text-[var(--ink-3)] max-w-xs truncate" title={entry.reason}>
+                      {entry.reason || 'Maximizes allotment probability & returns'}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

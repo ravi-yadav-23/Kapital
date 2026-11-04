@@ -12,7 +12,7 @@ Reconciliation Invariants (strictly verified by unit tests):
 7. sum(lock.amount for lock in asba_locks) == total_locked_asba
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.schemas.fund import FundSummaryResponse, PnlSummaryResponse
 from app.schemas.account import AccountResponse
 from app.schemas.order import OrderResponse
@@ -406,6 +406,16 @@ class DemoDatasetService:
     @staticmethod
     def get_accounts() -> List[AccountResponse]:
         return [AccountResponse(**acc) for acc in DEMO_ACCOUNTS]
+
+    @staticmethod
+    def update_account(acc_id: str, data: Dict[str, Any]) -> Optional[AccountResponse]:
+        for acc in DEMO_ACCOUNTS:
+            if acc["id"] == acc_id or acc.get("angel_client_id") == acc_id:
+                for k, v in data.items():
+                    if v is not None and k in acc:
+                        acc[k] = v
+                return AccountResponse(**acc)
+        return None
 
     @staticmethod
     def get_orders() -> List[OrderResponse]:

@@ -121,6 +121,22 @@ export default function FundsPage() {
     }
   }
 
+  const handleCategoryChange = async (accountId: string, newCategory: 'RETAIL' | 'SHNI' | 'BHNI') => {
+    try {
+      setAccounts((prev) => prev.map((a) => (a.id === accountId ? { ...a, preferred_category: newCategory } : a)))
+      await apiClient.updateAccount(accountId, { preferred_category: newCategory })
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('kapitl_alloc_plan')
+      }
+      const freshPlan = await apiClient.getAllocationPlan(true)
+      setPlan(freshPlan)
+    } catch (err: any) {
+      console.error('Failed to update account category:', err)
+      setErrorToast('Failed to update bidding category.')
+      setTimeout(() => setErrorToast(null), 5000)
+    }
+  }
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -251,6 +267,7 @@ export default function FundsPage() {
             setEditingAccount(acc)
             setIsAddOpen(true)
           }}
+          onCategoryChange={handleCategoryChange}
         />
 
         {/* ── 4. ASBA Fund Lock Timeline / Table ───────────────────────────── */}

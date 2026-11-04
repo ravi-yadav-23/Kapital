@@ -108,9 +108,13 @@ async def update_family_account(
     account_id: str,
     data: AccountUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: dict = Depends(require_admin),
+    user: Optional[dict] = Depends(get_current_user_optional),
 ):
     """Update family member balance or category preferences."""
+    if user and user.get("is_guest"):
+        updated_demo = demo_dataset.update_account(account_id, data.model_dump(exclude_unset=True))
+        if updated_demo:
+            return updated_demo
     return await account_service.update_account(db, account_id, data)
 
 
@@ -167,12 +171,16 @@ async def run_pulp_optimization(
     using_demo = bool(is_guest or not db_accounts)
     if using_demo:
         accounts_data = [
-            {"id": "demo-1", "name": "Ramesh Yadav", "relation": "Self", "angel_client_id": "DEMO_01", "available_liquid_balance": 300000.0, "preferred_category": "SHNI", "is_active": True},
-            {"id": "demo-2", "name": "Sunita Yadav", "relation": "Spouse", "angel_client_id": "DEMO_02", "available_liquid_balance": 150000.0, "preferred_category": "RETAIL", "is_active": True},
-            {"id": "demo-3", "name": "Vikram Yadav", "relation": "Brother", "angel_client_id": "DEMO_03", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
-            {"id": "demo-4", "name": "Kavita Yadav", "relation": "Sister", "angel_client_id": "DEMO_04", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
-            {"id": "demo-5", "name": "Om Prakash Yadav", "relation": "Father", "angel_client_id": "DEMO_05", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
-            {"id": "demo-6", "name": "Shanti Devi", "relation": "Mother", "angel_client_id": "DEMO_06", "available_liquid_balance": 100000.0, "preferred_category": "RETAIL", "is_active": True},
+            {
+                "id": a["id"],
+                "name": a["name"],
+                "relation": a.get("relation", "Self"),
+                "angel_client_id": a.get("angel_client_id", ""),
+                "available_liquid_balance": a.get("available_balance", 0.0),
+                "preferred_category": a.get("preferred_category", "RETAIL"),
+                "is_active": a.get("is_active", True),
+            }
+            for a in demo_dataset.DEMO_ACCOUNTS
         ]
     else:
         accounts_data = [
@@ -194,6 +202,7 @@ async def run_pulp_optimization(
             "name": ipo.name,
             "symbol": ipo.symbol,
             "status": ipo.status,
+            "type": getattr(ipo, "type", "EQ"),
             "issue_type": getattr(ipo, "type", "EQ"),
             # All date fields needed for ASBA conflict detection
             "issue_open_date": str(ipo.issue_open_date) if ipo.issue_open_date else None,

@@ -429,7 +429,13 @@ class IpoService:
                     pass  # Preserve authentic exchange lot size
                 else:
                     existing.lot_size = incoming_lot
-                    existing.min_investment = float(ipo_dict.get("min_investment") or (existing.price_band_max * incoming_lot))
+                    raw_min = float(ipo_dict.get("min_investment") or (existing.price_band_max * incoming_lot))
+                    is_sme = (existing.type == "SME" or "SME" in str(existing.name).upper())
+                    if is_sme and raw_min < 200000.0 and existing.price_band_max > 0 and incoming_lot > 0:
+                        min_lots = max(2, int(200000.0 / (existing.price_band_max * incoming_lot)) + (1 if 200000.0 % (existing.price_band_max * incoming_lot) != 0 else 0))
+                        existing.min_investment = round(min_lots * incoming_lot * existing.price_band_max, 2)
+                    else:
+                        existing.min_investment = raw_min
 
             new_issue_cr = ipo_dict.get("issue_size_cr")
             if new_issue_cr is not None and float(new_issue_cr) > 0:
@@ -500,7 +506,19 @@ class IpoService:
             price_band_min=float(ipo_dict.get("price_band_min", 0.0)),
             price_band_max=float(ipo_dict.get("price_band_max", 0.0)),
             lot_size=int(ipo_dict.get("lot_size", 1)),
-            min_investment=float(ipo_dict.get("min_investment", 0.0)),
+            min_investment=(
+                round(
+                    max(2, int(200000.0 / (float(ipo_dict.get("price_band_max", 0.0)) * int(ipo_dict.get("lot_size", 1)))) + (1 if 200000.0 % (float(ipo_dict.get("price_band_max", 0.0)) * int(ipo_dict.get("lot_size", 1))) != 0 else 0))
+                    * float(ipo_dict.get("price_band_max", 0.0))
+                    * int(ipo_dict.get("lot_size", 1)),
+                    2,
+                )
+                if (ipo_dict.get("type") == "SME" or "SME" in str(raw_name).upper())
+                and float(ipo_dict.get("price_band_max", 0.0)) > 0
+                and int(ipo_dict.get("lot_size", 1)) > 0
+                and float(ipo_dict.get("min_investment", 0.0)) < 200000.0
+                else float(ipo_dict.get("min_investment", 0.0))
+            ),
             issue_size=clean_text(ipo_dict.get("issue_size")),
             issue_size_cr=ipo_dict.get("issue_size_cr"),
             issue_open_date=open_dt,

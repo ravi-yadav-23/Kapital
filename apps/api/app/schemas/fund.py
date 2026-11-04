@@ -30,6 +30,8 @@ class AllocationEntrySchema(BaseModel):
     amount: float
     expected_return_pct: float
     reason: Optional[str] = None
+    shares: Optional[int] = None
+    lot_size: Optional[int] = None
 
 
 class SkippedIpoSchema(BaseModel):

@@ -8,6 +8,7 @@ import { Edit2 } from 'lucide-react'
 interface AccountsTableProps {
   accounts: FamilyAccount[]
   onEditAccount?: (account: FamilyAccount) => void
+  onCategoryChange?: (accountId: string, newCategory: 'RETAIL' | 'SHNI' | 'BHNI') => void
 }
 
 function maskClientId(id: string): string {
@@ -16,7 +17,7 @@ function maskClientId(id: string): string {
   return `${id.slice(0, 2)}•••${id.slice(-3)}`
 }
 
-export function AccountsTable({ accounts, onEditAccount }: AccountsTableProps) {
+export function AccountsTable({ accounts, onEditAccount, onCategoryChange }: AccountsTableProps) {
   return (
     <div className="card p-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -77,9 +78,22 @@ export function AccountsTable({ accounts, onEditAccount }: AccountsTableProps) {
                 </td>
 
                 <td>
-                  <span className="px-2 py-0.5 rounded text-2xs font-mono uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)]">
-                    {acc.preferred_category}
-                  </span>
+                  {onCategoryChange ? (
+                    <select
+                      value={acc.preferred_category}
+                      onChange={(e) => onCategoryChange(acc.id, e.target.value as any)}
+                      className="px-2 py-0.5 rounded text-2xs font-mono uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)] hover:border-[var(--ink-2)] cursor-pointer focus:outline-none"
+                      title="Change preferred IPO bidding category"
+                    >
+                      <option value="RETAIL">RETAIL (≤ ₹2L)</option>
+                      <option value="SHNI">sHNI (₹2L - ₹10L)</option>
+                      <option value="BHNI">bHNI (&gt; ₹10L)</option>
+                    </select>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-2xs font-mono uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)]">
+                      {acc.preferred_category}
+                    </span>
+                  )}
                 </td>
 
                 <td className="text-right font-mono text-xs text-[var(--ink-2)] tabular-nums">
