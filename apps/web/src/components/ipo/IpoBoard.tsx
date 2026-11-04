@@ -319,7 +319,9 @@ export function IpoBoard({
                 <th>Bidding Window</th>
                 <th className="th-num">Price Band</th>
                 <th className="th-num">Min Invest</th>
-                <th className="th-num">GMP</th>
+                <th className="th-num" title="Grey Market Premiums (GMP) reflect unverified over-the-counter sentiment and do not guarantee listing prices.">
+                  GMP <span className="text-[10px] text-ink-3">ⓘ</span>
+                </th>
                 <th>Score</th>
                 <th>Verdict</th>
                 <th className="text-right">Action</th>
@@ -332,9 +334,11 @@ export function IpoBoard({
                 const recLabel = getRecommendationLabel(rec)
                 const avatar = getCompanyAvatarProps(ipo.name)
                 const windowText =
-                  ipo.status === 'open' || ipo.status === 'closing_today'
-                    ? `Closes ${formatRelativeDate(ipo.issue_close_date)}`
-                    : `Opens ${formatRelativeDate(ipo.issue_open_date)}`
+                  ipo.status === 'closed'
+                    ? formatRelativeDate(ipo.issue_close_date)
+                    : ipo.status === 'open' || ipo.status === 'closing_today'
+                      ? `Closes ${formatRelativeDate(ipo.issue_close_date)}`
+                      : `Opens ${formatRelativeDate(ipo.issue_open_date)}`
 
                 return (
                   <tr key={ipo.id} className="cursor-pointer h-[52px]" onClick={() => (window.location.href = `/ipos/${ipo.id}`)}>
@@ -370,16 +374,18 @@ export function IpoBoard({
                         <span>{getStatusLabel(ipo.status)}</span>
                       </span>
                     </td>
-                    <td className="text-[13px] text-ink-2 font-mono" suppressHydrationWarning>
+                    <td className="text-[13px] text-ink-2 font-mono whitespace-nowrap" suppressHydrationWarning>
                       {windowText}
                     </td>
-                    <td className="td-num">
-                      ₹{ipo.price_band_min} - ₹{ipo.price_band_max}
+                    <td className="td-num whitespace-nowrap">
+                      {ipo.price_band_min === ipo.price_band_max || !ipo.price_band_max
+                        ? `₹${ipo.price_band_min}`
+                        : `₹${ipo.price_band_min} - ₹${ipo.price_band_max}`}
                     </td>
-                    <td className="td-num" suppressHydrationWarning>
+                    <td className="td-num whitespace-nowrap" suppressHydrationWarning>
                       {formatINR(ipo.min_investment)}
                     </td>
-                    <td className={`td-num ${(ipo.gmp_percent || 0) > 0 ? 'text-emerald-400' : 'text-ink-3'}`}>
+                    <td className={`td-num whitespace-nowrap ${(ipo.gmp_percent || 0) > 0 ? 'text-emerald-400' : 'text-ink-3'}`}>
                       {(ipo.gmp_percent || 0) > 0 ? `↑ ${formatPercent(ipo.gmp_percent)}` : '0.0%'}
                     </td>
                     <td>
@@ -394,16 +400,16 @@ export function IpoBoard({
                       </div>
                     </td>
                     <td>
-                      <span className="text-[13px] font-medium tracking-wide uppercase text-ink-2">
+                      <span className="text-[13px] font-medium tracking-wide uppercase text-ink-2 whitespace-nowrap">
                         {recLabel}
                       </span>
                     </td>
                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
                       <Link
-                        href={`/ipos/${ipo.id}`}
-                        className="text-[13px] font-medium text-ink hover:underline inline-flex items-center gap-1"
+                        href={ipo.status === 'closed' ? `/reports?id=${ipo.id}` : `/ipos/${ipo.id}`}
+                        className="text-[13px] font-medium text-ink hover:underline inline-flex items-center gap-1 whitespace-nowrap"
                       >
-                        <span>View plan</span>
+                        <span>{ipo.status === 'closed' ? 'View Report' : 'View plan'}</span>
                         <ChevronRight className="w-3.5 h-3.5 text-ink-3" />
                       </Link>
                     </td>

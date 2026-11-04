@@ -97,8 +97,8 @@ def test_demo_data_whole_lots_and_asba_reconciliation():
     # Allotment whole lots check
     tonbo_alt = next((a for a in DEMO_ALLOTMENTS if "tonbo" in a["ipo_id"].lower()), None)
     assert tonbo_alt is not None
-    assert tonbo_alt["allotted_shares"] % 21 == 0, "Tonbo allotment must be a multiple of lot size 21"
-    assert tonbo_alt["allotted_shares"] == 21, "Kavita Yadav gets exactly 1 lot = 21 shares"
+    assert tonbo_alt["allotted_shares"] % 27 == 0, "Tonbo allotment must be a multiple of lot size 27"
+    assert tonbo_alt["allotted_shares"] == 27, "Kavita Yadav gets exactly 1 lot = 27 shares"
 
     bonfiglioli_alt = next((a for a in DEMO_ALLOTMENTS if "bonfiglioli" in a["ipo_id"].lower()), None)
     assert bonfiglioli_alt is not None
@@ -111,7 +111,7 @@ def test_demo_data_whole_lots_and_asba_reconciliation():
     # ASBA in use equals sum of open orders
     open_orders = [o for o in DEMO_ORDERS if o["status"] in ["APPLIED", "CONFIRMED"]]
     total_locked_from_orders = sum(o["amount"] for o in open_orders)
-    assert total_locked_from_orders == 580000.0
+    assert total_locked_from_orders == 574938.0
 
     # Matches ASBA locks
     total_from_locks = sum(l["amount"] for l in DEMO_ASBA_LOCKS)

@@ -70,7 +70,7 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
             ) : (
               <>
                 <Send className="w-3.5 h-3.5" />
-                <span>Apply All Allocations</span>
+                <span>View UPI Mandate Steps</span>
               </>
             )}
           </button>
@@ -127,7 +127,7 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
                       </span>
                     </td>
                     <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums">
-                      {entry.lots} lot{entry.lots > 1 ? 's' : ''} ({shareCount.toLocaleString('en-IN')} shs)
+                      {entry.lots} {entry.lots === 1 ? 'lot' : 'lots'} ({shareCount.toLocaleString('en-IN')} shs)
                     </td>
                     <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums">
                       {formatINR(entry.amount)}

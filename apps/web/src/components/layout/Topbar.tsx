@@ -17,7 +17,10 @@ import {
   Sun,
   Moon,
   ChevronDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
+import { usePrivacyMode } from '@/lib/hooks/usePrivacyMode'
 
 interface TopbarProps {
   onMenuClick?: () => void
@@ -28,6 +31,7 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, isGuest, logout } = useAuth()
+  const { isPrivacyActive, togglePrivacyMode } = usePrivacyMode()
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -234,6 +238,23 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
             </div>
           )}
         </div>
+
+        {/* Privacy Masking Toggle */}
+        <button
+          onClick={togglePrivacyMode}
+          className={`h-8 px-2 rounded-sm border transition-colors flex items-center gap-1.5 text-xs ${
+            isPrivacyActive
+              ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+              : 'border-line text-ink-3 hover:text-ink hover:bg-surface-raised'
+          }`}
+          title={isPrivacyActive ? 'Privacy mode active (balances & names masked). Click to reveal.' : 'Mask balances and family names (Privacy mode)'}
+          aria-label="Toggle privacy mode"
+        >
+          {isPrivacyActive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline text-2xs font-mono">
+            {isPrivacyActive ? 'Privacy ON' : 'Privacy'}
+          </span>
+        </button>
 
         {/* Notifications */}
         <button

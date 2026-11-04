@@ -93,12 +93,8 @@ class AllocationOptimizer:
             return True
 
         open_ipos = [ipo for ipo in ipos if _is_active_open(ipo)]
-        # Fall back to upcoming issues only if nothing is currently open
-        active_ipos = open_ipos if open_ipos else [
-            ipo for ipo in ipos
-            if ipo.get("status") == "upcoming"
-            and (_parse_date(ipo.get("issue_open_date")) or today) >= today
-        ]
+        # Bidding optimizer must strictly allocate capital to active open issues only
+        active_ipos = open_ipos
 
         # ── 2. Identify upcoming high-value IPOs for capital reservation ───────
         lookahead_cutoff = today + timedelta(days=_RESERVATION_LOOKAHEAD_DAYS)

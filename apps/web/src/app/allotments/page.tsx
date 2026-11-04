@@ -81,7 +81,7 @@ export default function AllotmentsPage() {
               {pnlSummary?.allotment_rate_percent ?? 83.3}%
             </div>
             <span className="text-2xs text-[var(--ink-3)] mt-1 block font-mono">
-              {pnlSummary?.total_allotments ?? 5} won out of {pnlSummary?.total_applied_ipos ?? 6} bids
+              {pnlSummary?.total_allotments ?? 5} won of {pnlSummary?.total_applied_ipos ?? 6} finalized bids (2 pending ASBA)
             </span>
           </div>
         </div>

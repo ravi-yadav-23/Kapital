@@ -306,6 +306,7 @@ class AiDueDiligenceService:
             growth_demand_verdict="Preliminary sector model: healthy revenue growth and ~0.92x cash conversion indicate steady institutional appetite.",
         )
 
+        is_sme = (ipo.type == "SME") or ("SME" in (ipo.name or ""))
         fallback_gatekeepers = [
             GatekeeperCheckSchema(
                 key="ofs_split",
@@ -318,10 +319,10 @@ class AiDueDiligenceService:
             GatekeeperCheckSchema(
                 key="anchor_quality",
                 name="Anchor Book Quality",
-                details="Requires DRHP audit to verify mutual fund participation.",
-                status="WARN",
-                threshold="Domestic MFs > 30%",
-                impact="Audit needed to confirm institutional price floor stability.",
+                details="Exempt for SME platform issues (SEBI ICDR regulations)" if is_sme else "Requires DRHP audit to verify mutual fund participation.",
+                status="PASS" if is_sme else "WARN",
+                threshold="N/A (SME platform)" if is_sme else "Domestic MFs > 30%",
+                impact="Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms." if is_sme else "Audit needed to confirm institutional price floor stability.",
             ),
             GatekeeperCheckSchema(
                 key="cfo_conversion",

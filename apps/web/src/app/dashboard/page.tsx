@@ -186,7 +186,7 @@ export default function DashboardPage() {
       {/* ── Top Bar Action Strip (No duplicate H1 or subtitle) ── */}
       <div className="flex items-center justify-between pt-1">
         <div className="text-[13px] text-ink-2 font-normal">
-          Portfolio snapshot & autonomous execution pipeline
+          Portfolio snapshot & allocation optimization pipeline
         </div>
         <Link href="/funds" className="btn-secondary text-[13px]">
           <span>Run optimizer</span>

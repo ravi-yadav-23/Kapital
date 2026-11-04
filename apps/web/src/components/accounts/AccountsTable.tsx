@@ -2,7 +2,8 @@
 
 import React from 'react'
 import { FamilyAccount } from '@/types'
-import { formatINR } from '@/lib/formatters'
+import { formatINR, maskPrivacyBalance, maskPrivacyName } from '@/lib/formatters'
+import { usePrivacyMode } from '@/lib/hooks/usePrivacyMode'
 import { Edit2 } from 'lucide-react'
 
 interface AccountsTableProps {
@@ -18,6 +19,8 @@ function maskClientId(id: string): string {
 }
 
 export function AccountsTable({ accounts, onEditAccount, onCategoryChange }: AccountsTableProps) {
+  const { isPrivacyActive } = usePrivacyMode()
+
   return (
     <div className="card p-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -51,7 +54,9 @@ export function AccountsTable({ accounts, onEditAccount, onCategoryChange }: Acc
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--positive)] inline-block" />
                     <div>
-                      <span className="font-medium text-[var(--ink-1)]">{acc.name}</span>
+                      <span className="font-medium text-[var(--ink-1)]">
+                        {isPrivacyActive ? maskPrivacyName(acc.name, undefined, true) : acc.name}
+                      </span>
                       <span className="text-2xs text-[var(--ink-3)] block">{acc.relation}</span>
                     </div>
                   </div>
@@ -62,18 +67,18 @@ export function AccountsTable({ accounts, onEditAccount, onCategoryChange }: Acc
                 </td>
 
                 <td className="text-right font-mono text-xs text-[var(--ink-1)] tabular-nums">
-                  {formatINR(acc.total_balance ?? 0)}
+                  {isPrivacyActive ? maskPrivacyBalance('₹0', true) : formatINR(acc.total_balance ?? 0)}
                 </td>
 
                 <td className="text-right font-mono text-xs text-[var(--ink-1)] tabular-nums">
-                  {formatINR(acc.available_balance ?? 0)}
+                  {isPrivacyActive ? maskPrivacyBalance('₹0', true) : formatINR(acc.available_balance ?? 0)}
                 </td>
 
                 <td className="text-right font-mono text-xs text-[var(--ink-2)] tabular-nums">
                   {(acc.locked_balance ?? 0) > 0 ? (
-                    formatINR(acc.locked_balance ?? 0)
+                    isPrivacyActive ? maskPrivacyBalance('₹0', true) : formatINR(acc.locked_balance ?? 0)
                   ) : (
-                    <span className="text-[var(--ink-3)]">₹0</span>
+                    <span className="text-[var(--ink-3)]">{isPrivacyActive ? '₹••••••' : '₹0'}</span>
                   )}
                 </td>
 
@@ -101,7 +106,9 @@ export function AccountsTable({ accounts, onEditAccount, onCategoryChange }: Acc
                 </td>
 
                 <td className="text-right font-mono text-xs text-[var(--positive)] font-medium tabular-nums">
-                  {(acc.total_realized_pnl ?? 0) > 0 ? `+${formatINR(acc.total_realized_pnl ?? 0)}` : '₹0'}
+                  {isPrivacyActive
+                    ? maskPrivacyBalance('₹0', true)
+                    : (acc.total_realized_pnl ?? 0) > 0 ? `+${formatINR(acc.total_realized_pnl ?? 0)}` : '₹0'}
                 </td>
 
                 <td className="text-right">

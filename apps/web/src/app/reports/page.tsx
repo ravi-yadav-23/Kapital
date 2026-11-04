@@ -17,6 +17,7 @@ import {
   getScoreRecommendation,
   getRecommendationLabel,
   getScoreBarColor,
+  cleanTradingSymbol,
 } from '@/lib/formatters'
 import {
   Search,
@@ -108,6 +109,10 @@ export default function ReportsPage() {
 
   const handleSelectIpo = async (ipo: Ipo) => {
     setSelectedIpo(ipo)
+    const st = computeIpoStatus(ipo.issue_open_date, ipo.issue_close_date, undefined, ipo.status, ipo.allotment_date)
+    if (activeTab !== 'all' && activeTab !== st) {
+      setActiveTab(st as ReportTab)
+    }
     if (!reports[ipo.id]) {
       try {
         const rep = await apiClient.getReportById(ipo.id, ipo.slug, ipo.symbol, ipo.name)
@@ -124,6 +129,22 @@ export default function ReportsPage() {
       }
     }
   }
+
+  // Auto-sync selection from URL search params (e.g. ?id=... or ?symbol=...)
+  useEffect(() => {
+    if (typeof window === 'undefined' || ipos.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const targetId = params.get('id')
+    const targetSymbol = params.get('symbol')
+    if (targetId || targetSymbol) {
+      const match = ipos.find(
+        (i) => (targetId && i.id === targetId) || (targetSymbol && i.symbol?.toLowerCase() === targetSymbol.toLowerCase())
+      )
+      if (match) {
+        handleSelectIpo(match)
+      }
+    }
+  }, [ipos])
 
   const handleRunAiAudit = async () => {
     if (!selectedIpo) return
@@ -153,8 +174,12 @@ export default function ReportsPage() {
       }
     } catch (err: any) {
       console.error('Failed to run AI audit:', err)
+      const rawMsg = err?.message || ''
+      const safeMsg = rawMsg && !rawMsg.includes('API key') && !rawMsg.includes('token') && !rawMsg.includes('gemini')
+        ? rawMsg
+        : 'DRHP forensic audit pending. Run audit to generate multi-factor analysis.'
       setToast({
-        message: err.message || 'Audit unavailable. Please retry in a moment.',
+        message: safeMsg,
         type: 'error',
       })
       setTimeout(() => setToast(null), 5000)
@@ -222,13 +247,24 @@ export default function ReportsPage() {
   // Live factors fallback from live IPO data
   const gmpVal = breakdown?.gmp_strength ?? (selectedIpo?.gmp_percent ? Math.min(100, Math.round(selectedIpo.gmp_percent * 2)) : 60)
   const subVal = breakdown?.subscription_momentum ?? 65
+  const indVal = breakdown?.industry_tailwinds ?? (breakdown as any)?.industry_tailwind ?? 75
 
-  // Canonical score computer used identically across list items and main dossier
+  // Canonical score computer used identically across list items and main dossier (reconciled 100% weights)
   const getIpoScore = useCallback((ipo: Ipo, rep?: AiReport | null): number => {
-    if (rep?.is_audited && rep.overall_score != null) {
-      return rep.overall_score
+    const isAud = Boolean(
+      rep?.is_audited ||
+      (rep?.score_breakdown?.financial_quality != null && rep.score_breakdown.financial_quality > 0)
+    )
+    if (isAud && rep?.score_breakdown) {
+      const fin = rep.score_breakdown.financial_quality ?? 50
+      const val = rep.score_breakdown.valuation_safety ?? 50
+      const gmp = rep.score_breakdown.gmp_strength ?? 50
+      const prom = rep.score_breakdown.promoter_integrity ?? 50
+      const ind = (rep.score_breakdown as any).industry_tailwinds ?? 50
+      const sub = rep.score_breakdown.subscription_momentum ?? 50
+      return Math.round(fin * 0.25 + val * 0.20 + gmp * 0.20 + prom * 0.15 + ind * 0.10 + sub * 0.10)
     }
-    if (rep?.overall_score != null && rep.score_breakdown?.financial_quality != null && rep.score_breakdown.financial_quality > 0) {
+    if (rep?.overall_score != null && isAud) {
       return rep.overall_score
     }
     // Live preliminary score derived strictly from 60% GMP strength + 40% subscription momentum
@@ -257,8 +293,20 @@ export default function ReportsPage() {
   const redFlags = currentReport?.red_flags || selectedIpo?.red_flags || []
   const strengths = currentReport?.strengths || selectedIpo?.strengths || []
 
+  const isSme = selectedIpo?.type === 'SME' || (selectedIpo?.name && selectedIpo.name.includes('SME'))
   const gatekeepersToDisplay = (currentReport?.gatekeepers && currentReport.gatekeepers.length > 0)
-    ? currentReport.gatekeepers
+    ? currentReport.gatekeepers.map((gk) => {
+        if (gk.key === 'anchor_quality' && isSme) {
+          return {
+            ...gk,
+            details: 'Not applicable for SME issues (SEBI ICDR regulations exempt SME issues)',
+            status: 'PASS',
+            threshold: 'N/A (SME platform)',
+            impact: 'Anchor investor reservation is optional and exempt for SME listing norms.',
+          }
+        }
+        return gk
+      })
     : [
         {
           key: 'ofs_split',
@@ -271,10 +319,14 @@ export default function ReportsPage() {
         {
           key: 'anchor_quality',
           name: 'Anchor Book Quality',
-          details: isAudited ? 'Tier-1 Domestic MFs with 30-day lock-in' : 'Awaiting anchor book release',
-          status: isAudited ? 'PASS' : 'WARN',
-          threshold: 'Domestic MFs > 30%',
-          impact: 'Provides institutional price floor and cushions listing day volatility.',
+          details: isSme
+            ? 'Not applicable for SME issues (SEBI ICDR regulations exempt SME issues)'
+            : isAudited ? 'Tier-1 Domestic MFs with 30-day lock-in' : 'Awaiting anchor book release',
+          status: isSme ? 'PASS' : isAudited ? 'PASS' : 'WARN',
+          threshold: isSme ? 'N/A (SME platform)' : 'Domestic MFs > 30%',
+          impact: isSme
+            ? 'Anchor investor reservation is optional and exempt for SME listing norms.'
+            : 'Provides institutional price floor and cushions listing day volatility.',
         },
         {
           key: 'cfo_conversion',
@@ -382,7 +434,7 @@ export default function ReportsPage() {
           {/* Left Column: Search & Compact IPO List */}
           <div className="lg:col-span-4 space-y-3">
             {/* Filter Tabs (Strict 5-Bucket Parity with IPO Board) */}
-            <div className="flex items-center gap-1 border-b border-line pb-1.5 overflow-x-auto text-xs">
+            <div className="flex items-center gap-1 border-b border-line pb-1.5 overflow-x-auto scrollbar-none flex-nowrap text-xs">
               {[
                 { id: 'open' as ReportTab, label: 'Open', count: openCount },
                 { id: 'closing_today' as ReportTab, label: 'Closing Today', count: closingCount },
@@ -454,7 +506,7 @@ export default function ReportsPage() {
                         </div>
                         <div className="text-[13px] font-mono text-ink-3 mt-0.5 flex items-center gap-1.5">
                           <span className={getStatusDotClass(ipoStatus)} />
-                          <span>{ipo.symbol}</span>
+                          <span>{cleanTradingSymbol(ipo.symbol)}</span>
                           <span>·</span>
                           <span>{getStatusLabel(ipoStatus)}</span>
                         </div>
@@ -655,104 +707,122 @@ export default function ReportsPage() {
                         numbers in ₹ Cr
                       </span>
                       {!isAudited && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-300 font-mono">
-                          Pre-Audit Estimate
+                        <span className="text-[11px] px-1.5 py-0.5 rounded border border-line bg-surface text-ink-3 font-mono">
+                          Audit Required
                         </span>
                       )}
                     </div>
-                    {financialMetricsToDisplay.cfo_to_pat_ratio != null && (
+                    {isAudited && financialMetricsToDisplay.cfo_to_pat_ratio != null && (
                       <span className="text-[12px] font-mono text-ink-2">
                         Cash Conversion: <span className="text-emerald-400 font-semibold">{financialMetricsToDisplay.cfo_to_pat_ratio}x CFO/PAT</span>
                       </span>
                     )}
                   </div>
 
-                  {/* 3 Metric Columns: Revenue, PAT, CFO */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Revenue Trajectory */}
-                    <div className="p-3.5 rounded-sm bg-surface-raised border border-line space-y-2">
-                      <div className="flex justify-between items-center text-[12px]">
-                        <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Revenue</span>
-                        <span className="text-emerald-400 font-mono font-semibold text-[11px]">
-                          {financialMetricsToDisplay.revenue_growth_yoy || '+32.4% YoY'}
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between pt-1 font-mono">
-                        {financialMetricsToDisplay.revenue_history?.map((item, idx) => (
-                          <div key={idx} className="text-center">
-                            <div className="text-[10px] text-ink-3">{item.year}</div>
-                            <div className={`text-[13px] font-medium ${idx === 2 ? 'text-ink font-semibold' : 'text-ink-2'}`}>
-                              ₹{item.amount_cr} Cr
-                            </div>
+                  {!isAudited ? (
+                    <div className="p-4 rounded-sm bg-surface-raised border border-line flex flex-col items-center justify-center text-center py-6 space-y-2">
+                      <Lock className="w-5 h-5 text-ink-3" />
+                      <div className="text-[13px] font-medium text-ink">DRHP Restated Financials Pending Audit</div>
+                      <p className="text-[12px] text-ink-3 max-w-md">
+                        3-year audited financial trajectory (Revenue, PAT, CFO) is extracted directly from SEBI DRHP filings once an audit is triggered. No synthetic data is generated.
+                      </p>
+                      <button
+                        onClick={handleRunAiAudit}
+                        disabled={analyzing}
+                        className="btn-primary text-xs py-1.5 px-3 mt-1 inline-flex items-center gap-1.5"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
+                        <span>{analyzing ? 'Auditing DRHP...' : 'Run AI Audit to View'}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* 3 Metric Columns: Revenue, PAT, CFO */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Revenue Trajectory */}
+                        <div className="p-3.5 rounded-sm bg-surface-raised border border-line space-y-2">
+                          <div className="flex justify-between items-center text-[12px]">
+                            <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Revenue</span>
+                            <span className="text-emerald-400 font-mono font-semibold text-[11px]">
+                              {financialMetricsToDisplay.revenue_growth_yoy || '+32.4% YoY'}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Profit After Tax (PAT) */}
-                    <div className="p-3.5 rounded-sm bg-surface-raised border border-line space-y-2">
-                      <div className="flex justify-between items-center text-[12px]">
-                        <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Profit (PAT)</span>
-                        <span className="text-emerald-400 font-mono font-semibold text-[11px]">
-                          {financialMetricsToDisplay.pat_growth_yoy || '+41.0% YoY'}
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between pt-1 font-mono">
-                        {financialMetricsToDisplay.pat_history?.map((item, idx) => (
-                          <div key={idx} className="text-center">
-                            <div className="text-[10px] text-ink-3">{item.year}</div>
-                            <div className={`text-[13px] font-medium ${idx === 2 ? 'text-ink font-semibold' : 'text-ink-2'}`}>
-                              ₹{item.amount_cr} Cr
-                            </div>
+                          <div className="flex items-baseline justify-between pt-1 font-mono">
+                            {financialMetricsToDisplay.revenue_history?.map((item, idx) => (
+                              <div key={idx} className="text-center">
+                                <div className="text-[10px] text-ink-3">{item.year}</div>
+                                <div className={`text-[13px] font-medium ${idx === 2 ? 'text-ink font-semibold' : 'text-ink-2'}`}>
+                                  ₹{item.amount_cr} Cr
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                        </div>
 
-                    {/* Operating Cash Flow (CFO) */}
-                    <div className="p-3.5 rounded-sm bg-surface-raised border border-line space-y-2">
-                      <div className="flex justify-between items-center text-[12px]">
-                        <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Operating Cash (CFO)</span>
-                        <span className="text-emerald-400 font-mono font-semibold text-[11px]">
-                          {financialMetricsToDisplay.cfo_to_pat_ratio ?? 0.94}x Ratio
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between pt-1 font-mono">
-                        {financialMetricsToDisplay.cfo_history?.map((item, idx) => (
-                          <div key={idx} className="text-center">
-                            <div className="text-[10px] text-ink-3">{item.year}</div>
-                            <div className={`text-[13px] font-medium ${idx === 2 ? 'text-ink font-semibold' : 'text-ink-2'}`}>
-                              ₹{item.amount_cr} Cr
-                            </div>
+                        {/* Profit After Tax (PAT) */}
+                        <div className="p-3.5 rounded-sm bg-surface-raised border border-line space-y-2">
+                          <div className="flex justify-between items-center text-[12px]">
+                            <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Profit (PAT)</span>
+                            <span className="text-emerald-400 font-mono font-semibold text-[11px]">
+                              {financialMetricsToDisplay.pat_growth_yoy || '+41.0% YoY'}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                          <div className="flex items-baseline justify-between pt-1 font-mono">
+                            {financialMetricsToDisplay.pat_history?.map((item, idx) => (
+                              <div key={idx} className="text-center">
+                                <div className="text-[10px] text-ink-3">{item.year}</div>
+                                <div className={`text-[13px] font-medium ${idx === 2 ? 'text-ink font-semibold' : 'text-ink-2'}`}>
+                                  ₹{item.amount_cr} Cr
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
 
-                  {/* Demand Catalyst Callout & Provenance */}
-                  <div className="p-3 rounded-sm border border-line bg-canvas flex items-start gap-2.5 text-[12px]">
-                    <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <div className="text-ink-2 leading-relaxed">
-                        <span className="text-ink font-medium">Why Demand Follows These Numbers: </span>
-                        {financialMetricsToDisplay.growth_demand_verdict || 
-                          "Institutional QIB buyers demand consistent PAT growth backed by real cash flow (CFO/PAT > 0.70x). When cash collections match reported profits, institutional demand floods Day 3 bidding."}
+                        {/* Operating Cash Flow (CFO) */}
+                        <div className="p-3.5 rounded-sm bg-surface-raised border border-line space-y-2">
+                          <div className="flex justify-between items-center text-[12px]">
+                            <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Operating Cash (CFO)</span>
+                            <span className="text-emerald-400 font-mono font-semibold text-[11px]">
+                              {financialMetricsToDisplay.cfo_to_pat_ratio ?? 0.94}x Ratio
+                            </span>
+                          </div>
+                          <div className="flex items-baseline justify-between pt-1 font-mono">
+                            {financialMetricsToDisplay.cfo_history?.map((item, idx) => (
+                              <div key={idx} className="text-center">
+                                <div className="text-[10px] text-ink-3">{item.year}</div>
+                                <div className={`text-[13px] font-medium ${idx === 2 ? 'text-ink font-semibold' : 'text-ink-2'}`}>
+                                  ₹{item.amount_cr} Cr
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-ink-3 font-mono">
-                        {isAudited
-                          ? 'Source: SEBI Restated Consolidated Financial Statements (DRHP Filing)'
-                          : 'Source: Exchange draft disclosures / Pre-audit heuristic estimates'}
+
+                      {/* Demand Catalyst Callout & Provenance */}
+                      <div className="p-3 rounded-sm border border-line bg-canvas flex items-start gap-2.5 text-[12px]">
+                        <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <div className="text-ink-2 leading-relaxed">
+                            <span className="text-ink font-medium">Why Demand Follows These Numbers: </span>
+                            {financialMetricsToDisplay.growth_demand_verdict || 
+                              "Institutional QIB buyers demand consistent PAT growth backed by real cash flow (CFO/PAT > 0.70x). When cash collections match reported profits, institutional demand floods Day 3 bidding."}
+                          </div>
+                          <div className="text-[10px] text-ink-3 font-mono">
+                            Source: SEBI Restated Consolidated Financial Statements (DRHP Filing)
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
 
-                {/* 3. 5-Factor Forensic Breakdown */}
+                {/* 3. 6-Factor Forensic Breakdown (Strict 100% Total) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="text-[13px] font-medium text-ink-2">
-                      5-factor forensic breakdown
+                      6-factor forensic breakdown
                     </div>
                     {!isAudited && (
                       <span className="text-[13px] text-ink-3">
@@ -864,7 +934,32 @@ export default function ReportsPage() {
                       )}
                     </div>
 
-                    {/* 5. Institutional Subscription Momentum - Live factor */}
+                    {/* 5. Industry Sector Tailwinds */}
+                    <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
+                      <div className="flex justify-between items-center text-[13px]">
+                        <span className="text-ink">Industry sector tailwinds</span>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span className="text-[13px] text-ink-3 font-sans">
+                            ({isAudited ? '10%' : '—'})
+                          </span>
+                          <span className="text-ink font-medium">
+                            {isAudited && indVal !== null && indVal !== undefined
+                              ? `${indVal}/100`
+                              : 'Not assessed'}
+                          </span>
+                        </div>
+                      </div>
+                      {isAudited && indVal !== null && indVal !== undefined && (
+                        <div className="w-full h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
+                          <div
+                            className={`h-full ${getScoreBarColor(indVal)} transition-all duration-400`}
+                            style={{ width: `${indVal}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 6. Institutional Subscription Momentum - Live factor */}
                     <div className="p-3.5 rounded-sm bg-canvas border border-line space-y-1.5">
                       <div className="flex justify-between items-center text-[13px]">
                         <div className="flex items-center gap-2">

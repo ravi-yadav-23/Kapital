@@ -144,9 +144,11 @@ export function AllotmentGrid({ allotments }: AllotmentGridProps) {
                   <th>Demat Account</th>
                   <th>Allotted Shares</th>
                   <th className="text-right">Invested</th>
-                  <th>Listing Date</th>
+                  <th className="whitespace-nowrap">Listing Date</th>
                   <th>Status</th>
-                  <th className="text-right">Gain / P&L</th>
+                  <th className="text-right whitespace-nowrap" title="Active holdings valued via unregulated OTC grey market premium (GMP). Realized gains settle upon broker liquidation.">
+                    Gain / P&L <span className="text-2xs text-[var(--ink-3)] font-normal font-mono">(*Est. via GMP)</span>
+                  </th>
                   <th className="text-right">Action</th>
                 </tr>
               </thead>
@@ -167,15 +169,15 @@ export function AllotmentGrid({ allotments }: AllotmentGridProps) {
                         {item.account_name}
                       </td>
 
-                      <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums">
+                      <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums whitespace-nowrap">
                         {item.allotted_shares} shs @ ₹{item.issue_price}
                       </td>
 
-                      <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums">
+                      <td className="text-right font-mono text-xs text-[var(--ink-1)] font-medium tabular-nums whitespace-nowrap">
                         {formatINR(item.invested_amount)}
                       </td>
 
-                      <td className="font-mono text-2xs text-[var(--ink-3)]">
+                      <td className="font-mono text-2xs text-[var(--ink-3)] whitespace-nowrap">
                         {formatDate(item.listing_date)}
                       </td>
 
@@ -186,19 +188,24 @@ export function AllotmentGrid({ allotments }: AllotmentGridProps) {
                         </div>
                       </td>
 
-                      <td className="text-right font-mono text-xs font-medium tabular-nums text-[var(--positive)]">
-                        {isSold
-                          ? `+${formatINR(item.realized_pnl || 0)} (+${item.roi_percent}%)`
-                          : `+${formatINR(estGain)} (+${item.roi_percent}%)`}
+                      <td className="text-right font-mono text-xs font-medium tabular-nums text-[var(--positive)] whitespace-nowrap">
+                        {isSold ? (
+                          <span>+{formatINR(item.realized_pnl || 0)} (+{item.roi_percent}%)</span>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <span>+{formatINR(estGain)} (+{item.roi_percent}%)</span>
+                            <span className="text-[10px] text-[var(--ink-3)] font-mono font-normal tracking-tight">*Est. via GMP</span>
+                          </div>
+                        )}
                       </td>
 
                       <td className="text-right">
                         {isActive ? (
                           <button
                             onClick={() => setSelectedSellAllotment(item)}
-                            className="btn btn-secondary btn-sm"
+                            className="btn btn-secondary btn-sm whitespace-nowrap"
                           >
-                            Stage Sell
+                            View Listing Strategy
                           </button>
                         ) : (
                           <span className="text-2xs font-mono text-[var(--ink-3)]">

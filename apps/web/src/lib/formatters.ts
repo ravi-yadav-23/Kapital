@@ -7,12 +7,14 @@ import type { IpoStatus, ScoreRecommendation } from '../types/ipo.ts'
  */
 export function formatINR(amount: number | undefined | null, includeDecimals = false): string {
   if (amount === undefined || amount === null || isNaN(amount)) return '₹0'
-  return new Intl.NumberFormat('en-IN', {
+  const formatted = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: includeDecimals ? 2 : 0,
     minimumFractionDigits: includeDecimals ? 2 : 0,
   }).format(amount)
+  // Ensure no awkward space between currency symbol and amount (e.g. '₹ 15,000' -> '₹15,000')
+  return formatted.replace(/^₹\s+/, '₹').replace(/^-₹\s+/, '-₹')
 }
 
 /**
@@ -333,3 +335,52 @@ export function getStatusLabel(status: string): string {
     default: return status
   }
 }
+
+/**
+ * Format price band, cleanly rendering single price if min === max (e.g. ₹66 instead of ₹66 - ₹66)
+ */
+export function formatPriceBand(min?: number | null, max?: number | null): string {
+  if (!min && !max) return 'TBD'
+  const minVal = Math.round(min || 0)
+  const maxVal = Math.round(max || minVal)
+  if (minVal === maxVal || !maxVal) return `₹${minVal}`
+  return `₹${minVal} - ₹${maxVal}`
+}
+
+/**
+ * Sanitize ticker symbols, stripping temporary dev/placeholder codes like ZEPTEMP or *TEMP*
+ */
+export function cleanTradingSymbol(symbol?: string | null): string {
+  if (!symbol) return 'TBA'
+  const clean = symbol.trim()
+  if (/TEMP/i.test(clean) || clean === 'TBA' || clean === 'TBD' || clean === '—') {
+    return 'TBA'
+  }
+  return clean
+}
+
+/**
+ * Format lots plural without awkward interior whitespace (e.g. '1 lot', '15 lots')
+ */
+export function formatLotCount(lots: number): string {
+  return `${lots} ${lots === 1 ? 'lot' : 'lots'}`
+}
+
+/**
+ * Mask family demat balance when Privacy Mode is enabled
+ */
+export function maskPrivacyBalance(formattedAmount: string, isPrivacyActive = false): string {
+  if (!isPrivacyActive) return formattedAmount
+  return '₹••••••'
+}
+
+/**
+ * Mask family member name to initials when Privacy Mode is enabled
+ */
+export function maskPrivacyName(name: string, relation?: string, isPrivacyActive = false): string {
+  if (!isPrivacyActive) return name
+  const parts = name.trim().split(/\s+/)
+  const initials = parts.map((p) => `${p[0]?.toUpperCase()}.`).join(' ')
+  return relation ? `${initials} (${relation})` : initials
+}
+

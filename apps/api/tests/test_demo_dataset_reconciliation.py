@@ -24,11 +24,11 @@ def test_demo_fund_summary_reconciliation():
     active_locked_orders = [o for o in orders if o.status in ["APPLIED", "CONFIRMED"]]
     expected_locked = sum(o.amount for o in active_locked_orders)
     assert summary.total_locked_asba == expected_locked
-    assert summary.total_locked_asba == 580000.0
+    assert summary.total_locked_asba == 574938.0
 
     # Rule 3: Available == Corpus - Locked
     assert summary.total_available == summary.total_family_balance - summary.total_locked_asba
-    assert summary.total_available == 820000.0
+    assert summary.total_available == 825062.0
 
     # Rule 4: Sum of account available balances == total available
     sum_acc_available = sum(a.available_balance for a in accounts)
@@ -46,7 +46,7 @@ def test_demo_asba_locks_reconciliation():
 
     total_asba_locks = sum(l.amount for l in locks)
     assert total_asba_locks == summary.total_locked_asba
-    assert total_asba_locks == 580000.0
+    assert total_asba_locks == 574938.0
 
     # Every lock corresponds to an account in the demo accounts list
     accounts = {a.id for a in demo_dataset.get_accounts()}

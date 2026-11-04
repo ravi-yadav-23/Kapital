@@ -29,13 +29,15 @@ export function IpoCard({ ipo }: IpoCardProps) {
   const textColor = isHigh ? 'text-accent' : isMed ? 'text-ink-2' : 'text-ink-3'
 
   const dateText =
-    ipo.status === 'open' || ipo.status === 'closing_today'
-      ? `Closes ${formatRelativeDate(ipo.issue_close_date)}`
-      : `Opens ${formatRelativeDate(ipo.issue_open_date)}`
+    ipo.status === 'closed'
+      ? formatRelativeDate(ipo.issue_close_date)
+      : ipo.status === 'open' || ipo.status === 'closing_today'
+        ? `Closes ${formatRelativeDate(ipo.issue_close_date)}`
+        : `Opens ${formatRelativeDate(ipo.issue_open_date)}`
 
   return (
     <Link
-      href={`/ipos/${ipo.id}`}
+      href={ipo.status === 'closed' ? `/reports?id=${ipo.id}` : `/ipos/${ipo.id}`}
       className="p-4 rounded-sm bg-surface border border-line hover:border-line-strong hover:bg-surface-raised transition-colors flex flex-col justify-between space-y-4 group"
     >
       {/* Eyebrow Header: Status dot + Type badge + GMP */}
@@ -121,7 +123,7 @@ export function IpoCard({ ipo }: IpoCardProps) {
       <div className="flex items-center justify-between text-xs text-ink-2 pt-0.5">
         <span className="text-[11px] font-mono text-ink-3 truncate" suppressHydrationWarning>{dateText}</span>
         <span className="text-xs font-medium text-ink group-hover:underline flex items-center gap-1 flex-shrink-0">
-          <span>View plan</span>
+          <span>{ipo.status === 'closed' ? 'View Report' : 'View plan'}</span>
           <ArrowRight className="w-3.5 h-3.5 text-ink-3 group-hover:text-ink transition-colors" />
         </span>
       </div>

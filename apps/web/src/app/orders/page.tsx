@@ -349,22 +349,22 @@ export default function OrdersPage() {
                             {ord.category}
                           </span>
                         </td>
-                        <td className="text-right font-mono text-[13px] text-ink-2 tabular-nums">
+                        <td className="text-right font-mono text-[13px] text-ink-2 tabular-nums whitespace-nowrap">
                           {ord.lots}
                         </td>
-                        <td className="text-right font-mono text-[13px] text-ink font-medium tabular-nums">
+                        <td className="text-right font-mono text-[13px] text-ink font-medium tabular-nums whitespace-nowrap">
                           {formatINR(ord.amount)}
                         </td>
-                        <td>
+                        <td className="whitespace-nowrap">
                           <span className={getStatusPillClass(ord.status)}>
                             <span className={getStatusDotClass(ord.status)} />
                             <span>{ord.status}</span>
                           </span>
                         </td>
-                        <td className="font-mono text-[13px] text-ink-3">
+                        <td className="font-mono text-[13px] text-ink-3 whitespace-nowrap">
                           {ord.angel_order_id || '—'}
                         </td>
-                        <td className="font-mono text-[13px] text-ink-3">
+                        <td className="font-mono text-[13px] text-ink-3 whitespace-nowrap">
                           {formatDateTime(ord.placed_at)}
                         </td>
                         <td className="text-right relative">

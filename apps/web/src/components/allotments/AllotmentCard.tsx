@@ -74,7 +74,7 @@ export function AllotmentCard({ allotment, onSellTrigger }: AllotmentCardProps) 
               </span>
             </div>
             <div className="text-right">
-              <span className="text-2xs font-mono uppercase text-[var(--ink-3)] block">Est. Gain</span>
+              <span className="text-2xs font-mono uppercase text-[var(--ink-3)] block">Est. Gain (*Est. via GMP)</span>
               <span className="font-mono text-[var(--positive)] font-medium tabular-nums">
                 +{formatINR(estGain)} (+{allotment.roi_percent}%)
               </span>
@@ -89,7 +89,7 @@ export function AllotmentCard({ allotment, onSellTrigger }: AllotmentCardProps) 
             onClick={() => onSellTrigger(allotment)}
             className="btn btn-secondary btn-sm w-full justify-center"
           >
-            Stage Pre-Listing Sell
+            View Listing Strategy
           </button>
         </div>
       )}
