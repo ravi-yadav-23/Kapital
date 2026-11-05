@@ -11,6 +11,8 @@ import {
   Clock,
   Github,
   Linkedin,
+  BookOpen,
+  Globe,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { ProductHeroShowcase } from '@/components/landing/ProductHeroShowcase'
@@ -52,6 +54,9 @@ export default function LandingPage() {
           </div>
 
           <nav className="hidden lg:flex items-center gap-6 text-xs text-[var(--ink-2)]">
+            <Link href="/docs" className="hover:text-[var(--ink-1)] transition flex items-center gap-1.5 font-medium text-[var(--accent)]">
+              <BookOpen className="w-3.5 h-3.5" /> Docs
+            </Link>
             <a href="#showcase" className="hover:text-[var(--ink-1)] transition">Product Theater</a>
             <a href="#calculator" className="hover:text-[var(--ink-1)] transition">Allocation Simulator</a>
             <a href="#problem" className="hover:text-[var(--ink-1)] transition">The Problem</a>
@@ -273,7 +278,18 @@ export default function LandingPage() {
               <span className="font-mono text-2xs text-[var(--ink-2)]">All systems operational · Live feed synced</span>
             </div>
 
-            <div className="flex items-center gap-4 text-xs">
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <Link href="/docs" className="hover:text-[var(--ink-1)] transition flex items-center gap-1 text-[var(--accent)] font-medium">
+                <BookOpen className="w-3.5 h-3.5" /> Docs
+              </Link>
+              <a
+                href="https://ravi-yadav-portfolio.vercel.app/"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-[var(--ink-1)] transition flex items-center gap-1"
+              >
+                <Globe className="w-3.5 h-3.5" /> Portfolio
+              </a>
               <a
                 href="https://github.com/ravi-yadav-23/Kapital"
                 target="_blank"
@@ -283,7 +299,7 @@ export default function LandingPage() {
                 <Github className="w-3.5 h-3.5" /> GitHub
               </a>
               <a
-                href="https://linkedin.com/in/ravi-yadav-23"
+                href="https://www.linkedin.com/in/raviyadav23/"
                 target="_blank"
                 rel="noreferrer"
                 className="hover:text-[var(--ink-1)] transition flex items-center gap-1"

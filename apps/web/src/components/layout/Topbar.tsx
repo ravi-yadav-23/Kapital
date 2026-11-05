@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  BookOpen,
 } from 'lucide-react'
 import { usePrivacyMode } from '@/lib/hooks/usePrivacyMode'
 
@@ -239,6 +240,16 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
           )}
         </div>
 
+        {/* Documentation Link */}
+        <Link
+          href="/docs"
+          className="h-8 px-2 rounded-sm border border-line text-ink-3 hover:text-ink hover:bg-surface-raised transition-colors flex items-center gap-1.5 text-xs"
+          title="Open complete engineering documentation & blueprints"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-accent" />
+          <span className="hidden md:inline text-xs">Docs</span>
+        </Link>
+
         {/* Privacy Masking Toggle */}
         <button
           onClick={togglePrivacyMode}
@@ -312,6 +323,16 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
               >
                 <Settings className="w-3.5 h-3.5" />
                 <span>Settings</span>
+              </Link>
+
+              {/* Documentation Link */}
+              <Link
+                href="/docs"
+                onClick={() => setIsUserMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-xs text-ink-2 hover:text-ink hover:bg-surface-raised transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-accent" />
+                <span>Documentation</span>
               </Link>
 
               {/* Sign In / Sign Out */}

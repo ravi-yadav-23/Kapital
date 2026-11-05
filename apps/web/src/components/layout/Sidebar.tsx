@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   FileText,
   Settings,
+  BookOpen,
   X,
 } from 'lucide-react'
 
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { label: 'Orders', href: '/orders', icon: FileSpreadsheet },
   { label: 'AI Reports', href: '/reports', icon: FileText },
   { label: 'Settings', href: '/settings', icon: Settings },
+  { label: 'Documentation', href: '/docs', icon: BookOpen },
 ]
 
 interface SidebarProps {
