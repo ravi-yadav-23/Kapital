@@ -56,3 +56,4 @@ export function CodeBlock({ code, language = 'bash', title }: CodeBlockProps) {
     </div>
   )
 }
+

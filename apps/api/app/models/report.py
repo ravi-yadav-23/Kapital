@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Integer, ForeignKey, JSON, Text
+from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
@@ -36,6 +36,9 @@ class AiReport(BaseModel):
     financial_metrics = Column(JSON, default=dict, nullable=True)
     gatekeepers = Column(JSON, default=list, nullable=True)
     
+    # Audit integrity flag — False until a full LLM audit completes without errors
+    is_audited = Column(Boolean, default=False, server_default="false", nullable=False)
+
     scored_at = Column(String(50), nullable=True)
 
     ipo = relationship("Ipo", back_populates="report")

@@ -19,7 +19,9 @@ import { DOCS_CHAPTERS, Chapter, DocSection } from './docs-data'
 
 interface DocsSidebarProps {
   activeSection: string
-  onSelectSection: (id: string) => void
+  activeChapterId?: string
+  onSelectSection: (id: string, chapterId?: string) => void
+  onSelectChapter?: (id: string) => void
   searchQuery: string
   isOpen: boolean
   onClose: () => void
@@ -36,7 +38,9 @@ const CHAPTER_ICONS: Record<string, any> = {
 
 export function DocsSidebar({
   activeSection,
+  activeChapterId,
   onSelectSection,
+  onSelectChapter,
   searchQuery,
   isOpen,
   onClose,
@@ -82,10 +86,21 @@ export function DocsSidebar({
             return (
               <div key={chapter.id} className="space-y-1">
                 {/* Chapter Title */}
-                <div className="flex items-center gap-2 px-2 py-1 text-2xs uppercase font-mono tracking-wider text-[var(--ink-3)] font-medium">
-                  <Icon className="w-3.5 h-3.5 text-[var(--accent)]" />
-                  <span>{chapter.title}</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectChapter?.(chapter.id)}
+                  className={`w-full text-left flex items-center justify-between px-2 py-1 text-2xs uppercase font-mono tracking-wider transition-colors ${
+                    activeChapterId === chapter.id
+                      ? 'text-[var(--accent)] font-bold'
+                      : 'text-[var(--ink-3)] hover:text-[var(--ink-1)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    <span>{chapter.title}</span>
+                  </div>
+                  <ChevronRight className="w-3 h-3 text-[var(--ink-3)]" />
+                </button>
 
                 {/* Section Links */}
                 <div className="space-y-0.5 pt-1">
@@ -180,3 +195,4 @@ export function DocsSidebar({
     </>
   )
 }
+

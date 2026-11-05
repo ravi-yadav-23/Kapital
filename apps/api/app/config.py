@@ -15,6 +15,17 @@ class Settings(BaseSettings):
     app_name: str = "Kapitl API"
     environment: str = "development"
     secret_key: str = _INSECURE_DEFAULT_KEY
+
+    # --- Separated secret keys ---
+    # Used ONLY for JWT signing. Falls back to secret_key in dev.
+    jwt_secret_key: str = ""
+    # Used ONLY for Fernet symmetric encryption. Must be a valid 44-char URL-safe base64 key.
+    # Leave empty in dev to auto-generate or fall back to sha256(secret_key).
+    fernet_key: str = ""
+    # Used ONLY for X-API-Key service-to-service authentication.
+    # Leave empty in dev to disable API key auth entirely.
+    master_api_key: str = ""
+
     cors_origins: Any = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
@@ -53,13 +64,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self):
-        import os
+        from cryptography.fernet import Fernet
+
         val_sec = (self.secret_key or "").strip()
         val_pin = (self.admin_pin or "").strip()
-        is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+        is_production = self.environment.lower() in ("production", "prod")
 
-        if self.environment == "production" and not is_serverless:
-            # Secret key checks
+        # --- PIN strength check: enforced in BOTH production AND serverless ---
+        if is_production:
+            # Secret key (backward-compat base key) checks
             if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
                 raise ValueError(
                     "In production, SECRET_KEY must be set to a strong, private secret (cannot be empty or default)."
@@ -67,13 +80,27 @@ class Settings(BaseSettings):
             if len(val_sec) < 32:
                 raise ValueError("In production, SECRET_KEY must be at least 32 characters.")
 
-            # Admin PIN checks
+            # Require all 3 new separated keys in production
+            if not self.jwt_secret_key:
+                raise ValueError(
+                    "In production, JWT_SECRET_KEY must be explicitly set (separate from SECRET_KEY)."
+                )
+            if not self.fernet_key:
+                raise ValueError(
+                    "In production, FERNET_KEY must be explicitly set as a valid 44-char URL-safe base64 Fernet key."
+                )
+            if not self.master_api_key:
+                raise ValueError(
+                    "In production, MASTER_API_KEY must be explicitly set for X-API-Key service auth."
+                )
+
+            # Admin PIN checks — enforced unconditionally (no serverless bypass)
             if not val_pin:
                 raise ValueError("In production, ADMIN_PIN must be explicitly set.")
             if val_pin in ["1234", "0000", "1111", "123456", "000000", "111111"]:
                 raise ValueError("In production, ADMIN_PIN cannot be a trivial or default PIN.")
-            if len(val_pin) < 6:
-                raise ValueError("In production, ADMIN_PIN must be at least 6 digits/characters.")
+            if len(val_pin) < 8:
+                raise ValueError("In production, ADMIN_PIN must be at least 8 digits/characters.")
 
             # Database persistence check
             db_url = (self.database_url or "").strip().lower()
@@ -83,11 +110,22 @@ class Settings(BaseSettings):
                     "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
                 )
         else:
+            # Development / test mode
             if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
-                if is_serverless:
-                    self.secret_key = secrets.token_hex(32)
-                else:
-                    self.secret_key = _INSECURE_DEFAULT_KEY
+                self.secret_key = _INSECURE_DEFAULT_KEY
+
+            # Auto-generate a Fernet key in dev if not provided
+            if not self.fernet_key:
+                self.fernet_key = Fernet.generate_key().decode()
+
+            # Warn (not raise) about default admin PIN in dev
+            if val_pin in ["1234", "0000", "1111", "", "123456"]:
+                logger.warning(
+                    "SECURITY WARNING: ADMIN_PIN is set to a trivial default ('%s'). "
+                    "Set a strong PIN (min 8 chars) before deploying to production.",
+                    val_pin or "(empty)",
+                )
+
         return self
 
     # Database

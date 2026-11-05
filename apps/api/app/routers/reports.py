@@ -112,6 +112,7 @@ async def get_ai_report(
 @router.post("/{ipo_id}/generate", response_model=AiReportResponse)
 async def trigger_ai_analysis(
     ipo_id: str,
+    force: bool = Query(False, description="Force re-run even if report exists (admin only)"),
     symbol: Optional[str] = Query(None),
     slug: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
@@ -120,9 +121,9 @@ async def trigger_ai_analysis(
 ):
     """
     Trigger or view AI due diligence analysis for an IPO.
-    - If a report already exists in the DB, it returns the cached report with 0 LLM cost.
-    - Guest and demo accounts can view and generate the single-run report without 403 errors.
-    - Only authenticated administrators can force a fresh LLM re-run with force_refresh=True.
+    - If a report already exists in the DB and force=False, returns cached report at 0 LLM cost.
+    - Uses a Redis distributed lock to prevent concurrent redundant generation for the same issue.
+    - Only authenticated administrators can force a fresh LLM re-run with force=True.
     """
     stmt = select(Ipo).where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id) | (Ipo.symbol == ipo_id.upper()))
     res = await db.execute(stmt)
@@ -168,8 +169,42 @@ async def trigger_ai_analysis(
     res_rep = await db.execute(stmt_rep)
     existing = res_rep.scalar_one_or_none()
 
-    # Always generate or re-generate when user explicitly triggers POST /generate
-    return await report_service.get_or_generate_report(db, ipo, force_refresh=True)
+    # 1. Return cached report if present and force is False
+    if existing and not force:
+        return report_service.format_report_response(existing, ipo)
+
+    # 2. If forcing refresh, require Administrator privileges
+    if force and (not user or user.get("role") != "ADMIN" or user.get("is_guest")):
+        raise HTTPException(
+            status_code=403,
+            detail="Force re-running AI audit requires Administrator privileges. Viewing cached report.",
+        )
+
+    # 3. Distributed Redis lock per IPO to serialize concurrent audits
+    import uuid
+    from app.db.redis import get_redis_pool
+
+    redis = await get_redis_pool()
+    lock_key = f"audit_lock:{ipo.id}"
+    lock_token = str(uuid.uuid4())
+
+    if redis:
+        acquired = await redis.set(lock_key, lock_token, nx=True, px=90000)  # 90s safety TTL
+        if not acquired:
+            # Another request is actively generating this report — return existing or fallback
+            if existing:
+                return report_service.format_report_response(existing, ipo)
+            return report_service.build_fallback_report_response(ipo)
+
+    try:
+        return await report_service.get_or_generate_report(db, ipo, force_refresh=bool(force))
+    finally:
+        if redis:
+            lua = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"
+            try:
+                await redis.eval(lua, 1, lock_key, lock_token)
+            except Exception:
+                pass
 
 
 

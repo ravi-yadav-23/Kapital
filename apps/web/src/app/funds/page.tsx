@@ -21,6 +21,7 @@ export default function FundsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<FamilyAccount | null>(null)
   const [isRefreshingPlan, setIsRefreshingPlan] = useState(false)
+  const [optimizerStatus, setOptimizerStatus] = useState<'idle' | 'queued' | 'running' | 'done' | 'error'>('idle')
   const [errorToast, setErrorToast] = useState<string | null>(null)
 
   const loadData = useCallback(() => {
@@ -63,16 +64,24 @@ export default function FundsPage() {
 
   const handleRefreshPlan = async () => {
     setIsRefreshingPlan(true)
+    setOptimizerStatus('queued')
     try {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('kapitl_alloc_plan')
       }
+      setOptimizerStatus('running')
       const freshPlan = await apiClient.getAllocationPlan(true)
       setPlan(freshPlan)
+      setOptimizerStatus('done')
+      setTimeout(() => setOptimizerStatus('idle'), 2500)
     } catch (err: any) {
       console.error('Failed to re-calculate allocation plan:', err)
-      setErrorToast('Failed to optimize allocation plan.')
-      setTimeout(() => setErrorToast(null), 5000)
+      setErrorToast(err?.message || 'Failed to optimize allocation plan.')
+      setOptimizerStatus('error')
+      setTimeout(() => {
+        setErrorToast(null)
+        setOptimizerStatus('idle')
+      }, 5000)
     } finally {
       setIsRefreshingPlan(false)
     }
@@ -191,7 +200,17 @@ export default function FundsPage() {
               className="btn btn-primary btn-sm gap-1.5"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingPlan ? 'animate-spin' : ''}`} />
-              <span>{isRefreshingPlan ? 'Optimizing...' : 'Run Optimizer'}</span>
+              <span>
+                {optimizerStatus === 'queued'
+                  ? 'Queued...'
+                  : optimizerStatus === 'running'
+                  ? 'Solving MILP...'
+                  : optimizerStatus === 'done'
+                  ? '✓ Solved'
+                  : optimizerStatus === 'error'
+                  ? 'Retry Optimizer'
+                  : 'Run Optimizer'}
+              </span>
             </button>
           </div>
         </div>

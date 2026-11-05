@@ -96,3 +96,28 @@ def nightly_reports_celery(self):
     except Exception as exc:
         logger.error(f"nightly_reports failed: {exc}")
         raise self.retry(exc=exc, countdown=300)
+
+
+@celery.task(name="app.tasks.celery_app.run_optimizer_celery", bind=True, max_retries=1, time_limit=120)
+def run_optimizer_celery(self, accounts_data: list, ipos_data: list, is_demo: bool = False):
+    """
+    Celery task: Run PuLP MILP optimizer in a background worker process.
+    Returns the allocation plan as a JSON-serializable dict.
+    """
+    logger.info(f"Running MILP optimizer: {len(accounts_data)} accounts, {len(ipos_data)} IPOs")
+    try:
+        from app.services.optimizer_service import AllocationOptimizer
+        plan = AllocationOptimizer.solve_allocation(
+            accounts=accounts_data,
+            ipos=ipos_data,
+        )
+        result = plan.model_dump()  # Convert Pydantic model to dict for JSON serialization
+        if is_demo:
+            result["is_demo"] = True
+            result["warnings"] = [
+                "DEMO MODE: Showing sample allocation plan with demo family accounts. Add your real family accounts to see your personalized allocation."
+            ] + result.get("warnings", [])
+        return result
+    except Exception as exc:
+        logger.error(f"Optimizer task failed: {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=0, max_retries=0)

@@ -20,6 +20,7 @@ interface DocsHeaderProps {
   onSearchChange: (q: string) => void
   isMobileSidebarOpen: boolean
   onToggleMobileSidebar: () => void
+  onOpenSearchModal?: () => void
 }
 
 export function DocsHeader({
@@ -27,6 +28,7 @@ export function DocsHeader({
   onSearchChange,
   isMobileSidebarOpen,
   onToggleMobileSidebar,
+  onOpenSearchModal,
 }: DocsHeaderProps) {
   return (
     <header className="sticky top-0 z-50 h-14 border-b border-[var(--border-default)] bg-[var(--bg-base)]/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between">
@@ -62,19 +64,16 @@ export function DocsHeader({
 
       {/* Center Search Input */}
       <div className="hidden md:flex items-center max-w-sm w-full mx-4">
-        <div className="relative w-full">
+        <button
+          onClick={onOpenSearchModal}
+          className="relative w-full h-8 pl-8 pr-12 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--line-strong)] text-xs text-left text-[var(--ink-3)] hover:text-[var(--ink-2)] transition-colors flex items-center justify-between"
+        >
           <Search className="w-3.5 h-3.5 text-[var(--ink-3)] absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search documentation (MILP, Gatekeepers, API)..."
-            className="w-full h-8 pl-8 pr-12 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-xs text-[var(--ink-1)] placeholder:text-[var(--ink-3)] focus:border-[var(--accent)] focus:outline-none transition-colors"
-          />
-          <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-default)] text-[10px] font-mono text-[var(--ink-3)] pointer-events-none">
-            /
+          <span className="truncate">Search documentation (⌘K)...</span>
+          <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-default)] text-[10px] font-mono text-[var(--ink-3)]">
+            ⌘K
           </kbd>
-        </div>
+        </button>
       </div>
 
       {/* Right Shortcuts & Socials */}
@@ -138,3 +137,4 @@ export function DocsHeader({
     </header>
   )
 }
+

@@ -1,4 +1,5 @@
 import logging
+import secrets as secrets_module
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, Security, status, Request
@@ -15,7 +16,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT configuration
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours (was 7 days — reduced for security)
 
 security_scheme = HTTPBearer(auto_error=False)
 
@@ -31,10 +32,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def _get_secret_key() -> str:
-    key = (settings.secret_key or "").strip()
+    # Prefer the dedicated JWT key; fall back to secret_key for backward compat
+    key = (settings.jwt_secret_key or "").strip() or (settings.secret_key or "").strip()
     if not key or len(key) < 16:
         raise ValueError(
-            "Invalid SECRET_KEY: A secure key of at least 16 characters must be configured in settings."
+            "Invalid JWT secret key: A secure key of at least 16 characters must be configured "
+            "(set JWT_SECRET_KEY or SECRET_KEY in settings)."
         )
     return key
 
@@ -106,7 +109,10 @@ async def get_current_user(
     # 2. Check X-API-Key Header
     api_key_header = request.headers.get("X-API-Key")
     if api_key_header:
-        if api_key_header == settings.secret_key:
+        # Use dedicated MASTER_API_KEY with constant-time comparison to prevent timing attacks.
+        # Fall back to secret_key only in dev if master_api_key is not set.
+        expected_key = (settings.master_api_key or "").strip() or (settings.secret_key or "").strip()
+        if expected_key and secrets_module.compare_digest(api_key_header.encode(), expected_key.encode()):
             return {"id": "system-api-key", "email": "", "username": "system", "role": "ADMIN", "is_guest": False}
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -140,9 +146,14 @@ async def get_current_user_optional(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security_scheme),
 ) -> Optional[Dict[str, Any]]:
-    """Optional user dependency that returns None instead of raising 401 when no token is present."""
+    """
+    Optional user dependency that returns None when unauthenticated (401),
+    while letting unexpected server errors (500) or forbidden states propagate cleanly.
+    """
     try:
         return await get_current_user(request, credentials)
-    except Exception:
-        return None
+    except HTTPException as e:
+        if e.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise e
 

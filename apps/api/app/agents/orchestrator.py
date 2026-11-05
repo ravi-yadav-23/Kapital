@@ -65,10 +65,18 @@ class IpoDueDiligenceOrchestrator:
 
         logger.info(f"Initiating multi-agent due diligence for {ipo['symbol']}...")
 
-        # Concurrently execute Analysis and News agents
+        # Concurrently execute Analysis and News agents with a 28-second hard timeout
         analysis_task = analysis_agent.analyze(db, ipo_id)
         news_task = news_agent.analyze(db, ipo_id)
-        analysis_res, news_res = await asyncio.gather(analysis_task, news_task)
+        try:
+            analysis_res, news_res = await asyncio.wait_for(
+                asyncio.gather(analysis_task, news_task),
+                timeout=28.0,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Agent gather() timed out for {ipo.get('symbol')}")
+            analysis_res = {"analysis_failed": True, "error": "LLM timeout"}
+            news_res = {"analysis_failed": True, "error": "LLM timeout"}
 
         # Execute Allocation strategist with synthesized inputs
         allocation_res = await allocation_agent.strategize(db, ipo_id)
@@ -151,10 +159,85 @@ class IpoDueDiligenceOrchestrator:
         )
 
         if is_analysis_failed:
-            recommendation = "PENDING"
-            summary_source = "template_fallback"
-            summary_narrative = (
-                "AI analysis unavailable — no API key configured. Sector-based estimate — AI analysis not run."
+            # Return an HONEST preliminary response — never fabricate or mark as audited.
+            # Score only from live market signals (GMP + subscription).
+            gmp_pct = float(ipo.get("gmp_percent") or 0.0)
+            gmp_s = min(100, max(0, int(gmp_pct * 2.0)))
+            qib_sub = float(ipo.get("subscription_qib") or 0.0)
+            sub_m = min(100, max(20, int(qib_sub * 8.0) if qib_sub > 0 else 50))
+            preliminary_score = int(round(gmp_s * 0.60 + sub_m * 0.40))
+
+            # Persist a minimal stub to DB so the UI shows "Audit Pending" on subsequent GETs
+            # without re-triggering the full pipeline.
+            stub_summary = (
+                "AI audit not yet run. Configure an LLM API key in Settings to enable full due diligence. "
+                "Score is a preliminary market-signal estimate only."
+            )
+            stub_scored_at = datetime.now(timezone.utc).strftime("%d %b %Y")
+
+            stmt = select(AiReport).where(AiReport.ipo_id == ipo["id"])
+            res = await db.execute(stmt)
+            report_row = res.scalar_one_or_none()
+
+            if report_row:
+                # Only overwrite if the row is NOT already a fully audited report
+                if not getattr(report_row, "is_audited", False):
+                    report_row.overall_score = preliminary_score
+                    report_row.recommendation = "PENDING"
+                    report_row.executive_summary = stub_summary
+                    report_row.summary_source = "preliminary_market_signals"
+                    report_row.is_audited = False
+                    report_row.red_flags = []
+                    report_row.gatekeepers = []
+                    report_row.financial_metrics = None
+                    report_row.scored_at = stub_scored_at
+            else:
+                report_row = AiReport(
+                    id=f"rep-{str(uuid.uuid4())[:8]}",
+                    ipo_id=ipo["id"],
+                    overall_score=preliminary_score,
+                    recommendation="PENDING",
+                    executive_summary=stub_summary,
+                    summary_source="preliminary_market_signals",
+                    is_audited=False,
+                    red_flags=[],
+                    gatekeepers=[],
+                    financial_metrics=None,
+                    scored_at=stub_scored_at,
+                )
+                db.add(report_row)
+
+            await db.commit()
+
+            return AiReportResponse(
+                id=getattr(report_row, "id", f"rep-{ipo['id'][:8]}"),
+                ipo_id=ipo["id"],
+                ipo_name=ipo.get("name"),
+                ipo_symbol=ipo.get("symbol"),
+                overall_score=preliminary_score,
+                is_audited=False,
+                recommendation="PENDING",
+                executive_summary=stub_summary,
+                summary_source="preliminary_market_signals",
+                score_breakdown=ScoreBreakdownSchema(
+                    financial_quality=None,
+                    industry_tailwinds=None,
+                    subscription_momentum=None,
+                    valuation_safety=None,
+                    gmp_strength=gmp_s,
+                    promoter_integrity=None,
+                ),
+                strengths=[],
+                risks=[],
+                red_flags=[],
+                financial_metrics=None,
+                gatekeepers=[],
+                pe_ratio=None,
+                peer_avg_pe=None,
+                ofs_percentage=None,
+                gmp_percent=gmp_pct,
+                estimated_listing_price=None,
+                scored_at=stub_scored_at,
             )
         else:
             recommendation = self.get_recommendation(overall_score)
@@ -389,6 +472,7 @@ class IpoDueDiligenceOrchestrator:
             report_row.ofs_percentage = ofs_pct
             report_row.financial_metrics = financial_metrics
             report_row.gatekeepers = gatekeepers
+            report_row.is_audited = True
             report_row.scored_at = scored_at
         else:
             report_row = AiReport(
@@ -414,6 +498,7 @@ class IpoDueDiligenceOrchestrator:
                 ofs_percentage=ofs_pct,
                 financial_metrics=financial_metrics,
                 gatekeepers=gatekeepers,
+                is_audited=True,  # Full LLM audit completed successfully
                 scored_at=scored_at,
             )
             db.add(report_row)
@@ -438,7 +523,7 @@ class IpoDueDiligenceOrchestrator:
             ipo_name=ipo.get("name"),
             ipo_symbol=ipo.get("symbol"),
             overall_score=report_row.overall_score,
-            is_audited=True,
+            is_audited=True,  # Full LLM audit completed successfully
             recommendation=report_row.recommendation,
             executive_summary=report_row.executive_summary,
             summary_source=report_row.summary_source,

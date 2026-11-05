@@ -210,7 +210,7 @@ class AiDueDiligenceService:
             ipo_name=ipo_name,
             ipo_symbol=ipo_symbol,
             overall_score=existing.overall_score,
-            is_audited=True,
+            is_audited=existing.is_audited if hasattr(existing, "is_audited") else True,
             recommendation=existing.recommendation,
             score_breakdown=ScoreBreakdownSchema(
                 financial_quality=existing.score_financial_quality,
@@ -311,42 +311,50 @@ class AiDueDiligenceService:
             GatekeeperCheckSchema(
                 key="ofs_split",
                 name="OFS vs. Fresh Issue Split",
-                details="Fresh: 75% | OFS: 25% (Estimated)",
-                status="PASS",
+                details="Fresh: 75% | OFS: 25% (Estimated — Preliminary estimate — run AI audit to verify)",
+                status="WARN",
                 threshold="OFS ≤ 40% (Fresh ≥ 60%)",
-                impact="Capital retained inside company to fund capex; minimal promoter dump.",
+                impact="Capital retained inside company to fund capex; minimal promoter dump. (Preliminary estimate — run AI audit to verify)",
             ),
             GatekeeperCheckSchema(
                 key="anchor_quality",
                 name="Anchor Book Quality",
-                details="Exempt for SME platform issues (SEBI ICDR regulations)" if is_sme else "Requires DRHP audit to verify mutual fund participation.",
-                status="PASS" if is_sme else "WARN",
+                details=(
+                    "Exempt for SME platform issues (SEBI ICDR regulations) (Preliminary estimate — run AI audit to verify)"
+                    if is_sme
+                    else "Requires DRHP audit to verify mutual fund participation. (Preliminary estimate — run AI audit to verify)"
+                ),
+                status="WARN",
                 threshold="N/A (SME platform)" if is_sme else "Domestic MFs > 30%",
-                impact="Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms." if is_sme else "Audit needed to confirm institutional price floor stability.",
+                impact=(
+                    "Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms. (Preliminary estimate — run AI audit to verify)"
+                    if is_sme
+                    else "Audit needed to confirm institutional price floor stability. (Preliminary estimate — run AI audit to verify)"
+                ),
             ),
             GatekeeperCheckSchema(
                 key="cfo_conversion",
                 name="Cash Flow vs. PAT Conversion",
-                details="Estimated CFO/PAT ratio ~0.92x",
-                status="PASS",
+                details="Estimated CFO/PAT ratio ~0.92x (Preliminary estimate — run AI audit to verify)",
+                status="WARN",
                 threshold="CFO / PAT Ratio ≥ 0.70x",
-                impact="Cash generation aligns with reported earnings; supports QIB interest.",
+                impact="Cash generation aligns with reported earnings; supports QIB interest. (Preliminary estimate — run AI audit to verify)",
             ),
             GatekeeperCheckSchema(
                 key="valuation_cushion",
                 name="Valuation Room vs. Listed Peers",
-                details="Requires DRHP audit for precise peer multiple discount.",
+                details="Requires DRHP audit for precise peer multiple discount. (Preliminary estimate — run AI audit to verify)",
                 status="WARN",
                 threshold="≥ 15% discount to peers",
-                impact="Run audit to calculate upside margin on listing morning.",
+                impact="Run audit to calculate upside margin on listing morning. (Preliminary estimate — run AI audit to verify)",
             ),
             GatekeeperCheckSchema(
                 key="litigation_exposure",
                 name="Litigation Liability Ratio",
-                details="No critical court orders detected in public preliminary scan.",
-                status="PASS",
+                details="No critical court orders detected in public preliminary scan. (Preliminary estimate — run AI audit to verify)",
+                status="WARN",
                 threshold="Claims < 5% of Issue Size",
-                impact="Clean preliminary regulatory posture.",
+                impact="Clean preliminary regulatory posture. (Preliminary estimate — run AI audit to verify)",
             ),
         ]
 

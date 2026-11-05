@@ -474,10 +474,35 @@ export const apiClient = {
     try {
       const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
         method: 'POST',
-      }, 15000)
-      const data = await handleResponse<any>(res, MOCK_ALLOCATION_PLAN)
+      }, 20000)
+      let data = await handleResponse<any>(res, MOCK_ALLOCATION_PLAN)
+
+      // Handle async 202 background task pattern with polling
+      if (data?.task_id && (data?.status === 'QUEUED' || res.status === 202)) {
+        const taskId = data.task_id
+        const MAX_POLLS = 25
+        const POLL_INTERVAL_MS = 1500
+
+        for (let i = 0; i < MAX_POLLS; i++) {
+          await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+          try {
+            const pollRes = await authFetch(`${API_BASE_URL}/funds/optimize/status/${taskId}`, {}, 10000)
+            if (pollRes.ok) {
+              const pollData = await pollRes.json()
+              if (pollData && pollData.status !== 'PENDING') {
+                data = pollData
+                break
+              }
+            }
+          } catch {
+            // Continue polling on transient fetch hiccup
+          }
+        }
+      }
+
       const result: AllocationPlan = {
         plan_id: data?.plan_id || `plan-${Date.now()}`,
+        status: data?.status || 'OPTIMAL',
         generated_at: data?.generated_at || new Date().toISOString(),
         total_capital_deployed: data?.total_capital_deployed || 0,
         entries: Array.isArray(data?.entries) ? data.entries : [],
@@ -489,6 +514,9 @@ export const apiClient = {
           : data?.status === 'NO_ACTIVE_ISSUES'
           ? ['No active IPO bidding windows open today. Capital preserved liquid for upcoming issues.']
           : [],
+        is_demo: Boolean(data?.is_demo),
+        asba_lock_overlaps_detected: data?.asba_lock_overlaps_detected || 0,
+        upcoming_conflicts: Array.isArray(data?.upcoming_conflicts) ? data.upcoming_conflicts : [],
       }
 
       if (typeof window !== 'undefined' && result.entries.length > 0) {

@@ -13,10 +13,13 @@ Key capabilities:
 - Date-aware filtering: skips closed issues regardless of DB status flag
 """
 
+import logging
 from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone, date as DateType
 
 from app.schemas.fund import AllocationPlanResponse, AllocationEntrySchema, UpcomingConflictSchema  # noqa: F401
+
+logger = logging.getLogger("optimizer_service")
 
 try:
     import pulp
@@ -321,7 +324,8 @@ class AllocationOptimizer:
                 i_id = ipo["id"]
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(ipo)
                 score = ipo.get("score", 50) or 50
-                gmp_pct = ipo.get("gmp_percent", 15.0) or 15.0
+                # Cap GMP at 80% to guard objective function against grey-market pump manipulation
+                gmp_pct = min(float(ipo.get("gmp_percent", 15.0) or 15.0), 80.0)
 
                 # Weight = expected capital gain (amount × gmp%) × score confidence
                 retail_weight = (min_inv * (gmp_pct / 100.0) * (score / 100.0)) * 0.35
@@ -380,6 +384,12 @@ class AllocationOptimizer:
             prob += pulp.lpSum(account_expenditures) <= available
 
         prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=15))
+
+        # Check solver status — if infeasible or error, fall back to greedy knapsack
+        solver_status = pulp.LpStatus[prob.status]
+        if solver_status not in ("Optimal", "Not Solved"):
+            logger.warning(f"PuLP MILP solver status is '{solver_status}' — falling back to optimal greedy knapsack.")
+            return cls._solve_greedy(active_accounts, active_ipos)
 
         entries = []
         total_deployed = 0.0
@@ -491,7 +501,7 @@ class AllocationOptimizer:
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
                 retail_lots = max(1, int(round(min_inv / lot_cost)))
                 lot_sz = int(target_ipo.get("lot_size") or (1000 if "SME" in str(target_ipo.get("name", "")).upper() else 1))
-                gmp_pct = target_ipo.get("gmp_percent", 20.0) or 20.0
+                gmp_pct = min(float(target_ipo.get("gmp_percent", 20.0) or 20.0), 80.0)
                 score = target_ipo.get("score", 50) or 50
                 shni_cost = shni_lots * lot_cost
                 bhni_cost = bhni_lots * lot_cost
