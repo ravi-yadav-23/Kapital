@@ -6,7 +6,7 @@ import uuid
 
 from app.config import settings
 from app.db.database import init_db
-from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, auth
+from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, auth, cron
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -184,5 +184,7 @@ app.include_router(reports.router, prefix="/api", tags=["reports"])
 app.include_router(reports.router, prefix="", tags=["reports"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
 app.include_router(settings_router.router, prefix="", tags=["settings"])
+app.include_router(cron.router, prefix="/api", tags=["cron"])
+app.include_router(cron.router, prefix="", tags=["cron"])
 app.include_router(websocket.router, tags=["websocket"])
 app.include_router(websocket.router, prefix="/api", tags=["websocket"])

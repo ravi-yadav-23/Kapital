@@ -11,6 +11,11 @@ async def seed_initial_ipos_and_reports(db: AsyncSession) -> int:
     reports directly from live exchange feeds (ipoalerts.in & ipowatch.in).
     NO HARDCODED IPOS: All issues, price bands, GMP, and dates are dynamically fetched.
     """
+    from app.config import settings
+    if getattr(settings, "environment", "").lower() in ("test", "testing"):
+        logger.info("[Sync] Test environment detected; skipping live network sync.")
+        return 0
+
     try:
         # Check if database already has IPOs
         count_stmt = select(func.count(Ipo.id))

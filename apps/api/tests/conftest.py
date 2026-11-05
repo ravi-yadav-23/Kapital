@@ -116,6 +116,7 @@ async def seed_data(test_engine):
                 id="rep-test-1",
                 ipo_id="ipo-test-1",
                 overall_score=82,
+                is_audited=True,
                 recommendation="STRONG_APPLY",
                 executive_summary="High quality growth profile with massive institutional backing.",
                 score_financial_quality=85,

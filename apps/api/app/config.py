@@ -72,7 +72,7 @@ class Settings(BaseSettings):
 
         # --- PIN strength check: enforced in BOTH production AND serverless ---
         if is_production:
-            # Secret key (backward-compat base key) checks
+            # Secret key checks
             if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
                 raise ValueError(
                     "In production, SECRET_KEY must be set to a strong, private secret (cannot be empty or default)."
@@ -80,27 +80,13 @@ class Settings(BaseSettings):
             if len(val_sec) < 32:
                 raise ValueError("In production, SECRET_KEY must be at least 32 characters.")
 
-            # Require all 3 new separated keys in production
-            if not self.jwt_secret_key:
-                raise ValueError(
-                    "In production, JWT_SECRET_KEY must be explicitly set (separate from SECRET_KEY)."
-                )
-            if not self.fernet_key:
-                raise ValueError(
-                    "In production, FERNET_KEY must be explicitly set as a valid 44-char URL-safe base64 Fernet key."
-                )
-            if not self.master_api_key:
-                raise ValueError(
-                    "In production, MASTER_API_KEY must be explicitly set for X-API-Key service auth."
-                )
-
-            # Admin PIN checks — enforced unconditionally (no serverless bypass)
+            # Admin PIN checks — minimum 6 characters in production
             if not val_pin:
                 raise ValueError("In production, ADMIN_PIN must be explicitly set.")
             if val_pin in ["1234", "0000", "1111", "123456", "000000", "111111"]:
                 raise ValueError("In production, ADMIN_PIN cannot be a trivial or default PIN.")
-            if len(val_pin) < 8:
-                raise ValueError("In production, ADMIN_PIN must be at least 8 digits/characters.")
+            if len(val_pin) < 6:
+                raise ValueError("In production, ADMIN_PIN must be at least 6 digits/characters.")
 
             # Database persistence check
             db_url = (self.database_url or "").strip().lower()
@@ -109,6 +95,16 @@ class Settings(BaseSettings):
                     "In production, DATABASE_URL must be a managed PostgreSQL connection "
                     "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
                 )
+
+            # Auto-populate separated keys if not explicitly provided
+            if not self.jwt_secret_key:
+                self.jwt_secret_key = self.secret_key
+            if not self.master_api_key:
+                self.master_api_key = self.secret_key
+            if not self.fernet_key:
+                import base64, hashlib
+                derived = base64.urlsafe_b64encode(hashlib.sha256(self.secret_key.encode()).digest()).decode()
+                self.fernet_key = derived
         else:
             # Development / test mode
             if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:

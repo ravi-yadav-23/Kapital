@@ -42,7 +42,22 @@ class PnlService:
         issue_px = allotment.issue_price or 0.0
         invested = round(shares * issue_px, 2)
         realized = round(shares * exit_price, 2)
-        net_pnl = round(realized - invested, 2)
+        gross_pnl = round(realized - invested, 2)
+
+        # Statutory Indian equity transaction costs & frictional deductions:
+        # 1. STT (Securities Transaction Tax): 0.1% on delivery sell turnover
+        stt = round(realized * 0.001, 2)
+        # 2. DP Charges (Depository Participant debit fee): ₹15.34 (Angel One + CDSL)
+        dp_charge = 15.34
+        # 3. Exchange turnover charges: ~0.003% (NSE delivery)
+        exchange_turnover = round(realized * 0.00003, 2)
+        # 4. SEBI turnover fee: ₹10 per crore
+        sebi_charges = round(realized * 0.000001, 2)
+        # 5. GST (18%) on DP charges and exchange turnover fees
+        gst = round((dp_charge + exchange_turnover) * 0.18, 2)
+
+        total_friction = round(stt + dp_charge + exchange_turnover + sebi_charges + gst, 2)
+        net_pnl = round(gross_pnl - total_friction, 2)
         roi = round((net_pnl / invested * 100), 4) if invested else 0.0
 
         record = RealizedPnl(

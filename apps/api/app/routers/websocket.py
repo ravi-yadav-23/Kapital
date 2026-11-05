@@ -1,7 +1,7 @@
 import asyncio
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import List
+from typing import List, Optional
 
 router = APIRouter(tags=["websocket"])
 
@@ -50,13 +50,35 @@ async def broadcast_event(event_type: str, payload: dict):
     await manager.broadcast(message)
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: Optional[str] = None,
+):
     """
     Real-time telemetry stream for:
     - Live GMP & subscription updates
     - SmartAPI order status transitions
     - 09:00:00 AM pre-market sell execution ticks
+    Secured with JWT authentication query parameter.
     """
+    from app.config import settings
+    from app.middleware.auth import decode_access_token
+
+    # Enforce authentication in production
+    is_prod = getattr(settings, "environment", "").lower() in ("production", "prod")
+    if is_prod:
+        if not token:
+            await websocket.close(code=1008, reason="Authentication token required")
+            return
+        try:
+            payload = decode_access_token(token)
+            if not payload or not payload.get("sub"):
+                await websocket.close(code=1008, reason="Invalid token")
+                return
+        except Exception:
+            await websocket.close(code=1008, reason="Unauthorized")
+            return
+
     await manager.connect(websocket)
     try:
         # Send initial connection handshake

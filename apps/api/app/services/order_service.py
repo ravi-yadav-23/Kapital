@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -57,8 +58,11 @@ class OrderService:
 
     @staticmethod
     async def create_order(db: AsyncSession, data: OrderCreate) -> OrderResponse:
-        # Fetch account from DB
-        acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == data.account_id))
+        # Fetch account from DB with row-level locking (Postgres) to prevent concurrent balance double-spending
+        acc_stmt = select(FamilyAccount).where(FamilyAccount.id == data.account_id)
+        if db.bind and getattr(db.bind, "dialect", None) and db.bind.dialect.name != "sqlite":
+            acc_stmt = acc_stmt.with_for_update()
+        acc_res = await db.execute(acc_stmt)
         acc = acc_res.scalar_one_or_none()
         if not acc:
             raise ValueError(f"Demat account with ID '{data.account_id}' not found.")
@@ -239,9 +243,18 @@ class OrderService:
     ) -> Dict[str, Any]:
         """
         Executes a batch of IPO applications (e.g. from optimizer allocation plan).
-        Attempts each within the session, records successes and failures gracefully,
-        and broadcasts real-time events.
+        Concurrently dispatches orders with bounded parallelism (Semaphore 3)
+        to prevent 30s gateway timeouts and connection starvation.
         """
+        if not orders:
+            return {
+                "succeeded": [],
+                "failed": [],
+                "total_requested": 0,
+                "total_staged": 0,
+                "total_amount_locked": 0.0,
+            }
+
         succeeded: List[OrderResponse] = []
         failed: List[Dict[str, Any]] = []
 

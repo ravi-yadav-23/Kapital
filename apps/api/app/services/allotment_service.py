@@ -168,14 +168,29 @@ class AllotmentService:
 
             holdings = holdings_by_client[client_id]
             clean_sym = (ipo.symbol or "").upper().replace("-EQ", "").strip()
+            ipo_isin = (ipo.isin or "").upper().strip()
 
-            def _is_exact_symbol_match(h: dict) -> bool:
-                tsym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").strip()
+            def _is_allotment_match(h: dict) -> bool:
+                # 1. Exact or normalized ISIN match (gold standard for pre-listing unlisted shares)
+                h_isin = (h.get("isin") or "").upper().strip()
+                if ipo_isin and h_isin and ipo_isin == h_isin:
+                    return True
+
+                # 2. Trading symbol matching (supports -EQ, -SM, -ST, -BE suffixes)
+                tsym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").replace("-SM", "").replace("-ST", "").strip()
                 sname = (h.get("symbolname") or "").upper().strip()
-                return clean_sym == tsym or clean_sym == sname
+                if clean_sym and (clean_sym == tsym or clean_sym == sname):
+                    return True
+
+                # 3. Substring / name match for SME or temporary allotment symbols (e.g. VEDANT-RE, ZEPTEMP)
+                if clean_sym and len(clean_sym) >= 4:
+                    if clean_sym in tsym or clean_sym in sname:
+                        return True
+
+                return False
 
             matched_holding = next(
-                (h for h in holdings if _is_exact_symbol_match(h)),
+                (h for h in holdings if _is_allotment_match(h)),
                 None
             )
 
@@ -183,7 +198,8 @@ class AllotmentService:
                 await order_service.process_allotment_result(db, ord.id, result="ALLOTTED")
                 results["allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Allotted {matched_holding.get('totalqty')} shares of {ipo.name}")
-            elif listing_date and today > (listing_date + timedelta(days=1)):
+            elif listing_date and today > (listing_date + timedelta(days=3)):
+                # Only assume NOT_ALLOTTED after a 3-day buffer post-listing to avoid false unblocks
                 await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
                 results["not_allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Not allotted for {ipo.name} (Funds released)")

@@ -204,22 +204,37 @@ class AiDueDiligenceService:
                 except Exception:
                     pass
 
-        return AiReportResponse(
-            id=existing.id,
-            ipo_id=existing.ipo_id,
-            ipo_name=ipo_name,
-            ipo_symbol=ipo_symbol,
-            overall_score=existing.overall_score,
-            is_audited=existing.is_audited if hasattr(existing, "is_audited") else True,
-            recommendation=existing.recommendation,
-            score_breakdown=ScoreBreakdownSchema(
+        audited = bool(getattr(existing, "is_audited", True))
+        if not audited:
+            sb = ScoreBreakdownSchema(
+                financial_quality=None,
+                industry_tailwinds=None,
+                subscription_momentum=existing.score_subscription_momentum,
+                valuation_safety=None,
+                gmp_strength=existing.score_gmp_strength,
+                promoter_integrity=None,
+            )
+            overall_score = int(round((existing.score_gmp_strength or 0) * 0.60 + (existing.score_subscription_momentum or 0) * 0.40))
+        else:
+            sb = ScoreBreakdownSchema(
                 financial_quality=existing.score_financial_quality,
                 industry_tailwinds=existing.score_industry_tailwinds,
                 subscription_momentum=existing.score_subscription_momentum,
                 valuation_safety=existing.score_valuation_safety,
                 gmp_strength=existing.score_gmp_strength,
                 promoter_integrity=existing.score_promoter_integrity,
-            ),
+            )
+            overall_score = existing.overall_score
+
+        return AiReportResponse(
+            id=existing.id,
+            ipo_id=existing.ipo_id,
+            ipo_name=ipo_name,
+            ipo_symbol=ipo_symbol,
+            overall_score=overall_score,
+            is_audited=audited,
+            recommendation=existing.recommendation,
+            score_breakdown=sb,
             executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo_name}.",
             summary_source=getattr(existing, "summary_source", "ai_generated") or "ai_generated",
             strengths=existing.strengths or (ipo.strengths if ipo else []) or [],

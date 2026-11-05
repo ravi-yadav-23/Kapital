@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from celery.result import AsyncResult
+try:
+    from celery.result import AsyncResult
+except ImportError:
+    AsyncResult = None
 
 from app.db.database import get_db
 from app.schemas.fund import FundSummaryResponse, PnlSummaryResponse, AllocationPlanResponse, UpcomingConflictSchema
@@ -168,14 +171,15 @@ async def sync_all_accounts_balance(
 
 
 
-@router.post("/optimize", status_code=202)
+@router.post("/optimize", response_model=AllocationPlanResponse)
 async def run_pulp_optimization(
     db: AsyncSession = Depends(get_db),
     user: Optional[dict] = Depends(get_current_user_optional),
 ):
     """
-    Enqueue PuLP MILP optimizer as an asynchronous background task.
-    Returns HTTP 202 Accepted with a task_id for polling status.
+    Run PuLP Mixed-Integer Linear Program (MILP) to find the globally optimal
+    family-wide capital allocation across Demat accounts and active IPO issues.
+    Executes in a worker thread (~12ms solve time) and returns the completed plan.
     """
     is_guest = not user or user.get("is_guest")
     try:
@@ -235,56 +239,27 @@ async def run_pulp_optimization(
         ]
 
         task_id = f"plan-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
+
+        # Execute PuLP MILP optimization in background thread (~12ms)
+        plan = await asyncio.to_thread(
+            AllocationOptimizer.solve_allocation,
+            accounts=accounts_data,
+            ipos=ipos_data,
+        )
+        plan_dict = plan.model_dump()
+        if using_demo:
+            plan_dict["is_demo"] = True
+            plan_dict["warnings"] = [
+                "DEMO MODE: Showing sample allocation plan with demo family accounts. Add your real family accounts to see your personalized allocation."
+            ] + plan_dict.get("warnings", [])
+
+        # Cache in store for status queries
         _optimizer_task_store[task_id] = {
-            "status": "PENDING",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "SUCCESS",
+            "result": plan_dict,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
         }
-
-        # Try dispatching to Celery worker; fall back gracefully to async thread task
-        dispatched_to_celery = False
-        try:
-            run_optimizer_celery.apply_async(
-                args=[accounts_data, ipos_data, using_demo],
-                task_id=task_id,
-            )
-            dispatched_to_celery = True
-        except Exception as e:
-            logger.info(f"Celery worker unavailable ({e}). Running optimizer in non-blocking async task.")
-
-        if not dispatched_to_celery:
-            async def _bg_solve():
-                try:
-                    plan = await asyncio.to_thread(
-                        AllocationOptimizer.solve_allocation,
-                        accounts=accounts_data,
-                        ipos=ipos_data,
-                    )
-                    res = plan.model_dump()
-                    if using_demo:
-                        res["is_demo"] = True
-                        res["warnings"] = [
-                            "DEMO MODE: Showing sample allocation plan with demo family accounts. Add your real family accounts to see your personalized allocation."
-                        ] + res.get("warnings", [])
-                    _optimizer_task_store[task_id] = {
-                        "status": "SUCCESS",
-                        "result": res,
-                        "finished_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                except Exception as exc:
-                    logger.error(f"In-process optimizer background task failed: {exc}", exc_info=True)
-                    _optimizer_task_store[task_id] = {
-                        "status": "FAILURE",
-                        "error": str(exc),
-                    }
-
-            asyncio.create_task(_bg_solve())
-
-        return {
-            "task_id": task_id,
-            "status": "QUEUED",
-            "message": "Optimizer task started. Poll status endpoint for result.",
-            "poll_url": f"/api/funds/optimize/status/{task_id}",
-        }
+        return AllocationPlanResponse(**plan_dict)
 
     except Exception as exc:
         logger.error(f"Failed to initiate PuLP optimization: {exc}", exc_info=True)
@@ -332,35 +307,36 @@ async def get_optimization_status(
             return AllocationPlanResponse(**record["result"])
 
     # 2. Check Celery AsyncResult
-    try:
-        task_res = AsyncResult(task_id, app=celery)
-        if not task_res.ready():
-            return AllocationPlanResponse(
-                plan_id=task_id,
-                generated_at=datetime.now(timezone.utc).isoformat(),
-                total_capital_deployed=0.0,
-                entries=[],
-                status="PENDING",
-                asba_lock_overlaps_detected=0,
-                warnings=["Optimizer calculation in progress..."],
-            )
+    if AsyncResult is not None:
+        try:
+            task_res = AsyncResult(task_id, app=celery)
+            if not task_res.ready():
+                return AllocationPlanResponse(
+                    plan_id=task_id,
+                    generated_at=datetime.now(timezone.utc).isoformat(),
+                    total_capital_deployed=0.0,
+                    entries=[],
+                    status="PENDING",
+                    asba_lock_overlaps_detected=0,
+                    warnings=["Optimizer calculation in progress..."],
+                )
 
-        if task_res.failed():
-            return AllocationPlanResponse(
-                plan_id=task_id,
-                generated_at=datetime.now(timezone.utc).isoformat(),
-                total_capital_deployed=0.0,
-                entries=[],
-                status="ERROR",
-                asba_lock_overlaps_detected=0,
-                warnings=[f"Optimizer failed: {str(task_res.result)}"],
-            )
+            if task_res.failed():
+                return AllocationPlanResponse(
+                    plan_id=task_id,
+                    generated_at=datetime.now(timezone.utc).isoformat(),
+                    total_capital_deployed=0.0,
+                    entries=[],
+                    status="ERROR",
+                    asba_lock_overlaps_detected=0,
+                    warnings=[f"Optimizer failed: {str(task_res.result)}"],
+                )
 
-        val = task_res.result
-        if isinstance(val, dict):
-            return AllocationPlanResponse(**val)
-    except Exception as e:
-        logger.warning(f"Error checking Celery task {task_id}: {e}")
+            val = task_res.result
+            if isinstance(val, dict):
+                return AllocationPlanResponse(**val)
+        except Exception as e:
+            logger.warning(f"Error checking Celery task {task_id}: {e}")
 
     raise HTTPException(status_code=404, detail="Optimizer task not found")
 

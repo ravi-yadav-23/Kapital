@@ -1,33 +1,51 @@
 import asyncio
 import logging
-from celery import Celery
-from celery.schedules import crontab
 
 from app.config import settings
 
 logger = logging.getLogger("celery.app")
 
-# Initialize Celery app
-celery = Celery(
-    "kapitl",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
-)
+try:
+    from celery import Celery
+    from celery.schedules import crontab
+    CELERY_AVAILABLE = True
 
-# Configure Celery
-celery.conf.update(
-    timezone="Asia/Kolkata",
-    enable_utc=False,
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    task_track_started=True,
-    task_time_limit=600,  # 10 minutes max per task
-)
+    # Initialize Celery app
+    celery = Celery(
+        "kapitl",
+        broker=settings.redis_url,
+        backend=settings.redis_url,
+    )
 
-# Note: Periodic scheduling is managed natively in-process by APScheduler (app.tasks.scheduler)
-# to avoid requiring external Redis/Celery beat services for routine execution.
-celery.conf.beat_schedule = {}
+    # Configure Celery
+    celery.conf.update(
+        timezone="Asia/Kolkata",
+        enable_utc=False,
+        task_serializer="json",
+        accept_content=["json"],
+        result_serializer="json",
+        task_track_started=True,
+        task_time_limit=600,  # 10 minutes max per task
+    )
+    celery.conf.beat_schedule = {}
+except ImportError:
+    CELERY_AVAILABLE = False
+    logger.info("Celery is not installed in the current environment; running tasks with fallback handlers.")
+
+    class _DummyCelery:
+        def task(self, *args, **kwargs):
+            def decorator(f):
+                class _TaskWrapper:
+                    def __init__(self, fn):
+                        self.fn = fn
+                    def __call__(self, *a, **kw):
+                        return self.fn(*a, **kw)
+                    def apply_async(self, *a, **kw):
+                        raise RuntimeError("Celery is not installed in this environment.")
+                return _TaskWrapper(f)
+            return decorator
+
+    celery = _DummyCelery()
 
 
 # ── Celery Task Definitions ───────────────────────────────────────────────────

@@ -32,11 +32,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def _get_secret_key() -> str:
-    # Prefer the dedicated JWT key; fall back to secret_key for backward compat
-    key = (settings.jwt_secret_key or "").strip() or (settings.secret_key or "").strip()
+    # Prefer dedicated JWT key if valid, else fall back to secret_key
+    jwt_key = (settings.jwt_secret_key or "").strip()
+    sec_key = (settings.secret_key or "").strip()
+    key = jwt_key if jwt_key and len(jwt_key) >= 16 else sec_key
     if not key or len(key) < 16:
         raise ValueError(
-            "Invalid JWT secret key: A secure key of at least 16 characters must be configured "
+            "Invalid SECRET_KEY: A secure key of at least 16 characters must be configured "
             "(set JWT_SECRET_KEY or SECRET_KEY in settings)."
         )
     return key

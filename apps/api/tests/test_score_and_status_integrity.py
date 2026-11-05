@@ -125,7 +125,7 @@ def test_demo_data_whole_lots_and_asba_reconciliation():
 
 
 @pytest.mark.asyncio
-async def test_score_equality_across_all_endpoints():
+async def test_score_equality_across_all_endpoints(seed_data):
     """Verify that every IPO returns the exact same score from /api/ipos, /api/ipos/{id}, and /api/reports/{id}."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         res_ipos = await client.get("/api/ipos")
