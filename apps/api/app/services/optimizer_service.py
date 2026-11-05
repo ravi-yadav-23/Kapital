@@ -32,8 +32,9 @@ except ImportError:
 _ASBA_DEFAULT_LOCK_DAYS = 8
 # Only reserve capital for upcoming IPOs with score >= this threshold.
 _RESERVATION_MIN_SCORE = 60
-# Only reserve for upcoming IPOs opening within this many days.
-_RESERVATION_LOOKAHEAD_DAYS = 30
+# Only reserve for upcoming high-conviction IPOs opening within 14 days (2-week pipeline window)
+# to avoid starving the current active bidding window while accounting for T+3 ASBA refund cycles.
+_RESERVATION_LOOKAHEAD_DAYS = 14
 
 
 def _parse_date(val: Any) -> DateType | None:
@@ -340,7 +341,7 @@ class AllocationOptimizer:
 
         prob += pulp.lpSum(objective_terms)
 
-        # SEBI constraint: max 1 bid per account per IPO (one PAN = one application)
+        # SEBI constraint: max 1 bid per account per IPO
         for acc in active_accounts:
             a_id = acc["id"]
             for ipo in active_ipos:
@@ -352,6 +353,28 @@ class AllocationOptimizer:
                     <= 1,
                     f"One_Category_{a_id}_{i_id}",
                 )
+
+        # SEBI strict 1-application-per-PAN rule across family demats
+        from collections import defaultdict
+        pan_to_acc_ids = defaultdict(list)
+        for acc in active_accounts:
+            pan = (acc.get("pan") or "").strip().upper()
+            if pan:
+                pan_to_acc_ids[pan].append(acc["id"])
+
+        for pan, acc_ids in pan_to_acc_ids.items():
+            if len(acc_ids) > 1:
+                for ipo in active_ipos:
+                    i_id = ipo["id"]
+                    prob += (
+                        pulp.lpSum(
+                            decision_vars[(a_id, i_id, cat)]
+                            for a_id in acc_ids
+                            for cat in categories
+                        )
+                        <= 1,
+                        f"SEBI_PAN_{pan}_{i_id}",
+                    )
 
         # Budget constraints per account & preferred category enforcement
         for acc in active_accounts:
@@ -490,14 +513,19 @@ class AllocationOptimizer:
         )
         entries = []
         total_deployed = 0.0
+        allocated_pan_ipos = set()
 
         for acc in active_accounts:
             avail = acc.get("available_liquid_balance", 0)
             pref_cat = (acc.get("preferred_category", "RETAIL") or "RETAIL").upper()
             reserved = acc.get("_reserved_for_upcoming", 0)
             reservation_note = f" (₹{reserved:,.0f} held back for upcoming issues)" if reserved > 0 else ""
+            acc_pan = (acc.get("pan") or "").strip().upper()
 
             for target_ipo in sorted_ipos:
+                ipo_id = target_ipo["id"]
+                if acc_pan and (acc_pan, ipo_id) in allocated_pan_ipos:
+                    continue  # SEBI rule: 1 application per PAN per IPO
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
                 retail_lots = max(1, int(round(min_inv / lot_cost)))
                 lot_sz = int(target_ipo.get("lot_size") or (1000 if "SME" in str(target_ipo.get("name", "")).upper() else 1))
@@ -522,6 +550,8 @@ class AllocationOptimizer:
                     ))
                     total_deployed += bhni_cost
                     avail -= bhni_cost
+                    if acc_pan:
+                        allocated_pan_ipos.add((acc_pan, ipo_id))
                 elif pref_cat in ["SHNI", "BHNI"] and avail >= shni_cost:
                     entries.append(AllocationEntrySchema(
                         account_id=acc["id"],
@@ -538,6 +568,8 @@ class AllocationOptimizer:
                     ))
                     total_deployed += shni_cost
                     avail -= shni_cost
+                    if acc_pan:
+                        allocated_pan_ipos.add((acc_pan, ipo_id))
                 elif avail >= min_inv:
                     entries.append(AllocationEntrySchema(
                         account_id=acc["id"],
@@ -554,6 +586,8 @@ class AllocationOptimizer:
                     ))
                     total_deployed += min_inv
                     avail -= min_inv
+                    if acc_pan:
+                        allocated_pan_ipos.add((acc_pan, ipo_id))
 
         entries.sort(key=lambda e: e.amount, reverse=True)
         return AllocationPlanResponse(

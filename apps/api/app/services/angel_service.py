@@ -8,6 +8,7 @@ import uuid
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from app.config import settings
+from app.utils.security import decrypt_credential
 
 logger = logging.getLogger("angel_service")
 
@@ -301,9 +302,9 @@ class AngelOneSmartApiService:
                         if db_acc:
                             matching_acc = {
                                 "client_id": db_acc.angel_client_id,
-                                "api_key": db_acc.angel_api_key or "",
-                                "pin": db_acc.pin or "",
-                                "totp_secret": db_acc.totp_secret or "",
+                                "api_key": decrypt_credential(db_acc.angel_api_key) or "",
+                                "pin": decrypt_credential(db_acc.pin) or "",
+                                "totp_secret": decrypt_credential(db_acc.totp_secret) or "",
                             }
                 except Exception:
                     pass
@@ -403,9 +404,9 @@ class AngelOneSmartApiService:
                         if db_acc:
                             matching_acc = {
                                 "client_id": db_acc.angel_client_id,
-                                "api_key": db_acc.angel_api_key or "",
-                                "pin": db_acc.pin or "",
-                                "totp_secret": db_acc.totp_secret or "",
+                                "api_key": decrypt_credential(db_acc.angel_api_key) or "",
+                                "pin": decrypt_credential(db_acc.pin) or "",
+                                "totp_secret": decrypt_credential(db_acc.totp_secret) or "",
                             }
                 except Exception as ex:
                     logger.warning(f"Could not load account {client_id} from DB: {ex}")
@@ -514,9 +515,9 @@ class AngelOneSmartApiService:
                         if db_acc and db_acc.angel_api_key:
                             matching_acc = {
                                 "client_id": db_acc.angel_client_id,
-                                "api_key": db_acc.angel_api_key or "",
-                                "pin": db_acc.pin or "",
-                                "totp_secret": db_acc.totp_secret or "",
+                                "api_key": decrypt_credential(db_acc.angel_api_key) or "",
+                                "pin": decrypt_credential(db_acc.pin) or "",
+                                "totp_secret": decrypt_credential(db_acc.totp_secret) or "",
                             }
                 except Exception as ex:
                     logger.warning(f"Could not load account {client_id} from DB: {ex}")

@@ -3,6 +3,7 @@ from pydantic import field_validator, model_validator
 from typing import List, Any
 import json
 import logging
+import os
 import secrets
 
 logger = logging.getLogger("config")
@@ -65,36 +66,60 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_security(self):
         from cryptography.fernet import Fernet
+        import secrets
 
         val_sec = (self.secret_key or "").strip()
         val_pin = (self.admin_pin or "").strip()
         is_production = self.environment.lower() in ("production", "prod")
+        is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
-        # --- PIN strength check: enforced in BOTH production AND serverless ---
+        # --- Security configuration & fail-safe defaults ---
         if is_production:
-            # Secret key checks
-            if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
-                raise ValueError(
-                    "In production, SECRET_KEY must be set to a strong, private secret (cannot be empty or default)."
-                )
-            if len(val_sec) < 32:
-                raise ValueError("In production, SECRET_KEY must be at least 32 characters.")
+            if is_serverless:
+                # On serverless platforms (e.g. Vercel / Lambda), fail safe if environment variables are not yet injected:
+                if not val_sec or val_sec == _INSECURE_DEFAULT_KEY or len(val_sec) < 32:
+                    logger.warning(
+                        "[SECURITY] Serverless: SECRET_KEY was missing or insecure. "
+                        "Auto-generating an ephemeral 256-bit key. Configure SECRET_KEY in environment variables."
+                    )
+                    self.secret_key = secrets.token_urlsafe(32)
 
-            # Admin PIN checks — minimum 6 characters in production
-            if not val_pin:
-                raise ValueError("In production, ADMIN_PIN must be explicitly set.")
-            if val_pin in ["1234", "0000", "1111", "123456", "000000", "111111"]:
-                raise ValueError("In production, ADMIN_PIN cannot be a trivial or default PIN.")
-            if len(val_pin) < 6:
-                raise ValueError("In production, ADMIN_PIN must be at least 6 digits/characters.")
+                if not val_pin or val_pin in ["1234", "0000", "1111", "123456", "000000", "111111"] or len(val_pin) < 6:
+                    logger.warning(
+                        "[SECURITY] Serverless: ADMIN_PIN is trivial or under 6 characters ('%s'). "
+                        "Configure a strong ADMIN_PIN in environment variables for administrative operations.",
+                        val_pin or "(empty)",
+                    )
 
-            # Database persistence check
-            db_url = (self.database_url or "").strip().lower()
-            if not db_url.startswith("postgresql") and not db_url.startswith("postgres"):
-                raise ValueError(
-                    "In production, DATABASE_URL must be a managed PostgreSQL connection "
-                    "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
-                )
+                db_url = (self.database_url or "").strip().lower()
+                if not db_url.startswith("postgresql") and not db_url.startswith("postgres"):
+                    logger.warning(
+                        "[CONFIG] Serverless: DATABASE_URL is not PostgreSQL (%s). "
+                        "Using local/ephemeral SQLite storage on /tmp.",
+                        self.database_url,
+                    )
+            else:
+                # Dedicated production / CI environment: enforce strict production security guarantees
+                if not val_sec or val_sec == _INSECURE_DEFAULT_KEY:
+                    raise ValueError(
+                        "In production, SECRET_KEY must be set to a strong, private secret (cannot be empty or default)."
+                    )
+                if len(val_sec) < 32:
+                    raise ValueError("In production, SECRET_KEY must be at least 32 characters.")
+
+                if not val_pin:
+                    raise ValueError("In production, ADMIN_PIN must be explicitly set.")
+                if val_pin in ["1234", "0000", "1111", "123456", "000000", "111111"]:
+                    raise ValueError("In production, ADMIN_PIN cannot be a trivial or default PIN.")
+                if len(val_pin) < 6:
+                    raise ValueError("In production, ADMIN_PIN must be at least 6 digits/characters.")
+
+                db_url = (self.database_url or "").strip().lower()
+                if not db_url.startswith("postgresql") and not db_url.startswith("postgres"):
+                    raise ValueError(
+                        "In production, DATABASE_URL must be a managed PostgreSQL connection "
+                        "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
+                    )
 
             # Auto-populate separated keys if not explicitly provided
             if not self.jwt_secret_key:

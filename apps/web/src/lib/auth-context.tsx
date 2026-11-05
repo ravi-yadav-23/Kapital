@@ -59,32 +59,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    // Check initial stored auth state on client
-    try {
-      const storedToken = localStorage.getItem('kapitl_token')
-      const storedUser = localStorage.getItem('kapitl_user')
+    let isMounted = true
+    const initAuth = async () => {
+      try {
+        const storedToken = localStorage.getItem('kapitl_token')
+        const storedUser = localStorage.getItem('kapitl_user')
 
-      if (storedToken && storedUser) {
-        setToken(storedToken)
-        setUser(JSON.parse(storedUser))
-      } else {
-        // Seamless guest exploration with demo workspace
-        const guestProfile: UserProfile = {
-          id: 'guest-explorer',
-          username: 'Guest Explorer',
-          email: 'guest@kapitl.internal',
-          role: 'GUEST',
-          is_guest: true,
+        if (storedToken && storedUser && storedToken !== 'demo-guest-jwt-token') {
+          if (isMounted) {
+            setToken(storedToken)
+            setUser(JSON.parse(storedUser))
+          }
+          return
         }
-        localStorage.setItem('kapitl_token', 'demo-guest-jwt-token')
-        localStorage.setItem('kapitl_user', JSON.stringify(guestProfile))
-        setToken('demo-guest-jwt-token')
-        setUser(guestProfile)
+
+        // Seamless guest exploration: fetch valid signed guest JWT from backend
+        try {
+          const res = await fetch(`${API_BASE_URL}/auth/guest-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          })
+          if (res.ok) {
+            const data = await res.json()
+            if (data?.access_token && isMounted) {
+              localStorage.setItem('kapitl_token', data.access_token)
+              localStorage.setItem('kapitl_user', JSON.stringify(data.user))
+              setToken(data.access_token)
+              setUser(data.user)
+              return
+            }
+          }
+        } catch {
+          // Network offline / fallback to local demo profile
+        }
+
+        if (isMounted) {
+          const fallbackGuest: UserProfile = {
+            id: 'guest-explorer',
+            username: 'Guest Explorer',
+            email: 'guest@kapitl.internal',
+            role: 'GUEST',
+            is_guest: true,
+          }
+          localStorage.setItem('kapitl_token', 'demo-guest-jwt-token')
+          localStorage.setItem('kapitl_user', JSON.stringify(fallbackGuest))
+          setToken('demo-guest-jwt-token')
+          setUser(fallbackGuest)
+        }
+      } catch (e) {
+        console.error('Failed to load stored auth session:', e)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
-    } catch (e) {
-      console.error('Failed to load stored auth session:', e)
-    } finally {
-      setIsLoading(false)
+    }
+
+    initAuth()
+    return () => {
+      isMounted = false
     }
   }, [])
 

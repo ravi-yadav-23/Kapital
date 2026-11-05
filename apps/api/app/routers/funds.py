@@ -238,6 +238,80 @@ async def run_pulp_optimization(
             for ipo in db_ipos
         ]
 
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        has_open_issues = any(
+            ipo.get("status") in ["open", "closing_today"]
+            and (not ipo.get("issue_close_date") or ipo.get("issue_close_date") >= today_str)
+            for ipo in ipos_data
+        )
+
+        if using_demo and not has_open_issues:
+            # Provide high-conviction active demo IPOs with current dates so demo/guest users can
+            # see the PuLP MILP solver optimize lot distribution across family demat accounts.
+            tomorrow_str = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+            allot_str = (datetime.now(timezone.utc) + timedelta(days=4)).strftime("%Y-%m-%d")
+            refund_str = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
+            demo_active_ipos = [
+                {
+                    "id": "ipo-tonbo-imaging",
+                    "name": "Tonbo Imaging India Ltd",
+                    "symbol": "TONBO",
+                    "status": "open",
+                    "type": "EQ",
+                    "issue_type": "EQ",
+                    "issue_open_date": today_str,
+                    "issue_close_date": tomorrow_str,
+                    "allotment_date": allot_str,
+                    "refund_date": refund_str,
+                    "listing_date": None,
+                    "lot_size": 18,
+                    "price_band_min": 815.0,
+                    "price_band_max": 815.0,
+                    "min_investment": 14670.0,
+                    "gmp_percent": 41.8,
+                    "score": 92,
+                },
+                {
+                    "id": "ipo-jio-platforms",
+                    "name": "Jio Platforms Limited",
+                    "symbol": "JIOPLAT",
+                    "status": "open",
+                    "type": "EQ",
+                    "issue_type": "EQ",
+                    "issue_open_date": today_str,
+                    "issue_close_date": tomorrow_str,
+                    "allotment_date": allot_str,
+                    "refund_date": refund_str,
+                    "listing_date": None,
+                    "lot_size": 12,
+                    "price_band_min": 1119.0,
+                    "price_band_max": 1119.0,
+                    "min_investment": 13428.0,
+                    "gmp_percent": 34.2,
+                    "score": 88,
+                },
+                {
+                    "id": "ipo-paras-healthcare",
+                    "name": "Paras Healthcare Limited",
+                    "symbol": "PARASHLTH",
+                    "status": "open",
+                    "type": "EQ",
+                    "issue_type": "EQ",
+                    "issue_open_date": today_str,
+                    "issue_close_date": tomorrow_str,
+                    "allotment_date": allot_str,
+                    "refund_date": refund_str,
+                    "listing_date": None,
+                    "lot_size": 21,
+                    "price_band_min": 693.0,
+                    "price_band_max": 693.0,
+                    "min_investment": 14553.0,
+                    "gmp_percent": 24.5,
+                    "score": 76,
+                },
+            ]
+            ipos_data = demo_active_ipos + ipos_data
+
         task_id = f"plan-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
 
         # Execute PuLP MILP optimization in background thread (~12ms)

@@ -23,4 +23,7 @@ class FamilyAccount(BaseModel):
     
     # Preferences & Flags
     default_category_preference = Column(String(20), default="RETAIL")  # RETAIL, sHNI, bHNI
+    pan = Column(String(10), nullable=True)  # 10-character PAN for SEBI strict 1-bid-per-PAN
+    has_ddpi = Column(Boolean, default=False, nullable=False)  # True if CDSL DDPI/POA enabled
+    tpin = Column(String(255), nullable=True)  # CDSL TPIN (encrypted)
     is_active = Column(Boolean, default=True, nullable=False)

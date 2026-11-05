@@ -161,9 +161,9 @@ export default function FundsPage() {
     )
   }
 
-  const totalBalance = fundSummary?.total_family_balance || 1400000
-  const availableBal = fundSummary?.total_available || 820000
-  const lockedBal = fundSummary?.total_locked_asba || 580000
+  const totalBalance = fundSummary?.total_family_balance ?? 0
+  const availableBal = fundSummary?.total_available ?? 0
+  const lockedBal = fundSummary?.total_locked_asba ?? 0
   const lockedPercent = fundSummary?.utilization_percent || (totalBalance > 0 ? Math.round((lockedBal / totalBalance) * 100) : 0)
   const availablePercent = 100 - lockedPercent
 

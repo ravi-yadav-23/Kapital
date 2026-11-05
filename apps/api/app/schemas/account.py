@@ -8,6 +8,9 @@ class AccountCreate(BaseModel):
     angel_api_key: Optional[str] = None
     totp_secret: Optional[str] = None
     pin: Optional[str] = None
+    pan: Optional[str] = None
+    has_ddpi: bool = False
+    tpin: Optional[str] = None
     total_balance: float = 0.0
     available_balance: float = 0.0
     preferred_category: str = "RETAIL"
@@ -15,6 +18,9 @@ class AccountCreate(BaseModel):
 class AccountUpdate(BaseModel):
     name: Optional[str] = None
     relation: Optional[str] = None
+    pan: Optional[str] = None
+    has_ddpi: Optional[bool] = None
+    tpin: Optional[str] = None
     available_balance: Optional[float] = None
     preferred_category: Optional[str] = None
     is_active: Optional[bool] = None
@@ -24,6 +30,8 @@ class AccountResponse(BaseModel):
     name: str
     relation: str
     angel_client_id: str
+    pan: Optional[str] = None
+    has_ddpi: bool = False
     total_balance: float = 0.0
     available_balance: float = 0.0
     locked_balance: float = 0.0

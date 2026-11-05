@@ -358,7 +358,7 @@ def start_scheduler():
         max_instances=1,
     )
 
-    # Job 2: 09:00 AM IST Mon-Fri (Listing Day Pre-Market Limit Sell Execution)
+    # Job 2: 09:00 AM IST Mon-Fri (Listing Day Special Pre-Open Call Auction Entry: 09:00 - 09:45 AM)
     scheduler.add_job(
         listing_day_premarket_execution,
         trigger=CronTrigger(hour=9, minute=0, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
@@ -367,20 +367,38 @@ def start_scheduler():
         max_instances=1,
     )
 
-    # Job 2b: 09:15 AM IST Mon-Fri (Listing Day Market-Open Retry for unplaced sells / delayed scrips)
+    # Job 2b: 09:55 AM IST Mon-Fri (Post-Auction Match Check: Call Auction matching ends at 09:55 AM)
     scheduler.add_job(
-        listing_day_premarket_execution,
-        trigger=CronTrigger(hour=9, minute=15, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
-        id="listing_day_marketopen_retry",
+        reconcile_listing_sells,
+        trigger=CronTrigger(hour=9, minute=55, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="post_auction_reconcile",
         replace_existing=True,
         max_instances=1,
     )
 
-    # Job 2c: 10:05 AM IST Mon-Fri (Listing Day Order Fill Reconciliation & P&L Booking)
+    # Job 2c: 10:00 AM IST Mon-Fri (Official NSE Listing Day Normal Market Open execution)
+    scheduler.add_job(
+        listing_day_premarket_execution,
+        trigger=CronTrigger(hour=10, minute=0, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="listing_day_normal_open_execution",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Job 2d: 10:05 AM IST Mon-Fri (Post-Open Fill Reconciliation & Initial P&L Booking)
     scheduler.add_job(
         reconcile_listing_sells,
         trigger=CronTrigger(hour=10, minute=5, second=0, day_of_week="mon-fri", timezone="Asia/Kolkata"),
         id="reconcile_listing_sells",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    # Job 2e: Hourly Reconciliation during Market Hours (11:00 AM - 03:30 PM) for partial / trailing fills
+    scheduler.add_job(
+        reconcile_listing_sells,
+        trigger=CronTrigger(hour="11-15", minute="0,30", day_of_week="mon-fri", timezone="Asia/Kolkata"),
+        id="intraday_listing_reconciliation",
         replace_existing=True,
         max_instances=1,
     )

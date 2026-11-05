@@ -36,6 +36,8 @@ def _model_to_response(acc: FamilyAccount) -> AccountResponse:
         name=acc.name,
         relation=acc.relation,
         angel_client_id=acc.angel_client_id,
+        pan=acc.pan,
+        has_ddpi=bool(acc.has_ddpi) if acc.has_ddpi is not None else False,
         total_balance=acc.total_demat_balance or 0.0,
         available_balance=acc.available_liquid_balance or 0.0,
         locked_balance=acc.locked_asba_balance or 0.0,
@@ -60,6 +62,8 @@ def _model_to_dict(acc: FamilyAccount) -> dict:
         "name": acc.name,
         "relation": acc.relation,
         "angel_client_id": acc.angel_client_id,
+        "pan": acc.pan,
+        "has_ddpi": bool(acc.has_ddpi) if acc.has_ddpi is not None else False,
         "total_balance": acc.total_demat_balance or 0.0,
         "available_balance": acc.available_liquid_balance or 0.0,
         "available_liquid_balance": acc.available_liquid_balance or 0.0,
@@ -117,6 +121,9 @@ class AccountService:
             angel_api_key=encrypt_credential(data.angel_api_key),
             totp_secret=encrypt_credential(data.totp_secret),
             pin=encrypt_credential(data.pin),
+            pan=data.pan.upper().strip() if data.pan else None,
+            has_ddpi=bool(data.has_ddpi),
+            tpin=encrypt_credential(data.tpin) if data.tpin else None,
             total_demat_balance=data.total_balance or 0.0,
             available_liquid_balance=data.available_balance or 0.0,
             locked_asba_balance=0.0,
@@ -205,6 +212,13 @@ class AccountService:
             acc.name = data.name
         if data.relation is not None:
             acc.relation = data.relation
+        if data.pan is not None:
+            acc.pan = data.pan.upper().strip() if data.pan else None
+        if data.has_ddpi is not None:
+            acc.has_ddpi = data.has_ddpi
+        if data.tpin is not None:
+            from app.utils.security import encrypt_credential
+            acc.tpin = encrypt_credential(data.tpin) if data.tpin else None
         if data.available_balance is not None:
             acc.available_liquid_balance = data.available_balance
         if data.preferred_category is not None:
