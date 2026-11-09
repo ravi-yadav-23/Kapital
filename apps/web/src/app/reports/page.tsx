@@ -47,21 +47,91 @@ export default function ReportsPage() {
     return repMap
   })
   const [loading, setLoading] = useState(false)
-  const [selectedIpo, setSelectedIpo] = useState<Ipo | null>(() => {
-    const all = apiClient.getCachedIpos()?.length ? apiClient.getCachedIpos()! : MOCK_IPOS
-    return (
-      all.find((i) => {
-        const st = computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date)
-        return st === 'open' || st === 'closing_today'
-      }) ||
-      all.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date) === 'upcoming') ||
-      all[0] ||
-      null
-    )
-  })
+  const [selectedIpo, setSelectedIpo] = useState<Ipo | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
+  type ReportTab = 'all' | 'open' | 'closing_today' | 'upcoming' | 'closed'
+  const [activeTab, setActiveTab] = useState<ReportTab>('open')
+
+  const canonicalIpos = useMemo(() => {
+    return ipos.map((i) => ({
+      ...i,
+      computedStatus: computeIpoStatus(
+        i.issue_open_date,
+        i.issue_close_date,
+        undefined,
+        i.status,
+        i.allotment_date
+      ),
+    }))
+  }, [ipos])
+
+  const openCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'open').length,
+    [canonicalIpos]
+  )
+  const closingCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'closing_today').length,
+    [canonicalIpos]
+  )
+  const upcomingCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'upcoming').length,
+    [canonicalIpos]
+  )
+  const closedCount = useMemo(
+    () => canonicalIpos.filter((i) => i.computedStatus === 'closed').length,
+    [canonicalIpos]
+  )
+  const allCount = canonicalIpos.length
+
+  // Auto-sync tab on initial load if open has 0 items and upcoming has items
+  useEffect(() => {
+    if (openCount === 0 && closingCount === 0 && upcomingCount > 0 && activeTab === 'open') {
+      setActiveTab('upcoming')
+    }
+  }, [openCount, closingCount, upcomingCount, activeTab])
+
+  const filteredIpos = useMemo(() => {
+    return canonicalIpos.filter((ipo) => {
+      if (activeTab === 'open' && ipo.computedStatus !== 'open') return false
+      if (activeTab === 'closing_today' && ipo.computedStatus !== 'closing_today') return false
+      if (activeTab === 'upcoming' && ipo.computedStatus !== 'upcoming') return false
+      if (activeTab === 'closed' && ipo.computedStatus !== 'closed') return false
+
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      return ipo.name.toLowerCase().includes(q) || ipo.symbol.toLowerCase().includes(q)
+    })
+  }, [canonicalIpos, activeTab, searchQuery])
+
+  // Current active IPO must strictly belong to the currently filtered list
+  const currentIpo: Ipo | null = useMemo(() => {
+    if (filteredIpos.length === 0) return null
+    if (selectedIpo && filteredIpos.some((i) => i.id === selectedIpo.id)) {
+      return selectedIpo
+    }
+    return filteredIpos[0]
+  }, [filteredIpos, selectedIpo])
+
+  const handleTabChange = (newTab: ReportTab) => {
+    setActiveTab(newTab)
+    const matches = canonicalIpos.filter((ipo) => {
+      if (newTab === 'open' && ipo.computedStatus !== 'open') return false
+      if (newTab === 'closing_today' && ipo.computedStatus !== 'closing_today') return false
+      if (newTab === 'upcoming' && ipo.computedStatus !== 'upcoming') return false
+      if (newTab === 'closed' && ipo.computedStatus !== 'closed') return false
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      return ipo.name.toLowerCase().includes(q) || ipo.symbol.toLowerCase().includes(q)
+    })
+    if (matches.length > 0) {
+      setSelectedIpo(matches[0])
+    } else {
+      setSelectedIpo(null)
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -80,17 +150,6 @@ export default function ReportsPage() {
         })
         setReports((prev) => ({ ...prev, ...repMap }))
       }
-
-      if (allIpos && allIpos.length > 0 && !selectedIpo) {
-        const activeFirst =
-          allIpos.find((i) => {
-            const st = computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date)
-            return st === 'open' || st === 'closing_today'
-          }) ||
-          allIpos.find((i) => computeIpoStatus(i.issue_open_date, i.issue_close_date, undefined, i.status, i.allotment_date) === 'upcoming') ||
-          allIpos[0]
-        setSelectedIpo(activeFirst)
-      }
     } catch (err) {
       console.error('Failed to load reports page data:', err)
     } finally {
@@ -103,9 +162,29 @@ export default function ReportsPage() {
   }, [])
 
   const currentReport: AiReport | null = useMemo(() => {
-    if (!selectedIpo) return null
-    return reports[selectedIpo.id] || null
-  }, [selectedIpo, reports])
+    if (!currentIpo) return null
+    return reports[currentIpo.id] || null
+  }, [currentIpo, reports])
+
+  // Prefetch report whenever active selected IPO changes
+  useEffect(() => {
+    if (!currentIpo) return
+    if (!reports[currentIpo.id]) {
+      apiClient
+        .getReportById(currentIpo.id, currentIpo.slug, currentIpo.symbol, currentIpo.name)
+        .then((rep) => {
+          if (rep) {
+            setReports((prev) => ({
+              ...prev,
+              [currentIpo.id]: rep,
+              [rep.ipo_id]: rep,
+              ...(currentIpo.symbol ? { [currentIpo.symbol]: rep } : {}),
+            }))
+          }
+        })
+        .catch((err) => console.error('Failed to prefetch report:', err))
+    }
+  }, [currentIpo, reports])
 
   const handleSelectIpo = async (ipo: Ipo) => {
     setSelectedIpo(ipo)
@@ -147,27 +226,27 @@ export default function ReportsPage() {
   }, [ipos])
 
   const handleRunAiAudit = async () => {
-    if (!selectedIpo) return
+    if (!currentIpo) return
     setAnalyzing(true)
     try {
       const rep = await apiClient.generateReport(
-        selectedIpo.id,
-        selectedIpo.slug,
-        selectedIpo.symbol,
-        selectedIpo.name
+        currentIpo.id,
+        currentIpo.slug,
+        currentIpo.symbol,
+        currentIpo.name
       )
       if (rep) {
         setReports((prev) => ({
           ...prev,
-          [selectedIpo.id]: rep,
+          [currentIpo.id]: rep,
           [rep.ipo_id]: rep,
-          ...(selectedIpo.symbol ? { [selectedIpo.symbol]: rep } : {}),
+          ...(currentIpo.symbol ? { [currentIpo.symbol]: rep } : {}),
         }))
-        if (rep.ipo_id && rep.ipo_id !== selectedIpo.id) {
+        if (rep.ipo_id && rep.ipo_id !== currentIpo.id) {
           setSelectedIpo((prev) => (prev ? { ...prev, id: rep.ipo_id } : prev))
         }
         setToast({
-          message: `AI due diligence audit completed for ${selectedIpo.name}!`,
+          message: `AI due diligence audit completed for ${currentIpo.name}!`,
           type: 'success',
         })
         setTimeout(() => setToast(null), 4000)
@@ -188,53 +267,6 @@ export default function ReportsPage() {
     }
   }
 
-  type ReportTab = 'all' | 'open' | 'closing_today' | 'upcoming' | 'closed'
-  const [activeTab, setActiveTab] = useState<ReportTab>('open')
-
-  const canonicalIpos = useMemo(() => {
-    return ipos.map((i) => ({
-      ...i,
-      computedStatus: computeIpoStatus(
-        i.issue_open_date,
-        i.issue_close_date,
-        undefined,
-        i.status,
-        i.allotment_date
-      ),
-    }))
-  }, [ipos])
-
-  const openCount = useMemo(
-    () => canonicalIpos.filter((i) => i.computedStatus === 'open').length,
-    [canonicalIpos]
-  )
-  const closingCount = useMemo(
-    () => canonicalIpos.filter((i) => i.computedStatus === 'closing_today').length,
-    [canonicalIpos]
-  )
-  const upcomingCount = useMemo(
-    () => canonicalIpos.filter((i) => i.computedStatus === 'upcoming').length,
-    [canonicalIpos]
-  )
-  const closedCount = useMemo(
-    () => canonicalIpos.filter((i) => i.computedStatus === 'closed').length,
-    [canonicalIpos]
-  )
-  const allCount = canonicalIpos.length
-
-  const filteredIpos = useMemo(() => {
-    return canonicalIpos.filter((ipo) => {
-      if (activeTab === 'open' && ipo.computedStatus !== 'open') return false
-      if (activeTab === 'closing_today' && ipo.computedStatus !== 'closing_today') return false
-      if (activeTab === 'upcoming' && ipo.computedStatus !== 'upcoming') return false
-      if (activeTab === 'closed' && ipo.computedStatus !== 'closed') return false
-
-      if (!searchQuery.trim()) return true
-      const q = searchQuery.toLowerCase()
-      return ipo.name.toLowerCase().includes(q) || ipo.symbol.toLowerCase().includes(q)
-    })
-  }, [canonicalIpos, activeTab, searchQuery])
-
   // Is this an actual AI audit or just preliminary sector estimate?
   // Backend returns is_audited flag, or if financial quality was assessed in report.
   const isAudited = Boolean(
@@ -242,10 +274,10 @@ export default function ReportsPage() {
     (currentReport?.score_breakdown?.financial_quality != null && currentReport.score_breakdown.financial_quality > 0)
   )
 
-  const breakdown = currentReport?.score_breakdown || selectedIpo?.score_breakdown
+  const breakdown = currentReport?.score_breakdown || currentIpo?.score_breakdown
 
   // Live factors fallback from live IPO data
-  const gmpVal = breakdown?.gmp_strength ?? (selectedIpo?.gmp_percent ? Math.min(100, Math.round(selectedIpo.gmp_percent * 2)) : 60)
+  const gmpVal = breakdown?.gmp_strength ?? (currentIpo?.gmp_percent ? Math.min(100, Math.round(currentIpo.gmp_percent * 2)) : 60)
   const subVal = breakdown?.subscription_momentum ?? 65
   const indVal = breakdown?.industry_tailwinds ?? (breakdown as any)?.industry_tailwind ?? 75
 
@@ -285,15 +317,15 @@ export default function ReportsPage() {
     return Math.round(gmpStr * 0.60 + subStr * 0.40)
   }, [])
 
-  const compositeScore = selectedIpo ? getIpoScore(selectedIpo, currentReport) : 50
+  const compositeScore = currentIpo ? getIpoScore(currentIpo, currentReport) : 50
 
-  const recommendation = currentReport?.recommendation || selectedIpo?.recommendation || getScoreRecommendation(compositeScore)
+  const recommendation = currentReport?.recommendation || currentIpo?.recommendation || getScoreRecommendation(compositeScore)
   const recLabel = getRecommendationLabel(recommendation)
 
-  const redFlags = currentReport?.red_flags || selectedIpo?.red_flags || []
-  const strengths = currentReport?.strengths || selectedIpo?.strengths || []
+  const redFlags = currentReport?.red_flags || currentIpo?.red_flags || []
+  const strengths = currentReport?.strengths || currentIpo?.strengths || []
 
-  const isSme = selectedIpo?.type === 'SME' || (selectedIpo?.name && selectedIpo.name.includes('SME'))
+  const isSme = currentIpo?.type === 'SME' || (currentIpo?.name && currentIpo.name.includes('SME'))
   const gatekeepersToDisplay = (currentReport?.gatekeepers && currentReport.gatekeepers.length > 0)
     ? currentReport.gatekeepers.map((gk) => {
         if (gk.key === 'anchor_quality' && isSme) {
@@ -354,7 +386,7 @@ export default function ReportsPage() {
         },
       ]
 
-  const baseIssueCr = selectedIpo?.issue_size_cr || 100
+  const baseIssueCr = currentIpo?.issue_size_cr || 100
   const financialMetricsToDisplay = currentReport?.financial_metrics || {
     revenue_growth_yoy: '+32.4% YoY',
     revenue_history: [
@@ -379,29 +411,29 @@ export default function ReportsPage() {
 
   // Price Band Clean Formatter (avoids 'Rs 94.0-94.0')
   const formattedPriceBand = useMemo(() => {
-    if (!selectedIpo) return 'TBD'
-    const minP = selectedIpo.price_band_min
-    const maxP = selectedIpo.price_band_max
+    if (!currentIpo) return 'TBD'
+    const minP = currentIpo.price_band_min
+    const maxP = currentIpo.price_band_max
     if (!minP && !maxP) return 'TBD'
     const rMin = Math.round(minP || 0)
     const rMax = Math.round(maxP || rMin)
     if (rMin === rMax || !rMax) return `₹${rMin}`
     return `₹${rMin} - ₹${rMax}`
-  }, [selectedIpo])
+  }, [currentIpo])
 
   // Sanitized summary copy without ugly decimal Rs strings
   const cleanedSummary = useMemo(() => {
-    if (!selectedIpo) return ''
+    if (!currentIpo) return ''
     let s = currentReport?.executive_summary
       ? stripHtml(currentReport.executive_summary)
-      : selectedIpo.about ||
-        `${selectedIpo.name} operates in the ${selectedIpo.type || 'EQ'} primary market segment with an issue size of ${selectedIpo.issue_size || 'N/A'}. Run an AI audit to extract forensic insights directly from SEBI DRHP filings.`
+      : currentIpo.about ||
+        `${currentIpo.name} operates in the ${currentIpo.type || 'EQ'} primary market segment with an issue size of ${currentIpo.issue_size || 'N/A'}. Run an AI audit to extract forensic insights directly from SEBI DRHP filings.`
     
     // Replace Rs 94.0-94.0 with formatted price band
     s = s.replace(/Rs\s*\d+(\.\d+)?\s*-\s*\d+(\.\d+)?/gi, formattedPriceBand)
     s = s.replace(/Rs\s*(\d+(\.\d+)?)/gi, (_, num) => `₹${Math.round(parseFloat(num))}`)
     return s
-  }, [currentReport, selectedIpo, formattedPriceBand])
+  }, [currentReport, currentIpo, formattedPriceBand])
 
   return (
     <DashboardLayout>
@@ -444,7 +476,7 @@ export default function ReportsPage() {
               ].map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => setActiveTab(t.id)}
+                  onClick={() => handleTabChange(t.id)}
                   className={`px-2.5 py-1 rounded-sm transition-colors flex items-center gap-1.5 whitespace-nowrap ${
                     activeTab === t.id
                       ? 'bg-surface-raised text-ink font-medium border border-line'
@@ -469,75 +501,112 @@ export default function ReportsPage() {
             </div>
 
             <div className="rounded-sm border border-line bg-surface divide-y divide-line overflow-hidden max-h-[640px] overflow-y-auto">
-              {filteredIpos.map((ipo) => {
-                const isSelected = selectedIpo?.id === ipo.id
-                // Reconciled score: matches detail card computation exactly
-                const ipoScore = getIpoScore(ipo, reports[ipo.id])
-                const ipoStatus = ipo.computedStatus
-                const avatar = getCompanyAvatarProps(ipo.name)
-
-                return (
-                  <button
-                    key={ipo.id}
-                    onClick={() => handleSelectIpo(ipo)}
-                    className={`w-full text-left p-3.5 flex items-center justify-between gap-3 transition-colors ${
-                      isSelected ? 'bg-surface-selected text-ink' : 'hover:bg-surface-raised text-ink-2'
-                    }`}
-                  >
-                    <div className="min-w-0 flex items-center gap-3">
-                      {/* Company Avatar */}
-                      <div
-                        className={`w-7 h-7 rounded-sm border flex items-center justify-center font-mono text-[11px] font-medium flex-shrink-0 ${avatar.bg} ${avatar.text}`}
-                      >
-                        {avatar.initials}
-                      </div>
-                      <div className="truncate">
-                        <div className={`text-[14px] truncate flex items-center gap-1.5 ${isSelected ? 'font-medium text-ink' : 'text-ink-2'}`}>
-                          <span className="truncate">{ipo.name}</span>
-                          {ipo.type === 'SME' ? (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex-shrink-0">
-                              SME
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0">
-                              Mainboard
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[13px] font-mono text-ink-3 mt-0.5 flex items-center gap-1.5">
-                          <span className={getStatusDotClass(ipoStatus)} />
-                          <span>{cleanTradingSymbol(ipo.symbol)}</span>
-                          <span>·</span>
-                          <span>{getStatusLabel(ipoStatus)}</span>
-                        </div>
-                      </div>
+              {filteredIpos.length === 0 ? (
+                <div className="p-8 text-center space-y-3">
+                  <div className="w-9 h-9 rounded-full bg-surface-raised border border-line mx-auto flex items-center justify-center text-ink-3">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-medium text-ink">
+                      {activeTab === 'open'
+                        ? 'No open IPOs'
+                        : activeTab === 'closing_today'
+                        ? 'No IPOs closing today'
+                        : activeTab === 'upcoming'
+                        ? 'No upcoming IPOs'
+                        : activeTab === 'closed'
+                        ? 'No closed IPOs'
+                        : 'No IPOs found'}
                     </div>
-
-                    {/* Reconciled Score Number */}
-                    <div className="flex items-center gap-1 flex-shrink-0 font-mono text-[13px]">
-                      <span className="text-ink font-medium">
-                        {ipoScore}
-                      </span>
-                      <span className="text-[13px] text-ink-3">/100</span>
+                    <div className="text-xs text-ink-3 mt-1">
+                      {searchQuery
+                        ? 'Try refining your search keyword.'
+                        : activeTab === 'open' || activeTab === 'closing_today'
+                        ? 'Check upcoming listings or browse all tracked issues.'
+                        : 'Market is currently between IPO bidding windows.'}
                     </div>
-                  </button>
-                )
-              })}
+                  </div>
+                  {(activeTab === 'open' || activeTab === 'closing_today') && upcomingCount > 0 && (
+                    <button
+                      onClick={() => handleTabChange('upcoming')}
+                      className="btn-secondary text-xs mx-auto"
+                    >
+                      <span>Explore Upcoming ({upcomingCount})</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                filteredIpos.map((ipo) => {
+                  const isSelected = currentIpo?.id === ipo.id
+                  // Reconciled score: matches detail card computation exactly
+                  const ipoScore = getIpoScore(ipo, reports[ipo.id])
+                  const ipoStatus = ipo.computedStatus
+                  const avatar = getCompanyAvatarProps(ipo.name)
+
+                  return (
+                    <button
+                      key={ipo.id}
+                      onClick={() => handleSelectIpo(ipo)}
+                      className={`w-full text-left p-3.5 flex items-center justify-between gap-3 transition-colors ${
+                        isSelected ? 'bg-surface-selected text-ink' : 'hover:bg-surface-raised text-ink-2'
+                      }`}
+                    >
+                      <div className="min-w-0 flex items-center gap-3">
+                        {/* Company Avatar */}
+                        <div
+                          className={`w-7 h-7 rounded-sm border flex items-center justify-center font-mono text-[11px] font-medium flex-shrink-0 ${avatar.bg} ${avatar.text}`}
+                        >
+                          {avatar.initials}
+                        </div>
+                        <div className="truncate">
+                          <div className={`text-[14px] truncate flex items-center gap-1.5 ${isSelected ? 'font-medium text-ink' : 'text-ink-2'}`}>
+                            <span className="truncate">{ipo.name}</span>
+                            {ipo.type === 'SME' ? (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex-shrink-0">
+                                SME
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-medium uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0">
+                                Mainboard
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[13px] font-mono text-ink-3 mt-0.5 flex items-center gap-1.5">
+                            <span className={getStatusDotClass(ipoStatus)} />
+                            <span>{cleanTradingSymbol(ipo.symbol)}</span>
+                            <span>·</span>
+                            <span>{getStatusLabel(ipoStatus)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Reconciled Score Number */}
+                      <div className="flex items-center gap-1 flex-shrink-0 font-mono text-[13px]">
+                        <span className="text-ink font-medium">
+                          {ipoScore}
+                        </span>
+                        <span className="text-[13px] text-ink-3">/100</span>
+                      </div>
+                    </button>
+                  )
+                })
+              )}
             </div>
           </div>
 
           {/* Right Column: The Research Dossier */}
           <div className="lg:col-span-8 space-y-6">
-            {selectedIpo ? (
+            {currentIpo ? (
               <div className="p-6 rounded-sm bg-surface border border-line space-y-6">
                 {/* Header: Title + Audit Status */}
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-line pb-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-[18px] font-medium text-ink">
-                        {selectedIpo.name}
+                        {currentIpo.name}
                       </h2>
-                      {selectedIpo.type === 'SME' ? (
+                      {currentIpo.type === 'SME' ? (
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
                           SME
                         </span>
@@ -588,11 +657,11 @@ export default function ReportsPage() {
                       </div>
                     </div>
 
-                    {(selectedIpo.gmp_percent || 0) > 0 && (
+                    {(currentIpo.gmp_percent || 0) > 0 && (
                       <div className="text-right">
                         <span className="text-[13px] text-ink-3 block">Listing gain</span>
                         <span className="text-[16px] font-mono font-medium text-emerald-400 mt-1 block">
-                          ↑ {formatPercent(selectedIpo.gmp_percent)}
+                          ↑ {formatPercent(currentIpo.gmp_percent)}
                         </span>
                       </div>
                     )}
@@ -1051,8 +1120,39 @@ export default function ReportsPage() {
                 </div>
               </div>
             ) : (
-              <div className="p-12 rounded-sm bg-surface border border-line text-center text-[13px] text-ink-3">
-                Select an issue from the left panel to inspect its due diligence dossier.
+              <div className="p-12 rounded-sm bg-surface border border-line text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-surface-raised border border-line mx-auto flex items-center justify-center text-ink-3">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[15px] font-medium text-ink">
+                    {activeTab === 'open'
+                      ? 'No open IPOs for due diligence'
+                      : activeTab === 'closing_today'
+                      ? 'No IPOs closing today'
+                      : activeTab === 'upcoming'
+                      ? 'No upcoming IPOs found'
+                      : activeTab === 'closed'
+                      ? 'No closed IPO dossiers'
+                      : 'No IPO report selected'}
+                  </div>
+                  <div className="text-[13px] text-ink-3 max-w-md mx-auto">
+                    {searchQuery
+                      ? 'No issues matched your search query. Try clearing the filter.'
+                      : activeTab === 'open' || activeTab === 'closing_today'
+                      ? 'There are currently no active bidding windows open. Explore upcoming issues or select another tab to view forensic reports.'
+                      : 'Select an issue from the left panel to inspect its complete DRHP due diligence dossier.'}
+                  </div>
+                </div>
+                {(activeTab === 'open' || activeTab === 'closing_today') && upcomingCount > 0 && (
+                  <button
+                    onClick={() => handleTabChange('upcoming')}
+                    className="btn-primary text-xs mx-auto inline-flex items-center gap-1.5"
+                  >
+                    <span>View Upcoming IPOs ({upcomingCount})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             )}
           </div>
