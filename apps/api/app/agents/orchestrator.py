@@ -151,6 +151,29 @@ class IpoDueDiligenceOrchestrator:
             about=ipo.get("about", "")
         )
 
+        has_drhp = bool(ipo.get("drhp_url") or ipo.get("rhp_url"))
+        drhp_status = "FILED" if has_drhp else "NOT_FILED"
+
+        missing_fields = []
+        if not has_drhp:
+            missing_fields.append("SEBI Draft Prospectus (DRHP)")
+            missing_fields.append("OFS vs Fresh Issue Split")
+            missing_fields.append("Restated Financial Statements")
+        if not ipo.get("price_band_min") or not ipo.get("price_band_max"):
+            missing_fields.append("Price Band")
+        if not ipo.get("issue_size_cr"):
+            missing_fields.append("Issue Size")
+        if not ipo.get("issue_open_date"):
+            missing_fields.append("Bidding Dates")
+
+        drhp_disclaimer = None
+        if not has_drhp:
+            drhp_disclaimer = (
+                f"DRHP Pre-Filing Notice: {ipo.get('name')} has not yet filed its Draft Red Herring Prospectus (DRHP) with SEBI. "
+                "Official restated financials (revenue, PAT, cash flow), capital structure split (OFS vs Fresh Issue), "
+                "and peer valuation multiples are not available. Conviction score reflects early grey market buzz and sector benchmarks only."
+            )
+
         # Fix 3: Check if AI analysis failed (e.g. no API key configured)
         is_analysis_failed = (
             analysis_res.get("analysis_failed", False)
@@ -170,8 +193,9 @@ class IpoDueDiligenceOrchestrator:
             # Persist a minimal stub to DB so the UI shows "Audit Pending" on subsequent GETs
             # without re-triggering the full pipeline.
             stub_summary = (
-                "AI audit not yet run. Configure an LLM API key in Settings to enable full due diligence. "
-                "Score is a preliminary market-signal estimate only."
+                f"DRHP not yet filed with SEBI. Score ({preliminary_score}/100) is an indicative preliminary estimate from market signals."
+                if not has_drhp
+                else "AI audit not yet run. Configure an LLM API key in Settings to enable full due diligence. Score is a preliminary market-signal estimate only."
             )
             stub_scored_at = datetime.now(timezone.utc).strftime("%d %b %Y")
 
@@ -216,6 +240,9 @@ class IpoDueDiligenceOrchestrator:
                 ipo_symbol=ipo.get("symbol"),
                 overall_score=preliminary_score,
                 is_audited=False,
+                drhp_status=drhp_status,
+                drhp_disclaimer=drhp_disclaimer,
+                missing_fields=missing_fields,
                 recommendation="PENDING",
                 executive_summary=stub_summary,
                 summary_source="preliminary_market_signals",
@@ -351,134 +378,194 @@ class IpoDueDiligenceOrchestrator:
             financial_metrics = None
 
         # 2. Gatekeeper Checks (PASS / FAIL / WARN)
-        ofs_pct = float(analysis_res.get("ofs_percentage") or 25.0)
-        fresh_pct = max(0.0, 100.0 - ofs_pct)
-        pe_ratio = float(analysis_res.get("pe_ratio") or 24.5)
-        peer_pe = float(analysis_res.get("peer_avg_pe") or 32.0)
-        lit_claims = float(analysis_res.get("litigation_claims_cr") or round(issue_size_cr * 0.02, 1))
-        lit_pct = round((lit_claims / issue_size_cr) * 100.0, 1) if issue_size_cr > 0 else 2.0
+        if not has_drhp:
+            ofs_pct = None
+            fresh_pct = None
+            pe_ratio = None
+            peer_pe = None
+            lit_claims = None
+            financial_metrics = None  # Never fabricate financials if DRHP is not filed
 
-        # Gatekeeper 1: OFS vs Fresh
-        if ofs_pct > 70.0:
-            ofs_status = "FAIL"
-            ofs_impact = "Promoter/PE dumping shares; high listing morning supply overhang."
-        elif ofs_pct > 40.0:
-            ofs_status = "WARN"
-            ofs_impact = "Moderate OFS component; monitor secondary absorption."
+            is_sme = (ipo.get("type") == "SME") or ("SME" in (ipo.get("name") or ""))
+            gatekeepers = [
+                {
+                    "key": "ofs_split",
+                    "name": "OFS vs. Fresh Issue Split",
+                    "details": "DRHP not yet filed with SEBI — issue breakdown pending official regulatory draft.",
+                    "status": "WARN",
+                    "threshold": "OFS ≤ 40% (Fresh ≥ 60%)",
+                    "impact": "Pending official DRHP to verify whether promoters or early investors are offloading equity.",
+                },
+                {
+                    "key": "anchor_quality",
+                    "name": "Anchor Book Quality",
+                    "details": (
+                        "Exempt for SME platform issues (SEBI ICDR regulations)"
+                        if is_sme
+                        else "Anchor allocation disclosures release 1 day prior to issue opening; pending DRHP clearance."
+                    ),
+                    "status": "WARN",
+                    "threshold": "N/A (SME platform)" if is_sme else "Domestic MFs > 30%",
+                    "impact": (
+                        "Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms."
+                        if is_sme
+                        else "Institutional price floor will be evaluated once anchor allocations are published."
+                    ),
+                },
+                {
+                    "key": "cfo_conversion",
+                    "name": "Cash Flow vs. PAT Conversion",
+                    "details": "Audited restated financial history pending SEBI DRHP filing.",
+                    "status": "WARN",
+                    "threshold": "CFO / PAT Ratio ≥ 0.70x",
+                    "impact": "Cannot assess cash collection quality without statutory auditor-certified financials.",
+                },
+                {
+                    "key": "valuation_cushion",
+                    "name": "Valuation Room vs. Listed Peers",
+                    "details": "Price band and P/E valuation multiples not yet announced by lead book runners.",
+                    "status": "WARN",
+                    "threshold": "≥ 15% discount to peers",
+                    "impact": "Valuation discount will be determined once merchant bankers fix the issue price band.",
+                },
+                {
+                    "key": "litigation_exposure",
+                    "name": "Litigation Liability Ratio",
+                    "details": "Litigation annexures and contingent liabilities pending official DRHP disclosure.",
+                    "status": "WARN",
+                    "threshold": "Claims < 5% of Issue Size",
+                    "impact": "Regulatory and litigation risks will be audited once SEBI filing is released.",
+                },
+            ]
         else:
-            ofs_status = "PASS"
-            ofs_impact = "Capital stays inside the company to fuel growth and debt reduction."
+            ofs_pct = float(analysis_res.get("ofs_percentage") or 25.0)
+            fresh_pct = max(0.0, 100.0 - ofs_pct)
+            pe_ratio = float(analysis_res.get("pe_ratio") or 24.5)
+            peer_pe = float(analysis_res.get("peer_avg_pe") or 32.0)
+            lit_claims = float(analysis_res.get("litigation_claims_cr") or round(issue_size_cr * 0.02, 1))
+            lit_pct = round((lit_claims / issue_size_cr) * 100.0, 1) if issue_size_cr > 0 else 2.0
 
-        # Gatekeeper 2: Anchor Book Quality
-        anchor_quality = news_res.get("anchor_quality_verdict") or ""
-        if not anchor_quality or "not assessed" in anchor_quality.lower():
-            anchor_status = "PASS"
-            anchor_quality = "Not assessed (no verified anchor disclosures in input)"
-        elif "weak" in anchor_quality.lower() or "cautious" in anchor_quality.lower():
-            anchor_status = "WARN"
-        elif "poor" in anchor_quality.lower() or "avoid" in anchor_quality.lower():
-            anchor_status = "FAIL"
-        else:
-            anchor_status = "PASS"
+            # Gatekeeper 1: OFS vs Fresh
+            if ofs_pct > 70.0:
+                ofs_status = "FAIL"
+                ofs_impact = "Promoter/PE dumping shares; high listing morning supply overhang."
+            elif ofs_pct > 40.0:
+                ofs_status = "WARN"
+                ofs_impact = "Moderate OFS component; monitor secondary absorption."
+            else:
+                ofs_status = "PASS"
+                ofs_impact = "Capital stays inside the company to fuel growth and debt reduction."
 
-        # Gatekeeper 3: Cash Flow vs PAT (Quality of Earnings)
-        cfo_last = (
-            float(cfo_hist[-1]["amount_cr"])
-            if cfo_hist and isinstance(cfo_hist[-1], dict) and "amount_cr" in cfo_hist[-1]
-            else None
-        )
-        pat_last = (
-            float(pat_hist[-1]["amount_cr"])
-            if pat_hist and isinstance(pat_hist[-1], dict) and "amount_cr" in pat_hist[-1]
-            else None
-        )
+            # Gatekeeper 2: Anchor Book Quality
+            anchor_quality = news_res.get("anchor_quality_verdict") or ""
+            if not anchor_quality or "not assessed" in anchor_quality.lower():
+                anchor_status = "PASS"
+                anchor_quality = "Not assessed (no verified anchor disclosures in input)"
+            elif "weak" in anchor_quality.lower() or "cautious" in anchor_quality.lower():
+                anchor_status = "WARN"
+            elif "poor" in anchor_quality.lower() or "avoid" in anchor_quality.lower():
+                anchor_status = "FAIL"
+            else:
+                anchor_status = "PASS"
 
-        if cfo_last is not None and pat_last is not None and cfo_last < 0 and pat_last > 0:
-            cfo_status = "FAIL"
-            cfo_impact = "Negative operating cash flow with positive PAT indicates aggressive pre-IPO billing."
-        elif cfo_to_pat is not None and cfo_to_pat < 0.60:
-            cfo_status = "WARN"
-            cfo_impact = "Working capital elongation; receivables growing faster than cash collections."
-        elif cfo_to_pat is not None:
-            cfo_status = "PASS"
-            cfo_impact = "Real cash conversion backing reported net profits; drives institutional buying."
-        else:
-            cfo_status = "PASS"
-            cfo_impact = "Cash flow trajectory pending detailed audited financial statements."
+            # Gatekeeper 3: Cash Flow vs PAT (Quality of Earnings)
+            cfo_last = (
+                float(cfo_hist[-1]["amount_cr"])
+                if cfo_hist and isinstance(cfo_hist[-1], dict) and "amount_cr" in cfo_hist[-1]
+                else None
+            )
+            pat_last = (
+                float(pat_hist[-1]["amount_cr"])
+                if pat_hist and isinstance(pat_hist[-1], dict) and "amount_cr" in pat_hist[-1]
+                else None
+            )
 
-        # Gatekeeper 4: Valuation Cushion vs Listed Peers
-        pe_discount_pct = round(((peer_pe - pe_ratio) / peer_pe) * 100.0, 1) if peer_pe > 0 else 0.0
-        if pe_ratio <= peer_pe * 0.85:
-            val_status = "PASS"
-            val_impact = f"{abs(pe_discount_pct)}% discount to listed peers leaves money on table for listing pop."
-        elif pe_ratio <= peer_pe * 1.15:
-            val_status = "WARN"
-            val_impact = "Fairly valued relative to listed peers; listing pop depends on market sentiment."
-        else:
-            val_status = "FAIL"
-            val_impact = f"{abs(pe_discount_pct)}% premium over peers; aggressive pricing leaves zero margin of safety."
+            if cfo_last is not None and pat_last is not None and cfo_last < 0 and pat_last > 0:
+                cfo_status = "FAIL"
+                cfo_impact = "Negative operating cash flow with positive PAT indicates aggressive pre-IPO billing."
+            elif cfo_to_pat is not None and cfo_to_pat < 0.60:
+                cfo_status = "WARN"
+                cfo_impact = "Working capital elongation; receivables growing faster than cash collections."
+            elif cfo_to_pat is not None:
+                cfo_status = "PASS"
+                cfo_impact = "Real cash conversion backing reported net profits; drives institutional buying."
+            else:
+                cfo_status = "PASS"
+                cfo_impact = "Cash flow trajectory pending detailed audited financial statements."
 
-        # Gatekeeper 5: Material Litigation Ratio
-        if lit_pct > 15.0:
-            lit_status = "FAIL"
-            lit_impact = f"Pending court claims equal {lit_pct}% of total issue size; high litigation freeze risk."
-        elif lit_pct > 5.0:
-            lit_status = "WARN"
-            lit_impact = f"Contingent tax/court claims equal {lit_pct}% of issue size; moderate overhang."
-        else:
-            lit_status = "PASS"
-            lit_impact = f"Disputed claims represent only {lit_pct}% of issue size; clean regulatory slate."
+            # Gatekeeper 4: Valuation Cushion vs Listed Peers
+            pe_discount_pct = round(((peer_pe - pe_ratio) / peer_pe) * 100.0, 1) if peer_pe > 0 else 0.0
+            if pe_ratio <= peer_pe * 0.85:
+                val_status = "PASS"
+                val_impact = f"{abs(pe_discount_pct)}% discount to listed peers leaves money on table for listing pop."
+            elif pe_ratio <= peer_pe * 1.15:
+                val_status = "WARN"
+                val_impact = "Fairly valued relative to listed peers; listing pop depends on market sentiment."
+            else:
+                val_status = "FAIL"
+                val_impact = f"{abs(pe_discount_pct)}% premium over peers; aggressive pricing leaves zero margin of safety."
 
-        gatekeepers = [
-            {
-                "key": "ofs_split",
-                "name": "OFS vs. Fresh Issue Split",
-                "details": f"Fresh: {fresh_pct:.0f}% | OFS: {ofs_pct:.0f}%",
-                "status": ofs_status,
-                "threshold": "OFS ≤ 40% (Fresh ≥ 60%)",
-                "impact": ofs_impact,
-            },
-            {
-                "key": "anchor_quality",
-                "name": "Anchor Book Quality",
-                "details": "Tier-1 Domestic Mutual Funds (HDFC, SBI, Nippon) anchored with 30-day lock-in.",
-                "status": anchor_status,
-                "threshold": "Domestic MFs > 30%",
-                "impact": "Provides institutional price floor and reduces listing day volatility.",
-            },
-            {
-                "key": "cfo_conversion",
-                "name": "Cash Flow vs. PAT Conversion",
-                "details": (
-                    f"CFO/PAT ratio {cfo_to_pat}x (₹{cfo_last:.1f} Cr CFO vs ₹{pat_last:.1f} Cr PAT)"
-                    if (cfo_last is not None and pat_last is not None)
-                    else (
-                        f"CFO/PAT ratio: {cfo_to_pat}x"
-                        if cfo_to_pat is not None
-                        else "Historical CFO and PAT figures pending audited disclosures"
-                    )
-                ),
-                "status": cfo_status,
-                "threshold": "CFO / PAT Ratio ≥ 0.70x",
-                "impact": cfo_impact,
-            },
-            {
-                "key": "valuation_cushion",
-                "name": "Valuation Room vs. Listed Peers",
-                "details": f"IPO P/E: {pe_ratio:.1f}x vs Peer Avg: {peer_pe:.1f}x ({pe_discount_pct:+.1f}% discount)",
-                "status": val_status,
-                "threshold": "≥ 15% discount to peers",
-                "impact": val_impact,
-            },
-            {
-                "key": "litigation_exposure",
-                "name": "Litigation Liability Ratio",
-                "details": f"Disputed court claims ₹{lit_claims:.1f} Cr ({lit_pct}% of issue size)",
-                "status": lit_status,
-                "threshold": "Claims < 5% of Issue Size",
-                "impact": lit_impact,
-            },
-        ]
+            # Gatekeeper 5: Material Litigation Ratio
+            if lit_pct > 15.0:
+                lit_status = "FAIL"
+                lit_impact = f"Pending court claims equal {lit_pct}% of total issue size; high litigation freeze risk."
+            elif lit_pct > 5.0:
+                lit_status = "WARN"
+                lit_impact = f"Contingent tax/court claims equal {lit_pct}% of issue size; moderate overhang."
+            else:
+                lit_status = "PASS"
+                lit_impact = f"Disputed claims represent only {lit_pct}% of issue size; clean regulatory slate."
+
+            gatekeepers = [
+                {
+                    "key": "ofs_split",
+                    "name": "OFS vs. Fresh Issue Split",
+                    "details": f"Fresh: {fresh_pct:.0f}% | OFS: {ofs_pct:.0f}%",
+                    "status": ofs_status,
+                    "threshold": "OFS ≤ 40% (Fresh ≥ 60%)",
+                    "impact": ofs_impact,
+                },
+                {
+                    "key": "anchor_quality",
+                    "name": "Anchor Book Quality",
+                    "details": "Tier-1 Domestic Mutual Funds (HDFC, SBI, Nippon) anchored with 30-day lock-in.",
+                    "status": anchor_status,
+                    "threshold": "Domestic MFs > 30%",
+                    "impact": "Provides institutional price floor and reduces listing day volatility.",
+                },
+                {
+                    "key": "cfo_conversion",
+                    "name": "Cash Flow vs. PAT Conversion",
+                    "details": (
+                        f"CFO/PAT ratio {cfo_to_pat}x (₹{cfo_last:.1f} Cr CFO vs ₹{pat_last:.1f} Cr PAT)"
+                        if (cfo_last is not None and pat_last is not None)
+                        else (
+                            f"CFO/PAT ratio: {cfo_to_pat}x"
+                            if cfo_to_pat is not None
+                            else "Historical CFO and PAT figures pending audited disclosures"
+                        )
+                    ),
+                    "status": cfo_status,
+                    "threshold": "CFO / PAT Ratio ≥ 0.70x",
+                    "impact": cfo_impact,
+                },
+                {
+                    "key": "valuation_cushion",
+                    "name": "Valuation Room vs. Listed Peers",
+                    "details": f"IPO P/E: {pe_ratio:.1f}x vs Peer Avg: {peer_pe:.1f}x ({pe_discount_pct:+.1f}% discount)",
+                    "status": val_status,
+                    "threshold": "≥ 15% discount to peers",
+                    "impact": val_impact,
+                },
+                {
+                    "key": "litigation_exposure",
+                    "name": "Litigation Liability Ratio",
+                    "details": f"Disputed court claims ₹{lit_claims:.1f} Cr ({lit_pct}% of issue size)",
+                    "status": lit_status,
+                    "threshold": "Claims < 5% of Issue Size",
+                    "impact": lit_impact,
+                },
+            ]
 
         # Persist report to database
         stmt = select(AiReport).where(AiReport.ipo_id == ipo["id"])
@@ -559,6 +646,9 @@ class IpoDueDiligenceOrchestrator:
             overall_score=report_row.overall_score,
             is_audited=True,  # Full LLM audit completed successfully
             data_sufficiency=data_sufficiency,
+            drhp_status=drhp_status,
+            drhp_disclaimer=drhp_disclaimer,
+            missing_fields=missing_fields,
             recommendation=report_row.recommendation,
             executive_summary=report_row.executive_summary,
             summary_source=report_row.summary_source,

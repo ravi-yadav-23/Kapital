@@ -69,6 +69,8 @@ export interface Ipo {
   // Links
   ipo_info_url?:   string
   prospectus_url?: string
+  drhp_url?:       string
+  rhp_url?:        string
   bse_info_url?:   string
   nse_info_url?:   string
 

@@ -93,6 +93,9 @@ class AiReportResponse(BaseModel):
     overall_score: int
     is_audited: bool = False
     data_sufficiency: Optional[str] = "partial"  # "full", "partial", "none"
+    drhp_status: Optional[str] = "FILED"  # "FILED", "NOT_FILED", "PENDING_SEBI"
+    drhp_disclaimer: Optional[str] = None
+    missing_fields: List[str] = []
     recommendation: str
     score_breakdown: ScoreBreakdownSchema
     executive_summary: Optional[str] = None

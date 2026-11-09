@@ -226,6 +226,29 @@ class AiDueDiligenceService:
             )
             overall_score = existing.overall_score
 
+        has_drhp = bool(ipo and (ipo.drhp_url or ipo.rhp_url))
+        drhp_status = "FILED" if has_drhp else "NOT_FILED"
+        missing_fields = []
+        if not has_drhp:
+            missing_fields.append("SEBI Draft Prospectus (DRHP)")
+            missing_fields.append("OFS vs Fresh Issue Split")
+            missing_fields.append("Restated Financial History (FY24-FY26)")
+        if ipo and (not ipo.price_band_min or not ipo.price_band_max or ipo.price_band_min == ipo.price_band_max == 0):
+            missing_fields.append("Price Band")
+        if ipo and (not ipo.issue_size_cr or ipo.issue_size_cr == 0):
+            missing_fields.append("Issue Size")
+        if ipo and not ipo.issue_open_date:
+            missing_fields.append("Bidding Dates")
+
+        drhp_disclaimer = None
+        if drhp_status == "NOT_FILED":
+            drhp_disclaimer = (
+                f"DRHP Pre-Filing Notice: {ipo_name} has not yet filed its Draft Red Herring Prospectus (DRHP) with SEBI. "
+                "Detailed restated financials (revenue, PAT, cash flow), capital structure split (OFS vs Fresh Issue), "
+                "and peer valuation multiples are not publicly disclosed. Quantitative conviction score reflects early "
+                "grey market buzz and sector benchmarks only."
+            )
+
         return AiReportResponse(
             id=existing.id,
             ipo_id=existing.ipo_id,
@@ -233,6 +256,9 @@ class AiDueDiligenceService:
             ipo_symbol=ipo_symbol,
             overall_score=overall_score,
             is_audited=audited,
+            drhp_status=drhp_status,
+            drhp_disclaimer=drhp_disclaimer,
+            missing_fields=missing_fields,
             recommendation=existing.recommendation,
             score_breakdown=sb,
             executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo_name}.",
@@ -295,81 +321,111 @@ class AiDueDiligenceService:
         price_max = ipo.price_band_max or 100.0
         est_price = round(price_max * (1 + (gmp / 100.0)), 2)
 
-        from app.schemas.report import FinancialMetricsSchema, FinancialYearItem, GatekeeperCheckSchema
-        issue_cr = float(ipo.issue_size_cr or 100.0)
-        base_rev = max(45.0, round(issue_cr * 1.5, 1))
+        has_drhp = bool(ipo.drhp_url or ipo.rhp_url)
+        drhp_status = "FILED" if has_drhp else "NOT_FILED"
+        missing_fields = []
+        if not has_drhp:
+            missing_fields.append("SEBI Draft Prospectus (DRHP)")
+            missing_fields.append("OFS vs Fresh Issue Split")
+            missing_fields.append("Restated Financial History (FY24-FY26)")
+        if not ipo.price_band_min or not ipo.price_band_max or ipo.price_band_min == ipo.price_band_max == 0:
+            missing_fields.append("Price Band")
+        if not ipo.issue_size_cr or ipo.issue_size_cr == 0:
+            missing_fields.append("Issue Size")
+        if not ipo.issue_open_date:
+            missing_fields.append("Bidding Dates")
 
-        fallback_fin = FinancialMetricsSchema(
-            revenue_growth_yoy="+32.4% YoY",
-            revenue_history=[
-                FinancialYearItem(year="FY24", amount_cr=round(base_rev * 0.75, 1)),
-                FinancialYearItem(year="FY25", amount_cr=round(base_rev * 0.90, 1)),
-                FinancialYearItem(year="FY26", amount_cr=round(base_rev * 1.19, 1)),
-            ],
-            pat_growth_yoy="+41.0% YoY",
-            pat_history=[
-                FinancialYearItem(year="FY24", amount_cr=round(base_rev * 0.06, 1)),
-                FinancialYearItem(year="FY25", amount_cr=round(base_rev * 0.09, 1)),
-                FinancialYearItem(year="FY26", amount_cr=round(base_rev * 0.13, 1)),
-            ],
-            cfo_history=[
-                FinancialYearItem(year="FY24", amount_cr=round(base_rev * 0.05, 1)),
-                FinancialYearItem(year="FY25", amount_cr=round(base_rev * 0.08, 1)),
-                FinancialYearItem(year="FY26", amount_cr=round(base_rev * 0.12, 1)),
-            ],
-            cfo_to_pat_ratio=0.92,
-            growth_demand_verdict="Preliminary sector model: healthy revenue growth and ~0.92x cash conversion indicate steady institutional appetite.",
-        )
+        drhp_disclaimer = None
+        if not has_drhp:
+            drhp_disclaimer = (
+                f"DRHP Pre-Filing Notice: {ipo.name} has not yet filed its Draft Red Herring Prospectus (DRHP) with SEBI. "
+                "Detailed restated financials (revenue, PAT, cash flow), capital structure split (OFS vs Fresh Issue), "
+                "and peer valuation multiples are not publicly disclosed. Quantitative conviction score reflects early "
+                "grey market buzz and sector benchmarks only."
+            )
+
+        from app.schemas.report import FinancialMetricsSchema, FinancialYearItem, GatekeeperCheckSchema
+
+        # Strict fidelity: Never invent financial metrics if DRHP is not filed
+        fallback_fin = None
 
         is_sme = (ipo.type == "SME") or ("SME" in (ipo.name or ""))
         fallback_gatekeepers = [
             GatekeeperCheckSchema(
                 key="ofs_split",
                 name="OFS vs. Fresh Issue Split",
-                details="Fresh: 75% | OFS: 25% (Estimated — Preliminary estimate — run AI audit to verify)",
+                details=(
+                    "DRHP not yet filed with SEBI — issue breakdown pending official regulatory draft."
+                    if not has_drhp
+                    else "Pending DRHP audit to verify OFS vs Fresh allocation."
+                ),
                 status="WARN",
                 threshold="OFS ≤ 40% (Fresh ≥ 60%)",
-                impact="Capital retained inside company to fund capex; minimal promoter dump. (Preliminary estimate — run AI audit to verify)",
+                impact=(
+                    "Pending official DRHP to verify whether promoters or early investors are offloading equity."
+                    if not has_drhp
+                    else "Capital retained inside company to fund capex; minimal promoter dump."
+                ),
             ),
             GatekeeperCheckSchema(
                 key="anchor_quality",
                 name="Anchor Book Quality",
                 details=(
-                    "Exempt for SME platform issues (SEBI ICDR regulations) (Preliminary estimate — run AI audit to verify)"
+                    "Exempt for SME platform issues (SEBI ICDR regulations)"
                     if is_sme
-                    else "Requires DRHP audit to verify mutual fund participation. (Preliminary estimate — run AI audit to verify)"
+                    else (
+                        "Anchor allocation disclosures release 1 day prior to issue opening; pending DRHP clearance."
+                        if not has_drhp
+                        else "Requires DRHP audit to verify mutual fund participation."
+                    )
                 ),
                 status="WARN",
                 threshold="N/A (SME platform)" if is_sme else "Domestic MFs > 30%",
                 impact=(
-                    "Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms. (Preliminary estimate — run AI audit to verify)"
+                    "Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms."
                     if is_sme
-                    else "Audit needed to confirm institutional price floor stability. (Preliminary estimate — run AI audit to verify)"
+                    else (
+                        "Institutional price floor can only be evaluated once anchor allocations are published."
+                        if not has_drhp
+                        else "Audit needed to confirm institutional price floor stability."
+                    )
                 ),
             ),
             GatekeeperCheckSchema(
                 key="cfo_conversion",
                 name="Cash Flow vs. PAT Conversion",
-                details="Estimated CFO/PAT ratio ~0.92x (Preliminary estimate — run AI audit to verify)",
+                details=(
+                    "Audited restated accounts pending SEBI DRHP publication."
+                    if not has_drhp
+                    else "Awaiting DRHP audit for cash collections conversion."
+                ),
                 status="WARN",
                 threshold="CFO / PAT Ratio ≥ 0.70x",
-                impact="Cash generation aligns with reported earnings; supports QIB interest. (Preliminary estimate — run AI audit to verify)",
+                impact="Cannot assess cash collection quality without statutory auditor-certified financials.",
             ),
             GatekeeperCheckSchema(
                 key="valuation_cushion",
                 name="Valuation Room vs. Listed Peers",
-                details="Requires DRHP audit for precise peer multiple discount. (Preliminary estimate — run AI audit to verify)",
+                details=(
+                    "Price band and P/E valuation multiples not yet fixed by book running lead managers."
+                    if not has_drhp
+                    else "Requires DRHP audit for precise peer multiple discount."
+                ),
                 status="WARN",
                 threshold="≥ 15% discount to peers",
-                impact="Run audit to calculate upside margin on listing morning. (Preliminary estimate — run AI audit to verify)",
+                impact="Valuation discount will be determined once merchant bankers fix the issue price band.",
             ),
             GatekeeperCheckSchema(
                 key="litigation_exposure",
                 name="Litigation Liability Ratio",
-                details="No critical court orders detected in public preliminary scan. (Preliminary estimate — run AI audit to verify)",
+                details=(
+                    "Legal annexures and contingent tax claims pending official DRHP disclosure."
+                    if not has_drhp
+                    else "No critical court orders detected in public preliminary scan."
+                ),
                 status="WARN",
                 threshold="Claims < 5% of Issue Size",
-                impact="Clean preliminary regulatory posture. (Preliminary estimate — run AI audit to verify)",
+                impact="Contingent legal liabilities can only be quantified from official SEBI DRHP filing.",
             ),
         ]
 
@@ -380,6 +436,9 @@ class AiDueDiligenceService:
             ipo_symbol=ipo.symbol,
             overall_score=score,
             is_audited=False,
+            drhp_status=drhp_status,
+            drhp_disclaimer=drhp_disclaimer,
+            missing_fields=missing_fields,
             recommendation=rec,
             score_breakdown=ScoreBreakdownSchema(
                 financial_quality=None,  # DRHP-dependent: Not assessed
@@ -389,18 +448,22 @@ class AiDueDiligenceService:
                 gmp_strength=gmp_strength,  # From live data (60% weight)
                 promoter_integrity=None, # DRHP-dependent: Not assessed
             ),
-            executive_summary=f"No audit has run, so red flags are unknown. Preliminary rating derived solely from live grey market premium ({gmp}%) and subscription demand.",
+            executive_summary=(
+                f"DRHP not yet filed with SEBI. Preliminary rating ({score}/100) derived solely from live grey market premium ({gmp}%) and market signals. Full audit will unlock once draft prospectus is published."
+                if not has_drhp
+                else f"No audit has run, so red flags are unknown. Preliminary rating derived solely from live grey market premium ({gmp}%) and subscription demand."
+            ),
             summary_source="sector_fallback",
             strengths=sector_data["strengths"],
             risks=sector_data["risks"],
             red_flags=[],
             financial_metrics=fallback_fin,
             gatekeepers=fallback_gatekeepers,
-            pe_ratio=24.0,
-            peer_avg_pe=30.0,
-            ofs_percentage=25.0,
+            pe_ratio=None if not has_drhp else 24.0,
+            peer_avg_pe=None if not has_drhp else 30.0,
+            ofs_percentage=None if not has_drhp else 25.0,
             gmp_percent=gmp,
-            estimated_listing_price=est_price,
+            estimated_listing_price=est_price if ipo.price_band_max else None,
             scored_at=datetime.now(timezone.utc).strftime("%d %b %Y"),
         )
 

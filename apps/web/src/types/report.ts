@@ -52,4 +52,7 @@ export interface AiReport {
   estimated_listing_price?: number
   summary_source?: 'ai_generated' | 'template_fallback' | 'sector_fallback' | string
   is_audited?: boolean
+  drhp_status?: 'FILED' | 'NOT_FILED' | 'PENDING_SEBI' | string
+  drhp_disclaimer?: string
+  missing_fields?: string[]
 }

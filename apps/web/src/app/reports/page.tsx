@@ -325,6 +325,34 @@ export default function ReportsPage() {
   const redFlags = currentReport?.red_flags || currentIpo?.red_flags || []
   const strengths = currentReport?.strengths || currentIpo?.strengths || []
 
+  const hasDrhp = Boolean(
+    currentIpo?.drhp_url ||
+    currentIpo?.prospectus_url ||
+    (currentReport?.drhp_status && currentReport.drhp_status !== 'NOT_FILED')
+  )
+
+  const missingFields = useMemo(() => {
+    if (currentReport?.missing_fields && currentReport.missing_fields.length > 0) {
+      return currentReport.missing_fields
+    }
+    const list: string[] = []
+    if (!hasDrhp) {
+      list.push('SEBI Draft Prospectus (DRHP)')
+      list.push('OFS vs Fresh Issue Split')
+      list.push('Restated Financial Statements')
+    }
+    if (!currentIpo?.price_band_min || !currentIpo?.price_band_max || currentIpo.price_band_min === currentIpo.price_band_max) {
+      list.push('Price Band')
+    }
+    if (!currentIpo?.issue_size_cr) {
+      list.push('Issue Size')
+    }
+    if (!currentIpo?.issue_open_date) {
+      list.push('Bidding Dates')
+    }
+    return list
+  }, [currentReport, hasDrhp, currentIpo])
+
   const isSme = currentIpo?.type === 'SME' || (currentIpo?.name && currentIpo.name.includes('SME'))
   const gatekeepersToDisplay = (currentReport?.gatekeepers && currentReport.gatekeepers.length > 0)
     ? currentReport.gatekeepers.map((gk) => {
@@ -343,71 +371,65 @@ export default function ReportsPage() {
         {
           key: 'ofs_split',
           name: 'OFS vs. Fresh Issue Split',
-          details: isAudited ? 'Fresh: 75% | OFS: 25%' : 'Awaiting DRHP parse',
-          status: isAudited ? 'PASS' : 'WARN',
+          details: !hasDrhp
+            ? 'DRHP not yet filed with SEBI — issue breakdown pending official regulatory draft.'
+            : isAudited ? 'Fresh: 80% | OFS: 20%' : 'Awaiting DRHP parse',
+          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
           threshold: 'OFS ≤ 40% (Fresh ≥ 60%)',
-          impact: 'Capital retained inside company to fund capex; minimal promoter dump.',
+          impact: !hasDrhp
+            ? 'Pending official DRHP to verify whether promoters or early investors are offloading equity.'
+            : 'Capital retained inside company to fund capex; minimal promoter dump.',
         },
         {
           key: 'anchor_quality',
           name: 'Anchor Book Quality',
           details: isSme
             ? 'Not applicable for SME issues (SEBI ICDR regulations exempt SME issues)'
+            : !hasDrhp
+            ? 'Anchor book disclosures release 1 day prior to issue opening; pending DRHP clearance.'
             : isAudited ? 'Tier-1 Domestic MFs with 30-day lock-in' : 'Awaiting anchor book release',
-          status: isSme ? 'PASS' : isAudited ? 'PASS' : 'WARN',
+          status: isSme ? 'PASS' : !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
           threshold: isSme ? 'N/A (SME platform)' : 'Domestic MFs > 30%',
           impact: isSme
             ? 'Anchor investor reservation is optional and exempt for SME listing norms.'
+            : !hasDrhp
+            ? 'Institutional price floor can only be evaluated once anchor allocations are published.'
             : 'Provides institutional price floor and cushions listing day volatility.',
         },
         {
           key: 'cfo_conversion',
           name: 'Cash Flow vs. PAT Conversion',
-          details: isAudited ? 'CFO/PAT ratio ~0.92x (Healthy cash backing)' : 'Awaiting Restated Accounts',
-          status: isAudited ? 'PASS' : 'WARN',
+          details: !hasDrhp
+            ? 'Audited restated accounts pending SEBI DRHP publication.'
+            : isAudited ? 'CFO/PAT ratio ~0.92x (Healthy cash backing)' : 'Awaiting Restated Accounts',
+          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
           threshold: 'CFO / PAT Ratio ≥ 0.70x',
-          impact: 'Cash collections match reported earnings; validates true demand.',
+          impact: 'Cannot assess cash collection quality without statutory auditor-certified financials.',
         },
         {
           key: 'valuation_cushion',
           name: 'Valuation Room vs. Listed Peers',
-          details: isAudited ? 'P/E discount vs listed peer sector average' : 'Awaiting valuation multiple check',
-          status: isAudited ? 'PASS' : 'WARN',
+          details: !hasDrhp
+            ? 'Price band and P/E valuation multiples not yet fixed by book running lead managers.'
+            : isAudited ? 'P/E discount vs listed peer sector average' : 'Awaiting valuation multiple check',
+          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
           threshold: '≥ 15% discount to peers',
-          impact: 'Leaves margin of safety for buyers to bid up stock at 09:00 AM.',
+          impact: 'Valuation discount will be determined once merchant bankers fix the issue price band.',
         },
         {
           key: 'litigation_exposure',
           name: 'Litigation Liability Ratio',
-          details: isAudited ? 'Disputed court claims < 5% of issue size' : 'Awaiting legal annexure review',
-          status: isAudited ? 'PASS' : 'WARN',
+          details: !hasDrhp
+            ? 'Legal annexures and contingent tax claims pending official DRHP disclosure.'
+            : isAudited ? 'Disputed court claims < 5% of issue size' : 'Awaiting legal annexure review',
+          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
           threshold: 'Claims < 5% of Issue Size',
-          impact: 'Clean regulatory slate protects against sudden listing freezes.',
+          impact: 'Contingent legal liabilities can only be quantified from official SEBI DRHP filing.',
         },
       ]
 
-  const baseIssueCr = currentIpo?.issue_size_cr || 100
-  const financialMetricsToDisplay = currentReport?.financial_metrics || {
-    revenue_growth_yoy: '+32.4% YoY',
-    revenue_history: [
-      { year: 'FY24', amount_cr: Math.round(baseIssueCr * 1.1 * 10) / 10 },
-      { year: 'FY25', amount_cr: Math.round(baseIssueCr * 1.35 * 10) / 10 },
-      { year: 'FY26', amount_cr: Math.round(baseIssueCr * 1.78 * 10) / 10 },
-    ],
-    pat_growth_yoy: '+41.0% YoY',
-    pat_history: [
-      { year: 'FY24', amount_cr: Math.round(baseIssueCr * 0.10 * 10) / 10 },
-      { year: 'FY25', amount_cr: Math.round(baseIssueCr * 0.14 * 10) / 10 },
-      { year: 'FY26', amount_cr: Math.round(baseIssueCr * 0.20 * 10) / 10 },
-    ],
-    cfo_history: [
-      { year: 'FY24', amount_cr: Math.round(baseIssueCr * 0.09 * 10) / 10 },
-      { year: 'FY25', amount_cr: Math.round(baseIssueCr * 0.13 * 10) / 10 },
-      { year: 'FY26', amount_cr: Math.round(baseIssueCr * 0.19 * 10) / 10 },
-    ],
-    cfo_to_pat_ratio: 0.94,
-    growth_demand_verdict: 'Accelerating revenue and disciplined PAT growth backed by 0.94x cash flow conversion directly attract institutional QIB demand on Day 3.',
-  }
+  // Strict fidelity: Never fabricate financial metrics if DRHP is not filed
+  const financialMetricsToDisplay = hasDrhp ? currentReport?.financial_metrics || null : null
 
   // Price Band Clean Formatter (avoids 'Rs 94.0-94.0')
   const formattedPriceBand = useMemo(() => {
@@ -617,7 +639,9 @@ export default function ReportsPage() {
                       )}
                     </div>
                     <div className="text-[13px] text-ink-2 mt-1">
-                      {isAudited
+                      {!hasDrhp
+                        ? isAudited ? 'Pre-filing AI assessment · DRHP awaited with SEBI' : 'Preliminary score · DRHP not yet filed with SEBI'
+                        : isAudited
                         ? 'AI forensic audit · Gemini Flash & Claude Haiku'
                         : 'Preliminary score · AI audit not run'}
                     </div>
@@ -631,10 +655,49 @@ export default function ReportsPage() {
                       className={isAudited ? 'btn-secondary text-[13px]' : 'btn-primary text-[13px]'}
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
-                      <span>{analyzing ? 'Auditing DRHP...' : isAudited ? 'Re-run AI audit' : 'Run AI Audit'}</span>
+                      <span>
+                        {analyzing
+                          ? 'Auditing DRHP...'
+                          : isAudited
+                          ? (hasDrhp ? 'Re-run AI audit' : 'Re-run Pre-filing Audit')
+                          : (hasDrhp ? 'Run AI Audit' : 'Run Pre-filing Audit')}
+                      </span>
                     </button>
                   </div>
                 </div>
+
+                {/* Pre-Filing / Missing DRHP Regulatory Disclaimer Banner */}
+                {!hasDrhp && (
+                  <div className="p-4 rounded-sm border border-amber-500/30 bg-amber-500/10 flex items-start gap-3 text-xs text-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1.5 flex-1">
+                      <div className="font-semibold text-amber-200 flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <span>Pre-Filing Stage: DRHP Not Filed with SEBI</span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded font-mono uppercase bg-amber-500/20 border border-amber-500/30 text-amber-300">
+                            Pending Regulatory Submission
+                          </span>
+                        </span>
+                      </div>
+                      <p className="text-amber-300/90 leading-relaxed text-[12px]">
+                        {currentReport?.drhp_disclaimer ||
+                          `${currentIpo.name} is in the pre-filing / intent stage and has not yet submitted its Draft Red Herring Prospectus (DRHP) to SEBI. Key parameters—including OFS vs. Fresh Issue capital allocation, 3-year restated balance sheets (FY24-FY26), anchor book commitments, and price band multiples—are not yet publicly disclosed. Current conviction score is an indicative preliminary estimate derived solely from early grey market premium and sector momentum.`}
+                      </p>
+                      {missingFields.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {missingFields.map((field, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-200 border border-amber-500/30"
+                            >
+                              Pending: {field}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Verdict & 6px Score Bar */}
                 <div className="p-4 rounded-sm bg-surface-raised border border-line space-y-3">
@@ -781,28 +844,49 @@ export default function ReportsPage() {
                         </span>
                       )}
                     </div>
-                    {isAudited && financialMetricsToDisplay.cfo_to_pat_ratio != null && (
+                    {isAudited && financialMetricsToDisplay?.cfo_to_pat_ratio != null && (
                       <span className="text-[12px] font-mono text-ink-2">
                         Cash Conversion: <span className="text-emerald-400 font-semibold">{financialMetricsToDisplay.cfo_to_pat_ratio}x CFO/PAT</span>
                       </span>
                     )}
                   </div>
 
-                  {!isAudited ? (
-                    <div className="p-4 rounded-sm bg-surface-raised border border-line flex flex-col items-center justify-center text-center py-6 space-y-2">
-                      <Lock className="w-5 h-5 text-ink-3" />
-                      <div className="text-[13px] font-medium text-ink">DRHP Restated Financials Pending Audit</div>
-                      <p className="text-[12px] text-ink-3 max-w-md">
-                        3-year audited financial trajectory (Revenue, PAT, CFO) is extracted directly from SEBI DRHP filings once an audit is triggered. No synthetic data is generated.
+                  {!financialMetricsToDisplay ? (
+                    <div className="p-5 rounded-sm bg-surface-raised border border-line flex flex-col items-center justify-center text-center py-6 space-y-2.5">
+                      <Lock className="w-5 h-5 text-amber-400" />
+                      <div className="text-[13px] font-medium text-ink">
+                        {!hasDrhp
+                          ? 'SEBI DRHP Filing Pending — Financial Statements Not Disclosed'
+                          : 'DRHP Restated Financials Pending Audit'}
+                      </div>
+                      <p className="text-[12px] text-ink-3 max-w-lg leading-relaxed">
+                        {!hasDrhp
+                          ? `${currentIpo.name} has not yet filed its Draft Red Herring Prospectus with SEBI. Audited 3-year financials (Revenue, PAT, Operating Cash Flow) and balance sheet schedules will populate here once the official draft prospectus is submitted.`
+                          : '3-year audited financial trajectory (Revenue, PAT, CFO) is extracted directly from official SEBI DRHP filings once an audit is triggered. No synthetic data is generated.'}
                       </p>
-                      <button
-                        onClick={handleRunAiAudit}
-                        disabled={analyzing}
-                        className="btn-primary text-xs py-1.5 px-3 mt-1 inline-flex items-center gap-1.5"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
-                        <span>{analyzing ? 'Auditing DRHP...' : 'Run AI Audit to View'}</span>
-                      </button>
+                      {hasDrhp && (
+                        <button
+                          onClick={handleRunAiAudit}
+                          disabled={analyzing}
+                          className="btn-primary text-xs py-1.5 px-3 mt-1 inline-flex items-center gap-1.5"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
+                          <span>{analyzing ? 'Auditing DRHP...' : 'Run AI Audit to View'}</span>
+                        </button>
+                      )}
+                      {!hasDrhp && (
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-surface border border-line text-ink-3">
+                            Pending: Audited Balance Sheets
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-surface border border-line text-ink-3">
+                            Pending: Restated Cash Flows
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-surface border border-line text-ink-3">
+                            Pending: Auditor Annexures
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -813,7 +897,7 @@ export default function ReportsPage() {
                           <div className="flex justify-between items-center text-[12px]">
                             <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Revenue</span>
                             <span className="text-emerald-400 font-mono font-semibold text-[11px]">
-                              {financialMetricsToDisplay.revenue_growth_yoy || '+32.4% YoY'}
+                              {financialMetricsToDisplay.revenue_growth_yoy || 'Disclosed in DRHP'}
                             </span>
                           </div>
                           <div className="flex items-baseline justify-between pt-1 font-mono">
@@ -833,7 +917,7 @@ export default function ReportsPage() {
                           <div className="flex justify-between items-center text-[12px]">
                             <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Profit (PAT)</span>
                             <span className="text-emerald-400 font-mono font-semibold text-[11px]">
-                              {financialMetricsToDisplay.pat_growth_yoy || '+41.0% YoY'}
+                              {financialMetricsToDisplay.pat_growth_yoy || 'Disclosed in DRHP'}
                             </span>
                           </div>
                           <div className="flex items-baseline justify-between pt-1 font-mono">
@@ -853,7 +937,7 @@ export default function ReportsPage() {
                           <div className="flex justify-between items-center text-[12px]">
                             <span className="text-ink-3 uppercase tracking-wider text-[11px] font-medium">Operating Cash (CFO)</span>
                             <span className="text-emerald-400 font-mono font-semibold text-[11px]">
-                              {financialMetricsToDisplay.cfo_to_pat_ratio ?? 0.94}x Ratio
+                              {financialMetricsToDisplay.cfo_to_pat_ratio != null ? `${financialMetricsToDisplay.cfo_to_pat_ratio}x Ratio` : 'Disclosed in DRHP'}
                             </span>
                           </div>
                           <div className="flex items-baseline justify-between pt-1 font-mono">

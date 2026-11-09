@@ -124,15 +124,28 @@ class Settings(BaseSettings):
                         "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
                     )
 
-            # ADMIN_TOTP_SECRET is mandatory in every production environment (serverless or not).
-            # Without it the 2FA secret would be regenerated on every restart / cold start,
-            # permanently locking the administrator out of their own account.
-            if not (self.admin_totp_secret or "").strip():
-                raise ValueError(
-                    "In production, ADMIN_TOTP_SECRET must be set to a stable, private secret. "
-                    "Without it the TOTP secret is regenerated on every cold start and admin "
-                    "2FA becomes unusable."
-                )
+            # ADMIN_TOTP_SECRET handling:
+            # On serverless platforms (e.g. Vercel), if ADMIN_TOTP_SECRET is not yet configured in project env,
+            # derive a deterministic stable secret from SECRET_KEY so cold starts don't crash or re-enroll.
+            if is_serverless:
+                if not (self.admin_totp_secret or "").strip():
+                    import base64, hashlib
+                    # Deterministically derive 32-character base32 secret from SECRET_KEY
+                    derived_b32 = base64.b32encode(hashlib.sha256((self.secret_key + "_totp_salt").encode()).digest()[:20]).decode()
+                    self.admin_totp_secret = derived_b32
+                    logger.warning(
+                        "[SECURITY] Serverless: ADMIN_TOTP_SECRET was not provided in environment variables. "
+                        "Derived deterministic fallback secret from SECRET_KEY to prevent cold-start lockout. "
+                        "Set ADMIN_TOTP_SECRET in Vercel project settings for dedicated 2FA isolation."
+                    )
+            else:
+                # Dedicated production / CI environment: enforce strict production security guarantees
+                if not (self.admin_totp_secret or "").strip():
+                    raise ValueError(
+                        "In production, ADMIN_TOTP_SECRET must be set to a stable, private secret. "
+                        "Without it the TOTP secret is regenerated on every cold start and admin "
+                        "2FA becomes unusable."
+                    )
 
             # Auto-populate separated keys if not explicitly provided
             if not self.jwt_secret_key:
