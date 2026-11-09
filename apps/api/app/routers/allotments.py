@@ -7,7 +7,7 @@ from app.schemas.allotment import AllotmentResponse, StageSellRequest
 from app.services.allotment_service import allotment_service
 from app.services.demo_dataset import demo_dataset
 
-from app.middleware.auth import get_current_user_optional, require_admin
+from app.middleware.auth import get_viewer, require_admin
 
 router = APIRouter(prefix="/allotments", tags=["allotments"])
 
@@ -15,10 +15,10 @@ router = APIRouter(prefix="/allotments", tags=["allotments"])
 async def list_allotments(
     status: Optional[str] = Query(None, description="Filter: ALL, ACTIVE, SOLD, INACTIVE"),
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """Fetch active demat holdings, executed sales, and unallocated refunds from PostgreSQL."""
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
         allotments = demo_dataset.get_allotments()
         if status and status.upper() != "ALL":
             allotments = [alt for alt in allotments if alt.status.upper() == status.upper()]

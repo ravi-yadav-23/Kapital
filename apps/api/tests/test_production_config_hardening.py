@@ -43,8 +43,26 @@ def test_production_accepts_strong_pin():
         environment="production",
         secret_key="a-very-strong-production-secret-key-32chars!",
         admin_pin="849204",
+        admin_totp_secret="JBSWY3DPEHPK3PXP",
         database_url="postgresql+asyncpg://user:pass@localhost:5432/kapitl",
     )
     assert s.admin_pin == "849204"
     assert s.environment == "production"
+
+
+def test_production_requires_admin_totp_secret():
+    """In production, ADMIN_TOTP_SECRET must be set or admin 2FA is unusable after a restart."""
+    with pytest.raises(ValidationError, match="ADMIN_TOTP_SECRET"):
+        Settings(
+            environment="production",
+            secret_key="a-very-strong-production-secret-key-32chars!",
+            admin_pin="849204",
+            admin_totp_secret="",
+            database_url="postgresql+asyncpg://user:pass@localhost:5432/kapitl",
+        )
+
+
+def test_admin_totp_secret_has_no_baked_in_default():
+    """The field must not ship with a baked-in default secret."""
+    assert Settings.model_fields["admin_totp_secret"].default == ""
 

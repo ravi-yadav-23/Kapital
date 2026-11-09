@@ -28,6 +28,17 @@ const nextConfig = {
       },
     ];
   },
+  async rewrites() {
+    const rawApiUrl = process.env.API_URL || 'http://127.0.0.1:8000';
+    const base = rawApiUrl.replace(/\/$/, '');
+    const destination = base.endsWith('/api') ? `${base}/:path*` : `${base}/api/:path*`;
+    return [
+      {
+        source: '/api/:path*',
+        destination,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

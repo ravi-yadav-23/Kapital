@@ -9,7 +9,7 @@ from app.models.setting import SystemSetting
 from app.utils.security import encrypt_credential, decrypt_credential, mask_secret
 from app.config import settings
 
-from app.middleware.auth import require_admin, get_current_user_optional
+from app.middleware.auth import require_admin, get_viewer
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -66,10 +66,10 @@ async def get_decrypted_setting(db: AsyncSession, setting_field: str) -> Optiona
 @router.get("")
 async def get_app_settings(
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ) -> Dict[str, Any]:
     """Retrieve current platform settings with API keys masked. Returns defaults for guest mode."""
-    if isinstance(user, dict) and user.get("is_guest"):
+    if viewer.get("is_guest"):
         return _mask_settings(DEFAULT_SETTINGS)
 
     stmt = select(SystemSetting).where(SystemSetting.key == "app_preferences")

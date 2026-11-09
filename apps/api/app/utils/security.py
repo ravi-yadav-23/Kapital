@@ -98,3 +98,20 @@ def mask_secret(value: Optional[str]) -> str:
     if len(decrypted) <= 8:
         return "********"
     return f"{decrypted[:4]}...{decrypted[-4:]}"
+
+
+def mask_pan(value: Optional[str]) -> Optional[str]:
+    """
+    Masks a PAN for safe API response transmission.
+    A PAN is a 10-character identity document (5 letters, 4 digits, 1 letter);
+    returning it in full would expose a sensitive KYC identifier.
+    Example: 'ABCDE1234F' -> 'A*****234F'
+    """
+    if not value or not isinstance(value, str):
+        return value
+    pan = value.strip()
+    if not pan:
+        return value
+    if len(pan) <= 4:
+        return "*" * len(pan)
+    return f"{pan[0]}{'*' * (len(pan) - 5)}{pan[-4:]}"

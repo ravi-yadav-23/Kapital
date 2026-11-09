@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.security import encrypt_credential, decrypt_credential, mask_secret
 from app.routers.settings import save_app_settings, get_app_settings, get_decrypted_setting
+from app.middleware.auth import create_access_token
 
 
 def test_encryption_and_decryption():
@@ -38,14 +39,17 @@ async def test_settings_encryption_and_masking(db_session: AsyncSession, seed_da
         "ai_provider": "groq",
     }
 
-    # 1. Save settings
-    saved = await save_app_settings(save_payload, db_session)
+    # Admin viewer for the direct function calls
+    admin_viewer = {"id": "admin-1", "role": "ADMIN", "is_guest": False, "username": "admin", "email": "admin@kapitl.local"}
+
+    # 1. Save settings (requires admin)
+    saved = await save_app_settings(save_payload, db_session, admin=admin_viewer)
     assert saved["success"] is True
     assert "..." in saved["settings"]["groq_api_key"]
     assert raw_key not in saved["settings"]["groq_api_key"]
 
     # 2. Retrieve settings via API (must be masked)
-    retrieved = await get_app_settings(db_session)
+    retrieved = await get_app_settings(db_session, viewer=admin_viewer)
     assert "..." in retrieved["groq_api_key"]
     assert raw_key not in retrieved["groq_api_key"]
 

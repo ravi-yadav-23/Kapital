@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { notFound } from 'next/navigation'
 import {
   formatINR,
   formatCompactINR,
@@ -25,6 +26,10 @@ import {
 } from 'lucide-react'
 
 export default function DesignPreviewPage() {
+  if (process.env.NODE_ENV === 'production') {
+    notFound()
+  }
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   useEffect(() => {

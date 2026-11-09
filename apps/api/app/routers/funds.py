@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Response, HTTPException
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -22,7 +22,7 @@ from app.services.optimizer_service import AllocationOptimizer
 from app.services.demo_dataset import demo_dataset, DEMO_ACCOUNTS
 from app.tasks.celery_app import celery, run_optimizer_celery
 
-from app.middleware.auth import get_current_user_optional, require_admin
+from app.middleware.auth import get_viewer, require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +36,16 @@ _optimizer_task_store: Dict[str, Dict[str, Any]] = {}
 async def get_fund_summary(
     response: Response,
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """Get overall family corpus balance, available deployment liquidity, and ASBA locked totals."""
-    response.headers["Cache-Control"] = "public, max-age=30"
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
+        # Demo payload is public and identical for every anonymous caller.
+        response.headers["Cache-Control"] = "public, max-age=30"
         return demo_dataset.get_fund_summary()
+
+    # Real portfolio figures must never be cached by a shared/proxy cache.
+    response.headers["Cache-Control"] = "private, no-store"
 
     accounts = await account_service.get_all_accounts(db)
     asba_locks = await allotment_service.get_asba_locks(db)
@@ -67,10 +71,10 @@ async def get_fund_summary(
 @router.get("/pnl-summary", response_model=PnlSummaryResponse)
 async def get_pnl_summary(
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """Get family historical realized P&L, overall ROI, active lots, and lottery hit rates."""
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
         return demo_dataset.get_pnl_summary()
 
     allotments = await allotment_service.get_allotments(db)
@@ -98,10 +102,10 @@ async def get_pnl_summary(
 @router.get("/accounts", response_model=List[AccountResponse])
 async def list_family_accounts(
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """List all registered family demat accounts. Returns demo accounts for guest mode."""
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
         return demo_dataset.get_accounts()
     return await account_service.get_all_accounts(db)
 
@@ -121,13 +125,9 @@ async def update_family_account(
     account_id: str,
     data: AccountUpdate,
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    admin: dict = Depends(require_admin),
 ):
-    """Update family member balance or category preferences."""
-    if user and user.get("is_guest"):
-        updated_demo = demo_dataset.update_account(account_id, data.model_dump(exclude_unset=True))
-        if updated_demo:
-            return updated_demo
+    """Update family member balance or category preferences. Administrators only."""
     return await account_service.update_account(db, account_id, data)
 
 
@@ -174,14 +174,14 @@ async def sync_all_accounts_balance(
 @router.post("/optimize", response_model=AllocationPlanResponse)
 async def run_pulp_optimization(
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """
     Run PuLP Mixed-Integer Linear Program (MILP) to find the globally optimal
     family-wide capital allocation across Demat accounts and active IPO issues.
     Executes in a worker thread (~12ms solve time) and returns the completed plan.
     """
-    is_guest = not user or user.get("is_guest")
+    is_guest = bool(viewer.get("is_guest"))
     try:
         db_accounts = await account_service.get_all_accounts(db)
         db_ipos = await ipo_service.get_all_ipos(db)
@@ -201,17 +201,21 @@ async def run_pulp_optimization(
                 for a in DEMO_ACCOUNTS
             ]
         else:
+            # Raw account dicts (PAN included) so the SEBI 1-bid-per-PAN
+            # constraint can be enforced. PAN is never echoed in the response.
+            raw_accounts = await account_service.get_all_accounts_raw(db)
             accounts_data = [
                 {
-                    "id": a.id,
-                    "name": a.name,
-                    "relation": a.relation,
-                    "angel_client_id": a.angel_client_id,
-                    "available_liquid_balance": a.available_balance,
-                    "preferred_category": a.preferred_category or "RETAIL",
-                    "is_active": a.is_active,
+                    "id": a["id"],
+                    "name": a["name"],
+                    "relation": a.get("relation", "Self"),
+                    "angel_client_id": a.get("angel_client_id", ""),
+                    "pan": a.get("pan"),
+                    "available_liquid_balance": a.get("available_liquid_balance", 0.0),
+                    "preferred_category": a.get("preferred_category", "RETAIL"),
+                    "is_active": a.get("is_active", True),
                 }
-                for a in db_accounts
+                for a in raw_accounts
             ]
 
         ipos_data = [
@@ -347,16 +351,21 @@ async def run_pulp_optimization(
 async def get_optimization_status(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """
     Poll the status of an active or completed PuLP optimization task.
     Returns AllocationPlanResponse with status='PENDING' while calculating,
     or final 'OPTIMAL' plan when complete.
     """
+    is_guest = bool(viewer.get("is_guest"))
+
     # 1. Check in-process fallback store
     if task_id in _optimizer_task_store:
         record = _optimizer_task_store[task_id]
+        # A guest may only ever see their own demo plan, never a real one.
+        if is_guest and not record.get("result", {}).get("is_demo"):
+            raise HTTPException(status_code=404, detail="Optimizer task not found")
         if record.get("status") == "PENDING":
             return AllocationPlanResponse(
                 plan_id=task_id,
@@ -418,9 +427,9 @@ async def get_optimization_status(
 @router.get("/locks", response_model=List[AsbaLockResponse])
 async def list_asba_locks(
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """Get ASBA fund lock and liquidity recycling timeline."""
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
         return demo_dataset.get_asba_locks()
     return await allotment_service.get_asba_locks(db)

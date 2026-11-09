@@ -272,74 +272,83 @@ class IpoDueDiligenceOrchestrator:
         strengths = clean_text_list(raw_strengths)
         risks = clean_text_list(raw_risks)
 
-        # 1. Financial Metrics Extraction & Synthesis
+        # 1. Financial Metrics Extraction & Synthesis (Strict Fidelity - No Fabrications)
         issue_size_cr = float(ipo.get("issue_size_cr") or 100.0)
-        
-        rev_hist = analysis_res.get("revenue_history")
-        pat_hist = analysis_res.get("pat_history")
-        cfo_hist = analysis_res.get("cfo_history")
-        
-        # If missing or incomplete, build sector-calibrated 3-year figures
-        if not rev_hist or not isinstance(rev_hist, list) or len(rev_hist) < 3:
-            base_rev = max(45.0, round(issue_size_cr * 1.5, 1))
-            rev_hist = [
-                {"year": "FY24", "amount_cr": round(base_rev * 0.72, 1)},
-                {"year": "FY25", "amount_cr": round(base_rev * 0.88, 1)},
-                {"year": "FY26", "amount_cr": round(base_rev * 1.18, 1)},
-            ]
-        
-        if not pat_hist or not isinstance(pat_hist, list) or len(pat_hist) < 3:
-            last_rev = rev_hist[-1]["amount_cr"] if rev_hist else 50.0
-            base_pat = max(4.0, round(last_rev * 0.11, 1))
-            pat_hist = [
-                {"year": "FY24", "amount_cr": round(base_pat * 0.55, 1)},
-                {"year": "FY25", "amount_cr": round(base_pat * 0.75, 1)},
-                {"year": "FY26", "amount_cr": round(base_pat, 1)},
-            ]
 
-        if not cfo_hist or not isinstance(cfo_hist, list) or len(cfo_hist) < 3:
-            last_pat = pat_hist[-1]["amount_cr"] if pat_hist else 6.0
-            cfo_hist = [
-                {"year": "FY24", "amount_cr": round(last_pat * 0.50, 1)},
-                {"year": "FY25", "amount_cr": round(last_pat * 0.72, 1)},
-                {"year": "FY26", "amount_cr": round(last_pat * 0.94, 1)},
-            ]
+        raw_rev_hist = analysis_res.get("revenue_history")
+        raw_pat_hist = analysis_res.get("pat_history")
+        raw_cfo_hist = analysis_res.get("cfo_history")
 
-        try:
-            rev_yoy_val = ((rev_hist[-1]["amount_cr"] - rev_hist[-2]["amount_cr"]) / rev_hist[-2]["amount_cr"]) * 100
-            rev_growth_yoy = f"+{rev_yoy_val:.1f}% YoY" if rev_yoy_val >= 0 else f"{rev_yoy_val:.1f}% YoY"
-        except Exception:
-            rev_growth_yoy = analysis_res.get("revenue_growth_yoy") or "+34.2% YoY"
+        # Validate that historical figures are legitimately provided lists of items
+        has_real_rev = isinstance(raw_rev_hist, list) and len(raw_rev_hist) > 0 and all(isinstance(x, dict) and "amount_cr" in x for x in raw_rev_hist)
+        has_real_pat = isinstance(raw_pat_hist, list) and len(raw_pat_hist) > 0 and all(isinstance(x, dict) and "amount_cr" in x for x in raw_pat_hist)
+        has_real_cfo = isinstance(raw_cfo_hist, list) and len(raw_cfo_hist) > 0 and all(isinstance(x, dict) and "amount_cr" in x for x in raw_cfo_hist)
 
-        try:
-            pat_yoy_val = ((pat_hist[-1]["amount_cr"] - pat_hist[-2]["amount_cr"]) / pat_hist[-2]["amount_cr"]) * 100
-            pat_growth_yoy = f"+{pat_yoy_val:.1f}% YoY" if pat_yoy_val >= 0 else f"{pat_yoy_val:.1f}% YoY"
-        except Exception:
-            pat_growth_yoy = analysis_res.get("pat_growth_yoy") or "+42.5% YoY"
+        rev_hist = raw_rev_hist if has_real_rev else []
+        pat_hist = raw_pat_hist if has_real_pat else []
+        cfo_hist = raw_cfo_hist if has_real_cfo else []
 
-        pat_last = float(pat_hist[-1]["amount_cr"]) if pat_hist else 10.0
-        cfo_last = float(cfo_hist[-1]["amount_cr"]) if cfo_hist else 9.0
-        cfo_to_pat = round(cfo_last / pat_last, 2) if pat_last > 0 else 0.90
-        if "cfo_to_pat_ratio" in analysis_res and analysis_res["cfo_to_pat_ratio"]:
+        # Determine data sufficiency:
+        if has_real_rev and has_real_pat and len(rev_hist) >= 3:
+            data_sufficiency = "full"
+        elif ipo.get("price_band_max") or ipo.get("issue_size") or ipo.get("gmp_percent"):
+            data_sufficiency = "partial"
+        else:
+            data_sufficiency = "none"
+
+        # Prepend honest disclosure tag if inputs are limited
+        if data_sufficiency != "full" and not summary_narrative.startswith("[AI summary from limited inputs]"):
+            summary_narrative = f"[AI summary from limited inputs] {summary_narrative}"
+
+        rev_growth_yoy = analysis_res.get("revenue_growth_yoy")
+        if not rev_growth_yoy and len(rev_hist) >= 2:
+            try:
+                rev_yoy_val = ((rev_hist[-1]["amount_cr"] - rev_hist[-2]["amount_cr"]) / rev_hist[-2]["amount_cr"]) * 100
+                rev_growth_yoy = f"+{rev_yoy_val:.1f}% YoY" if rev_yoy_val >= 0 else f"{rev_yoy_val:.1f}% YoY"
+            except Exception:
+                rev_growth_yoy = None
+
+        pat_growth_yoy = analysis_res.get("pat_growth_yoy")
+        if not pat_growth_yoy and len(pat_hist) >= 2:
+            try:
+                pat_yoy_val = ((pat_hist[-1]["amount_cr"] - pat_hist[-2]["amount_cr"]) / pat_hist[-2]["amount_cr"]) * 100
+                pat_growth_yoy = f"+{pat_yoy_val:.1f}% YoY" if pat_yoy_val >= 0 else f"{pat_yoy_val:.1f}% YoY"
+            except Exception:
+                pat_growth_yoy = None
+
+        cfo_to_pat = None
+        if "cfo_to_pat_ratio" in analysis_res and analysis_res["cfo_to_pat_ratio"] is not None:
             try:
                 cfo_to_pat = round(float(analysis_res["cfo_to_pat_ratio"]), 2)
             except Exception:
                 pass
+        elif pat_hist and cfo_hist and float(pat_hist[-1]["amount_cr"]) > 0:
+            cfo_to_pat = round(float(cfo_hist[-1]["amount_cr"]) / float(pat_hist[-1]["amount_cr"]), 2)
 
-        demand_verdict = analysis_res.get("growth_demand_verdict") or (
-            f"Accelerating revenue ({rev_growth_yoy}) and disciplined PAT growth ({pat_growth_yoy}) "
-            f"backed by healthy {cfo_to_pat}x cash flow conversion directly fuel institutional QIB demand on Day 3."
-        )
+        demand_verdict = analysis_res.get("growth_demand_verdict")
+        if not demand_verdict:
+            if data_sufficiency == "full" and rev_growth_yoy and pat_growth_yoy:
+                demand_verdict = (
+                    f"Revenue ({rev_growth_yoy}) and PAT growth ({pat_growth_yoy}) "
+                    f"underpin institutional QIB participation."
+                )
+            else:
+                demand_verdict = "Financial trajectories pending detailed audited prospectus filing disclosures."
 
-        financial_metrics = {
-            "revenue_growth_yoy": rev_growth_yoy,
-            "revenue_history": rev_hist,
-            "pat_growth_yoy": pat_growth_yoy,
-            "pat_history": pat_hist,
-            "cfo_history": cfo_hist,
-            "cfo_to_pat_ratio": cfo_to_pat,
-            "growth_demand_verdict": demand_verdict,
-        }
+        # Only store financial_metrics if verified financial data exists
+        if has_real_rev or has_real_pat or has_real_cfo or rev_growth_yoy or pat_growth_yoy or cfo_to_pat is not None:
+            financial_metrics = {
+                "data_sufficiency": data_sufficiency,
+                "revenue_growth_yoy": rev_growth_yoy,
+                "revenue_history": rev_hist,
+                "pat_growth_yoy": pat_growth_yoy,
+                "pat_history": pat_hist,
+                "cfo_history": cfo_hist,
+                "cfo_to_pat_ratio": cfo_to_pat,
+                "growth_demand_verdict": demand_verdict,
+            }
+        else:
+            financial_metrics = None
 
         # 2. Gatekeeper Checks (PASS / FAIL / WARN)
         ofs_pct = float(analysis_res.get("ofs_percentage") or 25.0)
@@ -362,7 +371,10 @@ class IpoDueDiligenceOrchestrator:
 
         # Gatekeeper 2: Anchor Book Quality
         anchor_quality = news_res.get("anchor_quality_verdict") or ""
-        if "weak" in anchor_quality.lower() or "cautious" in anchor_quality.lower():
+        if not anchor_quality or "not assessed" in anchor_quality.lower():
+            anchor_status = "PASS"
+            anchor_quality = "Not assessed (no verified anchor disclosures in input)"
+        elif "weak" in anchor_quality.lower() or "cautious" in anchor_quality.lower():
             anchor_status = "WARN"
         elif "poor" in anchor_quality.lower() or "avoid" in anchor_quality.lower():
             anchor_status = "FAIL"
@@ -370,15 +382,29 @@ class IpoDueDiligenceOrchestrator:
             anchor_status = "PASS"
 
         # Gatekeeper 3: Cash Flow vs PAT (Quality of Earnings)
-        if cfo_last < 0 and pat_last > 0:
+        cfo_last = (
+            float(cfo_hist[-1]["amount_cr"])
+            if cfo_hist and isinstance(cfo_hist[-1], dict) and "amount_cr" in cfo_hist[-1]
+            else None
+        )
+        pat_last = (
+            float(pat_hist[-1]["amount_cr"])
+            if pat_hist and isinstance(pat_hist[-1], dict) and "amount_cr" in pat_hist[-1]
+            else None
+        )
+
+        if cfo_last is not None and pat_last is not None and cfo_last < 0 and pat_last > 0:
             cfo_status = "FAIL"
             cfo_impact = "Negative operating cash flow with positive PAT indicates aggressive pre-IPO billing."
-        elif cfo_to_pat < 0.60:
+        elif cfo_to_pat is not None and cfo_to_pat < 0.60:
             cfo_status = "WARN"
             cfo_impact = "Working capital elongation; receivables growing faster than cash collections."
-        else:
+        elif cfo_to_pat is not None:
             cfo_status = "PASS"
             cfo_impact = "Real cash conversion backing reported net profits; drives institutional buying."
+        else:
+            cfo_status = "PASS"
+            cfo_impact = "Cash flow trajectory pending detailed audited financial statements."
 
         # Gatekeeper 4: Valuation Cushion vs Listed Peers
         pe_discount_pct = round(((peer_pe - pe_ratio) / peer_pe) * 100.0, 1) if peer_pe > 0 else 0.0
@@ -423,7 +449,15 @@ class IpoDueDiligenceOrchestrator:
             {
                 "key": "cfo_conversion",
                 "name": "Cash Flow vs. PAT Conversion",
-                "details": f"CFO/PAT ratio {cfo_to_pat}x (₹{cfo_last:.1f} Cr CFO vs ₹{pat_last:.1f} Cr PAT)",
+                "details": (
+                    f"CFO/PAT ratio {cfo_to_pat}x (₹{cfo_last:.1f} Cr CFO vs ₹{pat_last:.1f} Cr PAT)"
+                    if (cfo_last is not None and pat_last is not None)
+                    else (
+                        f"CFO/PAT ratio: {cfo_to_pat}x"
+                        if cfo_to_pat is not None
+                        else "Historical CFO and PAT figures pending audited disclosures"
+                    )
+                ),
                 "status": cfo_status,
                 "threshold": "CFO / PAT Ratio ≥ 0.70x",
                 "impact": cfo_impact,
@@ -524,6 +558,7 @@ class IpoDueDiligenceOrchestrator:
             ipo_symbol=ipo.get("symbol"),
             overall_score=report_row.overall_score,
             is_audited=True,  # Full LLM audit completed successfully
+            data_sufficiency=data_sufficiency,
             recommendation=report_row.recommendation,
             executive_summary=report_row.executive_summary,
             summary_source=report_row.summary_source,

@@ -68,6 +68,7 @@ class FinancialYearItem(BaseModel):
     amount_cr: float  # Value in ₹ Crores
 
 class FinancialMetricsSchema(BaseModel):
+    data_sufficiency: Optional[str] = "partial"  # "full", "partial", "none"
     revenue_growth_yoy: Optional[str] = None
     revenue_history: List[FinancialYearItem] = []
     pat_growth_yoy: Optional[str] = None
@@ -91,6 +92,7 @@ class AiReportResponse(BaseModel):
     ipo_symbol: Optional[str] = None
     overall_score: int
     is_audited: bool = False
+    data_sufficiency: Optional[str] = "partial"  # "full", "partial", "none"
     recommendation: str
     score_breakdown: ScoreBreakdownSchema
     executive_summary: Optional[str] = None

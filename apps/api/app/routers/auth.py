@@ -15,8 +15,6 @@ from app.middleware.auth import (
     create_temp_2fa_token,
     decode_token,
     get_current_user,
-    verify_password,
-    hash_password,
 )
 from app.config import settings
 from app.utils.security import encrypt_credential, decrypt_credential
@@ -78,12 +76,6 @@ def generate_qr_data_url(otpauth_uri: str) -> str:
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
-
-class LoginRequest(BaseModel):
-    username: Optional[str] = "admin"
-    password: Optional[str] = None
-    pin: Optional[str] = None
-
 
 class GoogleAuthRequest(BaseModel):
     credential: str  # Google ID token returned by Google Identity Services
@@ -357,55 +349,6 @@ async def guest_login():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Guest login failed: {str(e)}",
         )
-
-
-@router.post("/login", response_model=LoginResponse)
-async def pin_login(req: LoginRequest):
-    """
-    Legacy / Emergency Administrative login via PIN or Master Password.
-    """
-    credential = req.password or req.pin or ""
-    valid = False
-
-    admin_pin = (getattr(settings, "admin_pin", None) or "").strip()
-    if not admin_pin:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Admin PIN authentication is not configured on this server.",
-        )
-    admin_hash = hash_password(admin_pin)
-
-    if credential in [admin_pin, settings.secret_key]:
-        valid = True
-    elif verify_password(credential, admin_hash):
-        valid = True
-
-    if not valid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username, password, or security PIN.",
-        )
-
-    user_info = {
-        "sub": "usr-admin-1",
-        "username": req.username or "Admin",
-        "email": settings.allowed_email or "admin@kapitl.local",
-        "role": "ADMIN",
-        "is_guest": False,
-    }
-    token = create_access_token(user_info)
-
-    return LoginResponse(
-        access_token=token,
-        token_type="bearer",
-        user=UserProfileResponse(
-            id=user_info["sub"],
-            username=user_info["username"],
-            email=user_info["email"],
-            role=user_info["role"],
-            is_guest=False,
-        ),
-    )
 
 
 @router.get("/me", response_model=UserProfileResponse)

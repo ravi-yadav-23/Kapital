@@ -23,11 +23,15 @@ Evaluate for Short-Term / Listing Gain Decision-Making:
    - Anchor Book Quality: Backing by Tier-1 domestic Mutual Funds (HDFC, SBI, ICICI Pru, Nippon) with 30-day lock-in.
    - Material litigation and contingent claims (in ₹ Crores) vs. total issue size.
 
-CRITICAL INSTRUCTION FOR SPARSE OR MISSING DATA:
-If specific financials are sparse, use your pre-trained knowledge of this company or realistic sector benchmarks (e.g. for Maxwell Engineering, Paras Healthcare, SFC Environmental, etc.) to estimate realistic FY24, FY25, and FY26 figures in ₹ Crores. Never return empty arrays or nulls for financial trajectories.
+CRITICAL INSTRUCTION FOR DATA FIDELITY (NO HALLUCINATIONS):
+Analyze ONLY the data explicitly provided in the prompt. DO NOT invent or estimate financial trajectories (revenue, PAT, CFO) from memory or sector benchmarks if they are not provided in the input.
+If specific historical financial metrics are missing from the input, return empty lists: "revenue_history": [], "pat_history": [], "cfo_history": []. Set "cfo_to_pat_ratio": null, "revenue_growth_yoy": null, "pat_growth_yoy": null.
+Include a "data_sufficiency" field in your output: "full" (audited financials provided), "partial" (issue parameters available but historical financials missing), or "none" (sparse metadata only).
+When data_sufficiency is not "full", prefix the analyst_verdict with "[AI summary from limited inputs]".
 
 Output MUST be a JSON object with this exact structure:
 {
+  "data_sufficiency": "full|partial|none",
   "financial_quality_score": <int 0-100>,
   "valuation_safety_score": <int 0-100>,
   "strengths_summary": [<string>, <string>, ...],
@@ -73,10 +77,17 @@ Evaluate:
 2. Industry Tailwinds & Narrative (0-100): Sector momentum, government policy support (e.g. PLI scheme, capex).
 3. Anchor Book & Sentiment: Institutional appetite, retail buzz, GMP stability.
 
+CRITICAL INSTRUCTION FOR FACTUAL INTEGRITY:
+You must STRICTLY analyze ONLY facts and data provided in the input prompt.
+Without verified investigative news sources in the input, do not invent promoter controversies, tax disputes, or anchor holdings.
+When verified news inputs are absent, set "promoter_integrity_score": null, "industry_tailwinds_score": null, and "anchor_quality_verdict": "Not assessed (no verified anchor disclosures in input)".
+Include "data_sufficiency": "full|partial|none". Prefix "sentiment_summary" with "[AI summary from limited inputs]" when data_sufficiency is not "full".
+
 Output MUST be a JSON object with this exact structure:
 {
-  "promoter_integrity_score": <int 0-100>,
-  "industry_tailwinds_score": <int 0-100>,
+  "data_sufficiency": "full|partial|none",
+  "promoter_integrity_score": <int 0-100 or null>,
+  "industry_tailwinds_score": <int 0-100 or null>,
   "market_buzz_rating": "VERY_HIGH|HIGH|MODERATE|SUBDUED|NEGATIVE",
   "governance_flags": [
     {"type": "<FLAG_TYPE>", "severity": "HIGH|MEDIUM|LOW", "description": "<string>", "penalty_points": <int>}

@@ -7,7 +7,7 @@ from app.schemas.order import OrderResponse, OrderCreate, BatchOrderCreate, Batc
 from app.services.order_service import order_service
 from app.services.demo_dataset import demo_dataset
 
-from app.middleware.auth import get_current_user_optional, require_admin
+from app.middleware.auth import get_viewer, require_admin
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -17,10 +17,10 @@ async def list_orders(
     account: Optional[str] = Query(None, description="Filter by account name"),
     ipo: Optional[str] = Query(None, description="Filter by IPO name"),
     db: AsyncSession = Depends(get_db),
-    user: Optional[dict] = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ):
     """Audit log of all IPO applications submitted through Angel One SmartAPI from PostgreSQL."""
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
         orders = demo_dataset.get_orders()
         if status and status.upper() != "ALL":
             orders = [o for o in orders if o.status.upper() == status.upper()]
@@ -99,15 +99,18 @@ async def delete_order(
 async def update_order_allotment(
     order_id: str,
     result: str = Query(..., description="'ALLOTTED' or 'NOT_ALLOTTED'"),
+    allotted_qty: Optional[int] = Query(None, description="Actual allotted shares (for partial allotments)"),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
     """
     Process registrar allotment result for a staged order:
     - NOT_ALLOTTED: Releases ASBA locked funds immediately.
-    - ALLOTTED: Stages Demat holdings for listing day 09:00 AM auto-sell.
+    - ALLOTTED: Stages Demat holdings for listing day 09:00 AM auto-sell, unblocking any excess ASBA funds for partial allotments.
     """
     try:
-        return await order_service.process_allotment_result(db=db, order_id=order_id, result=result)
+        return await order_service.process_allotment_result(
+            db=db, order_id=order_id, result=result, allotted_qty=allotted_qty
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

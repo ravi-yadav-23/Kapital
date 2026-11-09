@@ -76,11 +76,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[Lifespan Error] Database initialization failed: {e}")
 
-    if settings.environment == "production" and not settings.admin_totp_secret:
-        logger.warning(
-            "CRITICAL SECURITY NOTICE: In production, ADMIN_TOTP_SECRET should be configured in environment variables. "
-            "Without it, ephemeral filesystems (Vercel/container restarts) will lose generated TOTP secrets."
-        )
+    if settings.environment.lower() in ("production", "prod"):
+        # Settings.validate_production_security() already refuses to start without
+        # ADMIN_TOTP_SECRET, so reaching this point means it is configured.
+        logger.info("Production startup: ADMIN_TOTP_SECRET is configured (2FA secret is stable across restarts).")
 
     if not is_serverless:
         try:

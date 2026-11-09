@@ -167,25 +167,37 @@ class AllotmentService:
                 holdings_by_client[client_id] = await angel_service.get_all_holdings(client_id)
 
             holdings = holdings_by_client[client_id]
+            if holdings is None:
+                # Broker call failed (session expired, rate limit, timeout).
+                # NEVER infer NOT_ALLOTTED on network or broker failure!
+                results["pending"] += 1
+                results["details"].append(f"[{ord.account_name}] Demat fetch unavailable for {client_id}; deferring check for {ipo.name}")
+                continue
+
             clean_sym = (ipo.symbol or "").upper().replace("-EQ", "").strip()
             ipo_isin = (ipo.isin or "").upper().strip()
 
             def _is_allotment_match(h: dict) -> bool:
-                # 1. Exact or normalized ISIN match (gold standard for pre-listing unlisted shares)
+                # 1. Exact ISIN match (gold standard for pre-listing unlisted shares)
                 h_isin = (h.get("isin") or "").upper().strip()
                 if ipo_isin and h_isin and ipo_isin == h_isin:
                     return True
 
-                # 2. Trading symbol matching (supports -EQ, -SM, -ST, -BE suffixes)
-                tsym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").replace("-SM", "").replace("-ST", "").strip()
-                sname = (h.get("symbolname") or "").upper().strip()
-                if clean_sym and (clean_sym == tsym or clean_sym == sname):
+                # 2. Exact trading symbol matching (supports -EQ, -SM, -ST, -BE, -BZ, -SZ suffixes)
+                raw_tsym = (h.get("tradingsymbol") or "").upper().strip()
+                tsym_clean = raw_tsym
+                for sfx in ("-EQ", "-SM", "-ST", "-BE", "-BZ", "-SZ", "-BL"):
+                    if tsym_clean.endswith(sfx):
+                        tsym_clean = tsym_clean[:-len(sfx)].strip()
+                        break
+                sname_clean = (h.get("symbolname") or "").upper().strip()
+
+                if clean_sym and (clean_sym == tsym_clean or clean_sym == sname_clean):
                     return True
 
-                # 3. Substring / name match for SME or temporary allotment symbols (e.g. VEDANT-RE, ZEPTEMP)
-                if clean_sym and len(clean_sym) >= 4:
-                    if clean_sym in tsym or clean_sym in sname:
-                        return True
+                # 3. Exact match on temporary demat allotment scrips: {SYMBOL}-IPO, {SYMBOL}-RE
+                if clean_sym and raw_tsym in (f"{clean_sym}-IPO", f"{clean_sym}-RE"):
+                    return True
 
                 return False
 
@@ -194,12 +206,22 @@ class AllotmentService:
                 None
             )
 
-            if matched_holding and int(matched_holding.get("totalqty", 0)) > 0:
-                await order_service.process_allotment_result(db, ord.id, result="ALLOTTED")
+            credited_qty = 0
+            if matched_holding:
+                try:
+                    credited_qty = int(matched_holding.get("totalqty", 0) or matched_holding.get("quantity", 0) or 0) + int(matched_holding.get("t1quantity", 0) or 0)
+                except (ValueError, TypeError):
+                    credited_qty = 0
+
+            if matched_holding and credited_qty > 0:
+                await order_service.process_allotment_result(
+                    db, ord.id, result="ALLOTTED", allotted_qty=credited_qty
+                )
                 results["allotted"] += 1
-                results["details"].append(f"[{ord.account_name}] Allotted {matched_holding.get('totalqty')} shares of {ipo.name}")
+                results["details"].append(f"[{ord.account_name}] Allotted {credited_qty} shares of {ipo.name}")
             elif listing_date and today > (listing_date + timedelta(days=3)):
-                # Only assume NOT_ALLOTTED after a 3-day buffer post-listing to avoid false unblocks
+                # ONLY infer NOT_ALLOTTED when broker confirmed demat holdings successfully (holdings is list, not None)
+                # and today is at least 3 days post-listing
                 await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
                 results["not_allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Not allotted for {ipo.name} (Funds released)")

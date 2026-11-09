@@ -159,3 +159,52 @@ async def get_current_user_optional(
             return None
         raise e
 
+
+# Identity handed to callers that are NOT an authenticated administrator.
+# It is deliberately shaped like a normal user dict so routes can keep using
+# `viewer.get("is_guest")` to decide whether to serve the demo dataset.
+DEMO_VIEWER: Dict[str, Any] = {
+    "id": "demo-viewer",
+    "email": "",
+    "username": "guest",
+    "role": "GUEST",
+    "is_guest": True,
+}
+
+
+async def get_viewer(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security_scheme),
+) -> Dict[str, Any]:
+    """
+    Read-side viewer dependency.
+
+    Returns an ADMIN identity ONLY for a valid, non-guest ADMIN access token.
+    Every other caller - no token, a malformed/expired/garbage token, a guest
+    token, or a token that has not completed 2FA - resolves to the demo viewer,
+    so the route serves the public demo dataset instead of real portfolio data.
+
+    This dependency never raises and never returns None.
+    """
+    if not (credentials and credentials.credentials):
+        return dict(DEMO_VIEWER)
+
+    try:
+        payload = decode_access_token(credentials.credentials)
+    except HTTPException:
+        # Invalid / expired / pre-2FA token -> treat as a plain guest viewer.
+        logger.warning("Viewer request carried an invalid token; serving demo data.")
+        return dict(DEMO_VIEWER)
+
+    role = payload.get("role", "ADMIN")
+    is_guest = (role == "GUEST") or bool(payload.get("is_guest"))
+    if role == "ADMIN" and not is_guest:
+        return {
+            "id": payload.get("sub", "admin-1"),
+            "email": payload.get("email", ""),
+            "username": payload.get("username", "admin"),
+            "role": "ADMIN",
+            "is_guest": False,
+        }
+
+    return dict(DEMO_VIEWER)
+

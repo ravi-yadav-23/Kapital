@@ -47,35 +47,44 @@ async def test_reports_route(client: AsyncClient, seed_data):
 
 
 @pytest.mark.asyncio
-async def test_accounts_route(client: AsyncClient, seed_data):
+async def test_accounts_route_requires_admin_for_real_data(client: AsyncClient, seed_data):
+    """Unauthenticated callers must get the demo dataset, never the seeded real account."""
+    from app.middleware.auth import create_access_token
+
     res = await client.get("/api/funds/accounts")
     assert res.status_code == 200
     data = res.json()
     assert len(data) >= 1
-    assert data[0]["name"] == "Ravi Kumar"
+    assert data[0]["name"] != "Ravi Kumar", "Anonymous callers must not see the real account"
+    assert data[0]["angel_client_id"] != "R123456"
+
+    # An ADMIN token does see the real (masked-PAN) account.
+    token = create_access_token({"sub": "admin-1", "role": "ADMIN", "email": "admin@kapitl.local"})
+    res_admin = await client.get(
+        "/api/funds/accounts",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res_admin.status_code == 200
+    admin_data = res_admin.json()
+    assert admin_data[0]["name"] == "Ravi Kumar"
+    assert admin_data[0]["angel_client_id"] == "R123456"
 
 
 @pytest.mark.asyncio
-async def test_auth_login_route(client: AsyncClient):
-    # 1. Valid login with PIN
+async def test_pin_login_route_is_removed(client: AsyncClient):
+    """POST /api/auth/login (PIN) no longer exists - it accepted the SECRET_KEY as a credential."""
     res = await client.post("/api/auth/login", json={"pin": "7090"})
-    assert res.status_code == 200
-    data = res.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
-    assert data["user"]["username"] == "admin"
+    assert res.status_code in (404, 405)
 
-    # 2. Invalid login rejected
-    res_bad = await client.post("/api/auth/login", json={"pin": "0000"})
-    assert res_bad.status_code == 401
+    res_secret = await client.post("/api/auth/login", json={"password": "some-secret-key"})
+    assert res_secret.status_code in (404, 405)
 
 
 @pytest.mark.asyncio
 async def test_funds_optimize_requires_admin(client: AsyncClient, seed_data):
-    # 1. Unauthenticated request without token must be rejected (401 or 403)
-    # Temporary test bypass in middleware only kicks in when role=ADMIN is simulated
-    login_res = await client.post("/api/auth/login", json={"pin": "7090"})
-    token = login_res.json()["access_token"]
+    from app.middleware.auth import create_access_token
+
+    token = create_access_token({"sub": "admin-1", "role": "ADMIN", "email": "admin@kapitl.local"})
 
     res_authed = await client.post(
         "/api/funds/optimize",

@@ -23,13 +23,25 @@ def _verify_cron_auth(
 ):
     """
     Validates that incoming webhook trigger originates from an authorized scheduler.
+
+    Uses a dedicated CRON_SECRET. The application SECRET_KEY / MASTER_API_KEY are
+    NEVER accepted here: reusing them would let any holder of the app's signing
+    key trigger privileged scheduled jobs.
+
     Accepts:
-    1. 'Authorization: Bearer <MASTER_API_KEY>' or '<SECRET_KEY>'
-    2. 'X-API-Key: <MASTER_API_KEY>' or '<SECRET_KEY>'
+    1. 'Authorization: Bearer <CRON_SECRET>'
+    2. 'X-API-Key: <CRON_SECRET>'
     """
-    expected_key = (settings.master_api_key or "").strip() or (settings.secret_key or "").strip()
+    expected_key = (settings.cron_secret or "").strip()
     if not expected_key:
-        return True  # Open in unconfigured dev environment
+        logger.error(
+            "[Cron Webhook] CRON_SECRET is not configured on this server - "
+            "refusing the trigger. Set CRON_SECRET in the environment."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cron authorization is not configured on this server.",
+        )
 
     provided_token = ""
     if authorization and authorization.startswith("Bearer "):

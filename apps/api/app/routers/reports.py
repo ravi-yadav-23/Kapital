@@ -9,7 +9,7 @@ from app.models.report import AiReport
 from app.schemas.report import AiReportResponse
 from app.services.report_service import report_service
 from app.services.pnl_service import pnl_service
-from app.middleware.auth import get_current_user_optional
+from app.middleware.auth import get_current_user_optional, get_viewer
 from app.db.seed_data import seed_initial_ipos_and_reports
 from app.utils.date_utils import compute_ipo_status
 
@@ -211,15 +211,15 @@ async def trigger_ai_analysis(
 @router.get("/pnl/summary")
 async def get_pnl_summary(
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user_optional),
+    viewer: dict = Depends(get_viewer),
 ) -> Dict[str, Any]:
     """
     Realized P&L ledger summary:
     total invested, total realized, net P&L, ROI %, win/loss counts,
     and per-IPO sell breakdown sorted by most recent exit date.
-    Guest users receive an empty summary.
+    Guest users receive the demo summary.
     """
-    if user and user.get("is_guest"):
+    if viewer.get("is_guest"):
         from app.services.demo_dataset import DEMO_ALLOTMENTS
         sold_allotments = [a for a in DEMO_ALLOTMENTS if a.get("status") == "SOLD"]
         total_inv = sum(a.get("invested_amount", 0.0) for a in sold_allotments)

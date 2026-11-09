@@ -395,11 +395,18 @@ class OrderService:
         return {"success": True, "deleted_order_id": order_id}
 
     @staticmethod
-    async def process_allotment_result(db: AsyncSession, order_id: str, result: str) -> Dict[str, Any]:
+    async def process_allotment_result(
+        db: AsyncSession,
+        order_id: str,
+        result: str,
+        allotted_qty: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Processes allotment outcome:
         - NOT_ALLOTTED: Releases ASBA locked funds back to liquid balance and clears lock record.
-        - ALLOTTED: Confirms demat allotment, clears lock record, and stages Allotment for 09:00 AM listing sell.
+        - ALLOTTED: Confirms demat allotment (supporting partial allotment in HNI categories),
+          refunds any excess ASBA blocked amount to liquid balance, clears lock record,
+          and stages Allotment for 09:00 AM listing sell.
         """
         stmt = select(IpoOrder).where(IpoOrder.id == order_id)
         res = await db.execute(stmt)
@@ -423,7 +430,7 @@ class OrderService:
             await db.delete(existing_lock)
 
         if result.upper() == "NOT_ALLOTTED":
-            if acc and order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED"]:
+            if acc and order_obj.status in ["CONFIRMED", "PENDING", "SUBMITTED", "APPLIED"]:
                 acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
                 acc.available_liquid_balance = (acc.available_liquid_balance or 0.0) + order_obj.amount
 
@@ -435,6 +442,22 @@ class OrderService:
             return {"success": True, "status": "NOT_ALLOTTED", "message": "ASBA lock released back to liquid balance."}
 
         elif result.upper() == "ALLOTTED":
+            # Determine actual allotted quantity (supports partial allotment in HNI / oversubscription scenarios)
+            total_applied_shares = order_obj.shares or 0
+            if allotted_qty is not None and allotted_qty > 0:
+                actual_allotted_shares = min(allotted_qty, total_applied_shares) if total_applied_shares > 0 else allotted_qty
+            else:
+                actual_allotted_shares = total_applied_shares
+
+            price_per_share = (
+                order_obj.bid_price
+                if (order_obj.bid_price and order_obj.bid_price > 0)
+                else (order_obj.amount / max(1, total_applied_shares))
+            )
+            invested_amount = round(actual_allotted_shares * price_per_share, 2)
+            # In partial allotment, excess funds blocked under ASBA are unblocked back to liquid balance
+            excess_refund = max(0.0, round(order_obj.amount - invested_amount, 2)) if total_applied_shares > actual_allotted_shares else 0.0
+
             order_obj.status = "ALLOTTED"
             order_obj.mandate_status = "DEBITED"
 
@@ -453,11 +476,11 @@ class OrderService:
                 angel_client_id=acc.angel_client_id if acc else None,
                 ipo_name=order_obj.ipo_name,
                 ipo_symbol=ipo.symbol if ipo else "IPO",
-                allotted_shares=order_obj.shares,
-                issue_price=order_obj.bid_price,
-                invested_amount=order_obj.amount,
+                allotted_shares=actual_allotted_shares,
+                issue_price=price_per_share,
+                invested_amount=invested_amount,
                 status="ACTIVE",
-                current_price=order_obj.bid_price,
+                current_price=price_per_share,
                 listing_date=listing_dt,
             )
             db.add(alt)
@@ -465,6 +488,8 @@ class OrderService:
             if acc:
                 acc.total_allotments_won = (acc.total_allotments_won or 0) + 1
                 acc.locked_asba_balance = max(0.0, (acc.locked_asba_balance or 0.0) - order_obj.amount)
+                if excess_refund > 0:
+                    acc.available_liquid_balance = (acc.available_liquid_balance or 0.0) + excess_refund
 
             await db.commit()
             from app.services.account_service import _invalidate_accounts_cache
@@ -475,10 +500,21 @@ class OrderService:
                     "status": "ALLOTTED",
                     "allotment_id": alt.id,
                     "ipo_name": order_obj.ipo_name,
+                    "allotted_shares": actual_allotted_shares,
+                    "invested_amount": invested_amount,
+                    "refund_amount": excess_refund,
                 })
             except Exception:
                 pass
-            return {"success": True, "status": "ALLOTTED", "allotment_id": alt.id, "message": "Allotment confirmed and staged for listing-day sell."}
+            return {
+                "success": True,
+                "status": "ALLOTTED",
+                "allotment_id": alt.id,
+                "allotted_shares": actual_allotted_shares,
+                "invested_amount": invested_amount,
+                "refund_amount": excess_refund,
+                "message": f"Allotment confirmed ({actual_allotted_shares} shares). {'₹' + str(excess_refund) + ' refunded to liquid balance.' if excess_refund > 0 else 'Staged for listing-day sell.'}",
+            }
 
         else:
             raise ValueError("Invalid allotment result. Must be 'ALLOTTED' or 'NOT_ALLOTTED'.")

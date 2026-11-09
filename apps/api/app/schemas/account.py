@@ -1,5 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+from app.utils.security import mask_pan
+
 
 class AccountCreate(BaseModel):
     name: str
@@ -41,6 +44,17 @@ class AccountResponse(BaseModel):
     allotment_rate: float = 0.0
     preferred_category: str = "RETAIL"
     is_active: bool = True
+
+    @field_validator("pan", mode="after")
+    @classmethod
+    def _mask_pan(cls, v: Optional[str]) -> Optional[str]:
+        """
+        A PAN is a full KYC identity identifier. It is never returned in clear
+        text over the API - only masked. Internal consumers that legitimately
+        need the raw value (e.g. the SEBI one-bid-per-PAN optimizer constraint)
+        read the raw column directly from the ORM model / internal dict cache.
+        """
+        return mask_pan(v)
 
     class Config:
         from_attributes = True

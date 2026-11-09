@@ -311,38 +311,72 @@ async def test_google_auth_unconfigured_allowed_email_fails_closed():
 
 
 @pytest.mark.asyncio
-async def test_pin_login_unconfigured_raises_500():
-    """If ADMIN_PIN is not configured on server, /auth/login must return 500, not fall back to 7090."""
-    from app.routers.auth import pin_login, LoginRequest
+async def test_pin_login_route_no_longer_exists():
+    """
+    Regression: the PIN login endpoint (POST /api/auth/login) is removed.
 
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.admin_pin = ""  # Unset
+    It used to accept the plaintext ADMIN_PIN *and* the SECRET_KEY itself as a
+    credential, minting a full ADMIN session token without Google + TOTP.
+    The route must not exist at all any more.
+    """
+    from fastapi.routing import APIRoute
 
-        req = LoginRequest(pin="7090")
-        with pytest.raises(HTTPException) as exc_info:
-            await pin_login(req)
+    from app.main import app
+    from app.routers import auth as auth_router
 
-    assert exc_info.value.status_code == 500
-    assert "not configured" in exc_info.value.detail.lower()
+    auth_paths = {
+        route.path
+        for route in auth_router.router.routes
+        if isinstance(route, APIRoute)
+    }
+    assert "/login" not in auth_paths, "POST /auth/login must be removed"
+
+    registered = {
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+    }
+    assert "/api/login" not in registered
+    assert "/login" not in registered
 
 
 @pytest.mark.asyncio
-async def test_pin_login_with_configured_pin():
-    """When configured, correct PIN logs in and incorrect PIN is rejected."""
-    from app.routers.auth import pin_login, LoginRequest
+async def test_pin_login_schema_removed():
+    """The LoginRequest (username/password/pin) schema must no longer be exported."""
+    from app.routers import auth as auth_router
 
-    with patch("app.routers.auth.settings") as mock_settings:
-        mock_settings.admin_pin = "8899"
-        mock_settings.secret_key = "secure-secret-key-32-bytes-long!!"
-        mock_settings.allowed_email = "admin@kapitl.local"
+    assert not hasattr(auth_router, "LoginRequest")
+    assert not hasattr(auth_router, "pin_login")
 
-        # Correct PIN
-        res = await pin_login(LoginRequest(pin="8899"))
-        assert res.access_token is not None
-        assert res.user.role == "ADMIN"
 
-        # Wrong PIN
-        with pytest.raises(HTTPException) as exc_info:
-            await pin_login(LoginRequest(pin="1111"))
-        assert exc_info.value.status_code == 401
+@pytest.mark.asyncio
+async def test_secret_key_is_not_an_admin_credential():
+    """
+    Regression: knowing the SECRET_KEY must not be enough to obtain an ADMIN token.
+
+    SECRET_KEY signs JWTs, so it must never be usable as a login credential.
+    There is no endpoint that accepts it.
+    """
+    from fastapi.routing import APIRoute
+
+    from app.config import settings
+    from app.main import app
+
+    # No registered route may take the SECRET_KEY as an inbound credential.
+    login_like_paths = {
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and route.path.rstrip("/").endswith("/login")
+    }
+    assert not login_like_paths, (
+        f"No credential-login endpoint may exist, found: {login_like_paths}"
+    )
+
+    # The OpenAPI schema must not advertise a login endpoint either.
+    schema = app.openapi()
+    assert "/api/login" not in schema.get("paths", {})
+    assert "/login" not in schema.get("paths", {})
+
+    assert isinstance(settings.secret_key, str)
 

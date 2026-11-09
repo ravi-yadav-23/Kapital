@@ -92,13 +92,26 @@ class AccountService:
 
     @staticmethod
     async def get_all_accounts(db: AsyncSession) -> List[AccountResponse]:
-        """Fetch all family accounts from PostgreSQL."""
+        """Fetch all family accounts from PostgreSQL (PAN masked in the response)."""
         result = await db.execute(select(FamilyAccount).order_by(FamilyAccount.created_at))
         accounts = result.scalars().all()
         # Refresh in-memory cache
         _accounts_cache.clear()
         _accounts_cache.extend(_model_to_dict(a) for a in accounts)
         return [_model_to_response(a) for a in accounts]
+
+    @staticmethod
+    async def get_all_accounts_raw(db: AsyncSession) -> List[dict]:
+        """
+        Fetch all family accounts as internal dicts, INCLUDING the raw PAN.
+
+        Server-side business logic only (currently the SEBI one-bid-per-PAN
+        optimizer constraint). Never return this from an API endpoint - the
+        public AccountResponse masks the PAN.
+        """
+        result = await db.execute(select(FamilyAccount).order_by(FamilyAccount.created_at))
+        accounts = result.scalars().all()
+        return [_model_to_dict(a) for a in accounts]
 
     @staticmethod
     async def get_account_by_client_id(db: AsyncSession, client_id: str) -> Optional[FamilyAccount]:

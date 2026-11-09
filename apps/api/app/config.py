@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Used ONLY for X-API-Key service-to-service authentication.
     # Leave empty in dev to disable API key auth entirely.
     master_api_key: str = ""
+    # Used ONLY to authenticate external scheduler webhooks hitting /api/cron/*.
+    # Deliberately separate from SECRET_KEY / MASTER_API_KEY.
+    cron_secret: str = ""
 
     cors_origins: Any = [
         "http://localhost:3000",
@@ -121,6 +124,16 @@ class Settings(BaseSettings):
                         "(e.g. postgresql+asyncpg://...). SQLite is forbidden in production to prevent data loss."
                     )
 
+            # ADMIN_TOTP_SECRET is mandatory in every production environment (serverless or not).
+            # Without it the 2FA secret would be regenerated on every restart / cold start,
+            # permanently locking the administrator out of their own account.
+            if not (self.admin_totp_secret or "").strip():
+                raise ValueError(
+                    "In production, ADMIN_TOTP_SECRET must be set to a stable, private secret. "
+                    "Without it the TOTP secret is regenerated on every cold start and admin "
+                    "2FA becomes unusable."
+                )
+
             # Auto-populate separated keys if not explicitly provided
             if not self.jwt_secret_key:
                 self.jwt_secret_key = self.secret_key
@@ -175,7 +188,7 @@ class Settings(BaseSettings):
 
     # NSE compliance
     static_ip: str = ""
-    static_mac: str = "fe80::216e:6507:4b9c:9045"
+    static_mac: str = os.environ.get("STATIC_MAC", "02:00:00:00:00:00")
     client_local_ip: str = "127.0.0.1"
 
     class Config:

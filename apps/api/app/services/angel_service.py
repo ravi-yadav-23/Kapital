@@ -175,7 +175,7 @@ class AngelOneSmartApiService:
             "X-SourceID": "WEB",
             "X-ClientLocalIP": getattr(settings, "client_local_ip", "127.0.0.1") or "127.0.0.1",
             "X-ClientPublicIP": settings.static_ip or "127.0.0.1",
-            "X-MACAddress": getattr(settings, "static_mac", "fe80::216e:6507:4b9c:9045") or "fe80::216e:6507:4b9c:9045",
+            "X-MACAddress": getattr(settings, "static_mac", "") or "02:00:00:00:00:00",
             "X-PrivateKey": api_key,
         }
         if jwt_token:
@@ -282,11 +282,15 @@ class AngelOneSmartApiService:
     # Backward-compatible alias
     get_rms_funds = get_rms_limits
 
-    async def get_all_holdings(self, client_id: str, api_key: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_all_holdings(self, client_id: str, api_key: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
         """
         Fetches active demat portfolio holdings for a client.
         Endpoint: /rest/secure/angelbroking/portfolio/v1/getAllHolding
         Used for automated IPO allotment detection on allotment/listing day.
+        Returns:
+            - List of holdings if broker successfully returns demat positions.
+            - [] if broker returns successful status but zero holdings.
+            - None if unauthenticated, broker API error, or network exception occurs.
         """
         session = self.sessions.get(client_id)
         if not session or not session.get("jwtToken"):
@@ -320,7 +324,7 @@ class AngelOneSmartApiService:
 
         if not session or not session.get("jwtToken"):
             logger.warning(f"No active session for {client_id}. Cannot fetch holdings.")
-            return []
+            return None
 
         jwt_token = session["jwtToken"]
         key = api_key or session.get("api_key") or ""
@@ -332,17 +336,24 @@ class AngelOneSmartApiService:
                     f"{self.BASE_URL}/rest/secure/angelbroking/portfolio/v1/getAllHolding",
                     headers=headers,
                 )
-                data = res.json()
-                if data.get("status") and data.get("data"):
-                    raw = data["data"]
-                    if isinstance(raw, dict):
-                        return raw.get("holdings", []) or []
-                    elif isinstance(raw, list):
-                        return raw
-                return []
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("status") and data.get("data") is not None:
+                        raw = data["data"]
+                        if isinstance(raw, dict):
+                            return raw.get("holdings", []) or []
+                        elif isinstance(raw, list):
+                            return raw
+                    logger.warning(f"[{client_id}] SmartAPI demat holdings response returned false status: {data.get('message')}")
+                    return None
+                logger.warning(f"[{client_id}] Demat holdings HTTP error status: {res.status_code}")
+                return None
         except Exception as e:
             logger.error(f"[{client_id}] Failed to fetch demat holdings: {e}")
-            return []
+            return None
+
+    # Backward-compatible alias
+    get_holdings = get_all_holdings
 
     async def stage_listing_sell_order(
         self,
@@ -370,14 +381,15 @@ class AngelOneSmartApiService:
             # Fallback: check if the client's live Demat holdings list provides the exact symboltoken
             try:
                 holdings = await self.get_holdings(client_id, api_key=api_key)
-                clean_target = symbol.upper().replace("-EQ", "").strip()
-                for h in holdings:
-                    h_sym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").strip()
-                    if h_sym == clean_target and h.get("symboltoken"):
-                        token = str(h["symboltoken"])
-                        actual_exchange = (h.get("exchange") or actual_exchange).upper()
-                        logger.info(f"Resolved token '{token}' for '{symbol}' directly from Demat holdings ({actual_exchange})")
-                        break
+                if holdings:
+                    clean_target = symbol.upper().replace("-EQ", "").strip()
+                    for h in holdings:
+                        h_sym = (h.get("tradingsymbol") or "").upper().replace("-EQ", "").strip()
+                        if h_sym == clean_target and h.get("symboltoken"):
+                            token = str(h["symboltoken"])
+                            actual_exchange = (h.get("exchange") or actual_exchange).upper()
+                            logger.info(f"Resolved token '{token}' for '{symbol}' directly from Demat holdings ({actual_exchange})")
+                            break
             except Exception as ex:
                 logger.debug(f"Holdings fallback token lookup failed: {ex}")
 

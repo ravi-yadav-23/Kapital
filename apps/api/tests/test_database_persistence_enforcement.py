@@ -20,6 +20,7 @@ def test_production_accepts_postgresql_database_url():
         environment="production",
         secret_key="a-very-strong-production-secret-key-32chars!",
         admin_pin="849204",
+        admin_totp_secret="JBSWY3DPEHPK3PXP",
         database_url="postgresql+asyncpg://postgres:pass@db.example.com:5432/kapitl",
     )
     assert "postgresql" in s.database_url
