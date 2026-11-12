@@ -17,7 +17,7 @@ import logging
 from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone, date as DateType
 
-from app.schemas.fund import AllocationPlanResponse, AllocationEntrySchema, UpcomingConflictSchema  # noqa: F401
+from app.schemas.fund import AllocationPlanResponse, AllocationEntrySchema, UpcomingConflictSchema, UPI_IPO_LIMIT  # noqa: F401
 
 logger = logging.getLogger("optimizer_service")
 

@@ -10,6 +10,7 @@ from app.models.account import FamilyAccount
 from app.models.ipo import Ipo
 from app.models.allotment import AsbaLock, Allotment
 from app.schemas.order import OrderCreate, OrderResponse
+from app.schemas.fund import UPI_IPO_LIMIT
 from app.services.angel_service import angel_service
 from app.routers.websocket import broadcast_event
 
@@ -106,6 +107,12 @@ class OrderService:
         elif cat_upper == "BHNI" and amount <= 1_000_000.0:
             raise ValueError(
                 f"bHNI (Big HNI) application amount (₹{amount:,.2f}) must exceed ₹10,00,000."
+            )
+
+        if amount > UPI_IPO_LIMIT:
+            raise ValueError(
+                f"Application amount (₹{amount:,.2f}) exceeds the ₹{UPI_IPO_LIMIT:,.0f} UPI limit for IPO bids. "
+                "Apply via net-banking ASBA in your broker app, then use 'mark as applied' here."
             )
 
         # Check duplicate active applications under same account/PAN
