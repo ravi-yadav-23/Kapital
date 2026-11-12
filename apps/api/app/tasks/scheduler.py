@@ -210,16 +210,28 @@ async def reconcile_listing_sells():
                 order_status = status_res.get("status")
 
                 if order_status == "COMPLETE":
-                    fill_px = float(status_res.get("average_price") or alt.staged_sell_limit_price or 0.0)
-                    if fill_px > 0:
-                        alt.status = "SOLD"
-                        alt.exit_price = fill_px
-                        await pnl_service.record_sell(db, alt, fill_px, exit_type="PRE_MARKET_LISTING")
-                        logger.info(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} FILLED at ₹{fill_px}. Realized P&L recorded.")
+                    # Book P&L only from a real, full fill reported by the broker.
+                    if status_res.get("is_simulation"):
+                        logger.warning(f"[{alt.ipo_symbol}] Simulated order status ignored; P&L not booked.")
+                        continue
+                    fill_px = float(status_res.get("average_price") or 0.0)
+                    filled = int(status_res.get("filled_shares") or 0)
+                    if fill_px <= 0 or filled <= 0:
+                        logger.warning(f"[{alt.ipo_symbol}] COMPLETE without fill price/qty; leaving STAGED.")
+                        continue
+                    if filled < (alt.allotted_shares or 0):
+                        logger.warning(
+                            f"[{alt.ipo_symbol}] Partial fill {filled}/{alt.allotted_shares}; "
+                            "leaving STAGED for manual reconciliation."
+                        )
+                        continue
+                    alt.status = "SOLD"
+                    await pnl_service.record_sell(db, alt, fill_px, exit_type="PRE_MARKET_LISTING")
+                    logger.info(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} FILLED at ₹{fill_px}. Realized P&L recorded.")
                 elif order_status in ["CANCELLED", "REJECTED"]:
+                    logger.warning(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} {order_status} by broker. Reverted allotment status to ACTIVE.")
                     alt.status = "ACTIVE"
                     alt.sell_order_id = None
-                    logger.warning(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} {order_status} by broker. Reverted allotment status to ACTIVE.")
                 else:
                     logger.info(f"[{alt.ipo_symbol}] Order {alt.sell_order_id} status is '{order_status}'. Staged order remains pending.")
 

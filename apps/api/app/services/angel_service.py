@@ -669,7 +669,8 @@ class AngelOneSmartApiService:
 
         session = self.sessions.get(client_id or "")
         if not session or not session.get("jwtToken"):
-            return {"status": "COMPLETE", "filled_shares": 0, "average_price": 0.0, "is_simulation": True}
+            # No broker session: we cannot know. Never claim COMPLETE.
+            return {"status": "UNKNOWN", "filled_shares": 0, "average_price": 0.0, "is_simulation": False}
 
         jwt_token = session["jwtToken"]
         key = session.get("api_key") or ""
