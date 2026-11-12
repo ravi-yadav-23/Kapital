@@ -91,3 +91,12 @@ def test_workflow_triggers_every_cron_route_on_a_schedule():
     assert "schedule:" in text and "workflow_dispatch" in text
     for job in JOB_TARGETS:
         assert job in text, f"workflow never calls /api/cron/{job}"
+
+
+def test_db_migrate_workflow_is_manual_and_uses_the_secret():
+    wf = WORKFLOW.parent / "db-migrate.yml"
+    assert wf.exists()
+    text = wf.read_text(encoding="utf-8")
+    assert "workflow_dispatch" in text and "schedule:" not in text, "migrations must never run on a timer"
+    assert "secrets.DATABASE_URL" in text and "db_dry_run.py" in text and "alembic upgrade head" in text
+    assert not re.search(r"postgres(ql)?://[^\s$]*:[^\s$@]+@", text), "no credentials in the workflow file"

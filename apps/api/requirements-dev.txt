@@ -1,0 +1,3 @@
+# Local development extras (not needed in production)
+-r requirements.txt
+pgserver>=0.1.4   # embedded PostgreSQL so the Postgres-only tests run without Docker

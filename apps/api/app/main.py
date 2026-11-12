@@ -5,7 +5,7 @@ import logging
 import uuid
 
 from app.config import settings
-from app.db.database import init_db
+from app.db.database import init_db, bootstrap_data_if_empty
 from app.routers import ipos, funds, orders, allotments, reports, websocket, health, settings as settings_router, auth, cron
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
     is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
     try:
         await init_db()
+        await bootstrap_data_if_empty()
     except Exception as e:
         logger.error(f"[Lifespan Error] Database initialization failed: {e}")
 

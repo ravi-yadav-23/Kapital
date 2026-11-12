@@ -20,11 +20,7 @@ load_dotenv(BASE_DIR / ".env")
 
 # ── Import all models so Alembic autogenerate detects them ───────────────────
 from app.models.base import Base          # This is the REAL Base all models inherit from
-import app.models.account    # noqa: F401
-import app.models.ipo        # noqa: F401
-import app.models.order      # noqa: F401
-import app.models.allotment  # noqa: F401
-import app.models.report     # noqa: F401
+import app.models            # noqa: F401  (registers EVERY model so autogenerate/compare see them all)
 
 # ── Alembic config ────────────────────────────────────────────────────────────
 config = context.config
@@ -37,7 +33,8 @@ target_metadata = Base.metadata
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 # Alembic needs synchronous driver for migrations — convert asyncpg → psycopg2
 SYNC_URL = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-config.set_main_option("sqlalchemy.url", SYNC_URL)
+# configparser treats "%" as interpolation, so percent-encoded URLs must be escaped
+config.set_main_option("sqlalchemy.url", SYNC_URL.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
@@ -59,6 +56,13 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 def run_migrations_online() -> None:
+    # A caller may hand in its own connection (e.g. scripts/db_dry_run.py runs the upgrade inside a
+    # transaction it rolls back afterwards).
+    provided = config.attributes.get("connection")
+    if provided is not None:
+        do_run_migrations(provided)
+        return
+
     sync_url = config.get_main_option("sqlalchemy.url")
     from sqlalchemy import create_engine
     connectable = create_engine(sync_url, poolclass=pool.NullPool)

@@ -17,6 +17,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if sa.inspect(op.get_bind()).has_table('score_history'):
+        return  # already created by the application's create_all
     op.create_table(
         'score_history',
         sa.Column('id', sa.String(length=36), nullable=False),
