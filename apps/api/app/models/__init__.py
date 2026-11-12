@@ -8,6 +8,7 @@ from app.models.setting import SystemSetting
 from app.models.fund import FundSnapshot
 from app.models.pnl import RealizedPnl
 from app.models.score_history import ScoreHistory
+from app.models.source_health import SourceHealth
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "FundSnapshot",
     "RealizedPnl",
     "ScoreHistory",
+    "SourceHealth",
 ]

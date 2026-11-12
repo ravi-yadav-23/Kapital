@@ -209,7 +209,12 @@ class Settings(BaseSettings):
     # against broker documentation. Demo/test clients are unaffected.
     enable_live_ipo_apply: bool = False
 
-    # IPO Data Sources
+    # IPO Data Sources (each can be switched off without a code change)
+    source_ipoalerts_enabled: bool = True
+    source_groww_enabled: bool = True
+    source_ipowatch_enabled: bool = True
+    ipoalerts_plan: str = "free"          # "free": open issues only, 1 per request, 25 requests/day
+    ipoalerts_daily_budget: int = 20      # self-imposed cap on the free plan (keeps 5 spare)
     ipoalerts_api_key: str = ""  # Free key from ipoalerts.in — sign up at https://ipoalerts.in
 
     # NSE compliance

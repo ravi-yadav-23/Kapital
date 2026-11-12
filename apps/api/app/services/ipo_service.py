@@ -256,15 +256,6 @@ class IpoService:
         result = await db.execute(stmt)
         ipos = result.scalars().all()
 
-        if not ipos:
-            from sqlalchemy import func
-            total_ipos = await db.scalar(select(func.count(Ipo.id)))
-            if not total_ipos:
-                from app.tasks.ipo_tasks import sync_ipos_pipeline
-                await sync_ipos_pipeline(db)
-                result = await db.execute(stmt)
-                ipos = result.scalars().all()
-
         responses = [_model_to_response(i) for i in ipos]
         if status and status != "all":
             responses = [r for r in responses if r.status == status]
@@ -294,15 +285,6 @@ class IpoService:
                 ipo = res_alias.scalars().first()
             except Exception:
                 pass
-
-        if not ipo:
-            from sqlalchemy import func
-            total_ipos = await db.scalar(select(func.count(Ipo.id)))
-            if not total_ipos:
-                from app.tasks.ipo_tasks import sync_ipos_pipeline
-                await sync_ipos_pipeline(db)
-                result = await db.execute(stmt)
-                ipo = result.scalar_one_or_none()
 
         return _model_to_response(ipo) if ipo else None
 
@@ -486,6 +468,12 @@ class IpoService:
 
             if ipo_dict.get("gmp_percent") is not None and float(ipo_dict.get("gmp_percent")) > 0:
                 existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
+
+            if ipo_dict.get("prospectus_url"):
+                # an RHP is final; for upcoming issues the document is the draft (DRHP)
+                target = "rhp_url" if computed_status in ("open", "closing_today", "closed") else "drhp_url"
+                if not getattr(existing, target):
+                    setattr(existing, target, ipo_dict["prospectus_url"])
 
             # Single rule for the stored score/verdict (+ history row when it changes). An audited
             # report keeps its score; live GMP can no longer overwrite it.

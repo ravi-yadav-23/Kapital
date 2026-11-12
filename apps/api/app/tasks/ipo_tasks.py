@@ -42,31 +42,6 @@ from app.utils.score_engine import IpoScoreEngine
 
 import asyncio
 
-async def fetch_ipos_from_ipoalerts(status: str) -> List[Dict[str, Any]]:
-    """Fetch raw IPOs for a given status from ipoalerts.in API with standard browser headers and API key if available."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://ipoalerts.in/",
-        "Accept": "application/json, text/plain, */*",
-    }
-    if settings.ipoalerts_api_key:
-        headers["Authorization"] = f"Bearer {settings.ipoalerts_api_key}"
-        headers["X-API-KEY"] = settings.ipoalerts_api_key
-    try:
-        async with httpx.AsyncClient(headers=headers, timeout=15.0) as client:
-            res = await client.get(f"{BASE_IPOALERTS_URL}?status={status}")
-            if res.status_code == 200:
-                data = res.json()
-                return data.get("ipos", [])
-            elif res.status_code == 429:
-                logger.warning(f"ipoalerts.in rate limit reached (status={status}). Using cached/existing records.")
-            else:
-                logger.warning(f"ipoalerts.in returned HTTP {res.status_code} for status={status}")
-    except Exception as e:
-        logger.error(f"Error fetching {status} IPOs from ipoalerts.in: {e}")
-    return []
-
-
 async def fetch_ipos_from_groww() -> List[Dict[str, Any]]:
     """
     Fetch authoritative IPO ground truth directly from Groww's SSR payload:
@@ -484,124 +459,22 @@ async def fetch_ipos_from_ipowatch() -> List[Dict[str, Any]]:
     return ipos
 
 
-async def sync_ipos_pipeline(db: AsyncSession) -> int:
+async def sync_ipos_pipeline(db: AsyncSession, sources=None) -> int:
     """
-    Multi-feed IPO ingestion & enrichment pipeline:
-    1. Primary Ground Truth: Groww (Official dates, true SME vs Mainboard indicator, lot sizes, subscription)
-    2. Structured Categories: ipoalerts.in (Detailed category breakdown)
-    3. Sentiment & Live GMP Scraper: ipowatch.in (Real-time Grey Market Premium)
-    All merged using multi-tier entity resolution. Closed IPOs are preserved and never deleted.
+    Multi-source IPO ingestion: every enabled source plug-in (Groww, ipoalerts, IPO Watch ...) is run
+    by the source runner, which isolates failures, records health and enforces request budgets.
+    Records are merged by multi-tier entity resolution; closed IPOs are preserved and never deleted.
+
+    This no longer generates AI reports: LLM work is budgeted and done by the nightly analysis job.
     """
-    synced_count = 0
+    from app.sources.runner import run_sources
 
-    # 1. Primary Authoritative Feed: Groww (Exact timestamps, isSme, price bands, lot size, live subscriptions)
-    groww_ipos = await fetch_ipos_from_groww()
-    for ipo_dict in groww_ipos:
-        try:
-            await ipo_service.upsert_ipo(db, ipo_dict)
-            synced_count += 1
-        except Exception as ex:
-            logger.error(f"Failed to ingest Groww IPO {ipo_dict.get('symbol')}: {ex}")
-
-    # 2. Secondary Structured Feed: ipoalerts.in (Structured API with details, subscription, schedule)
-    statuses = ["open", "upcoming", "closed"]
-    for status in statuses:
-        raw_ipos = await fetch_ipos_from_ipoalerts(status)
-        if raw_ipos:
-            await asyncio.sleep(0.5)  # Throttle to respect ipoalerts rate limits
-        for raw in raw_ipos:
-            try:
-                min_p, max_p = _parse_price_range(raw.get("priceRange", "100-100"))
-                lot_sz = int(raw.get("minQty", 1))
-                min_inv = float(raw.get("minAmount") or (max_p * lot_sz))
-                issue_cr = _parse_issue_size_cr(raw.get("issueSize", "0"))
-                
-                sub_dict = raw.get("subscription") or {}
-                sub_retail = float(raw.get("subscription_retail") or sub_dict.get("retail") or 0.0)
-                sub_shni = float(raw.get("subscription_shni") or sub_dict.get("shni") or sub_dict.get("snii") or 0.0)
-                sub_bhni = float(raw.get("subscription_bhni") or sub_dict.get("bhni") or sub_dict.get("bnii") or 0.0)
-                sub_qib = float(raw.get("subscription_qib") or sub_dict.get("qib") or 0.0)
-                sub_total = float(raw.get("subscription_total") or sub_dict.get("total") or 0.0)
-
-                raw["issue_size_cr"] = issue_cr
-                raw["subscription_qib"] = sub_qib
-                raw["subscription_total"] = sub_total
-                
-                score, rec, gmp = IpoScoreEngine.compute_score(raw)
-
-                schedule_list = []
-                for s in raw.get("schedule", []):
-                    schedule_list.append({
-                        "event": s.get("event"),
-                        "date": s.get("date"),
-                    })
-
-                ipo_dict = {
-                    "symbol": clean_text(raw.get("symbol", "IPO")),
-                    "name": clean_text(raw.get("name", "IPO Issue")),
-                    "slug": raw.get("slug", raw.get("symbol", "").lower()),
-                    "type": raw.get("type", "EQ"),
-                    "status": compute_ipo_status(raw.get("startDate"), raw.get("endDate")),
-                    "logo_url": raw.get("logo"),
-                    "price_band_min": min_p,
-                    "price_band_max": max_p,
-                    "lot_size": lot_sz,
-                    "min_investment": min_inv,
-                    "issue_size": clean_text(raw.get("issueSize")),
-                    "issue_size_cr": issue_cr,
-                    "issue_open_date": raw.get("startDate"),
-                    "issue_close_date": raw.get("endDate"),
-                    "listing_date": raw.get("listingDate"),
-                    "about": clean_text(raw.get("about")),
-                    "strengths": clean_text_list(raw.get("strengths", [])),
-                    "risks": clean_text_list(raw.get("risks", [])),
-                    "score": score,
-                    "recommendation": rec,
-                    "gmp_percent": gmp,
-                    "subscription_retail": sub_retail,
-                    "subscription_shni": sub_shni,
-                    "subscription_bhni": sub_bhni,
-                    "subscription_qib": sub_qib,
-                    "subscription_total": sub_total,
-                    "schedule": schedule_list,
-                }
-
-                await ipo_service.upsert_ipo(db, ipo_dict)
-                synced_count += 1
-            except Exception as ex:
-                logger.error(f"Failed to ingest IPO {raw.get('symbol')}: {ex}")
-
-    # 3. Sentiment & Live GMP Scraper: ipowatch.in (Mainboard & SME with live GMP)
-    live_ipos = await fetch_ipos_from_ipowatch()
-    for ipo_dict in live_ipos:
-        try:
-            await ipo_service.upsert_ipo(db, ipo_dict)
-            synced_count += 1
-        except Exception as ex:
-            logger.error(f"Failed to upsert live IPO {ipo_dict.get('symbol')}: {ex}")
-
-    await db.commit()
-    logger.info(f"IPO sync complete. Total {synced_count} IPOs upserted into PostgreSQL.")
-
-    # 3. Single-Run AI Reports: Generate AI Due Diligence report once for active IPOs
-    try:
-        from app.models.ipo import Ipo
-        from app.models.report import AiReport
-        from app.services.report_service import report_service
-        from sqlalchemy import select
-
-        stmt_active = select(Ipo).where(Ipo.status.in_(["open", "closing_today", "upcoming"]))
-        res_active = await db.execute(stmt_active)
-        active_ipos = res_active.scalars().all()
-
-        for ipo_item in active_ipos:
-            stmt_r = select(AiReport).where(AiReport.ipo_id == ipo_item.id)
-            res_r = await db.execute(stmt_r)
-            if not res_r.scalar_one_or_none():
-                logger.info(f"[AI Report] Generating initial one-time report for live IPO {ipo_item.symbol}...")
-                await report_service.get_or_generate_report(db, ipo_item, force_refresh=False)
-    except Exception as e:
-        logger.warning(f"Could not auto-generate one-time AI reports after sync: {e}")
+    reports = await run_sources(db, sources)
+    synced_count = sum(r.upserted for r in reports)
+    logger.info(
+        "IPO sync complete: " + ", ".join(f"{r.name}={r.status}({r.upserted})" for r in reports)
+        + f". Total {synced_count} IPO records upserted."
+    )
 
     try:
         from app.routers.websocket import broadcast_event
@@ -612,7 +485,6 @@ async def sync_ipos_pipeline(db: AsyncSession) -> int:
     return synced_count
 
 
-
 async def sync_ipos_task() -> int:
     """Wrapper to run sync_ipos_pipeline in a self-managed DB session."""
     from app.db.database import AsyncSessionLocal
@@ -620,66 +492,67 @@ async def sync_ipos_task() -> int:
         return await sync_ipos_pipeline(db)
 
 
-async def sync_open_ipo_subscriptions(db: AsyncSession) -> int:
+async def sync_open_ipo_subscriptions(db: AsyncSession, source=None) -> int:
     """
-    Intraday job: Refresh subscription metrics ONLY for currently OPEN IPOs.
-    Fetches live QIB / sHNI / bHNI / Retail / Total subscription multiples
-    from ipoalerts.in and persists to PostgreSQL.
-    Returns the number of IPOs whose subscription data was updated.
+    Refresh the live subscription multiple for currently OPEN IPOs from ipoalerts (official NSE figure).
+
+    Fixed: the old query used columns that do not exist (Ipo.open_date / Ipo.close_date), so this job
+    crashed every time; it also overwrote known category values with zeros. Now it only updates the
+    fields the source actually reports, respects the daily request budget, and refreshes the stored
+    score (with a history row) when a value changes.
+    Returns the number of IPOs updated.
     """
-    from app.models.ipo import Ipo
-    from sqlalchemy import select
     from datetime import date
+    from sqlalchemy import select
+    from app.models.ipo import Ipo
+    from app.services.ipo_service import refresh_stored_score
+    from app.sources.ipoalerts import IpoAlertsSource
+    from app.sources.runner import add_usage, remaining_budget
 
     today = date.today()
-    stmt = select(Ipo).where(
-        Ipo.open_date <= today,
-        Ipo.close_date >= today,
-    )
-    res = await db.execute(stmt)
-    open_ipos: list[Ipo] = res.scalars().all()
-
+    open_ipos = (await db.execute(
+        select(Ipo).where(Ipo.issue_open_date <= today, Ipo.issue_close_date >= today)
+    )).scalars().all()
     if not open_ipos:
-        logger.info("[Sub-Sync] No open IPOs today — skipping intraday subscription refresh.")
+        logger.info("[Sub-Sync] No open IPOs today - skipping subscription refresh.")
         return 0
 
-    logger.info(f"[Sub-Sync] Refreshing subscriptions for {len(open_ipos)} open IPO(s)...")
-    updated = 0
+    source = source or IpoAlertsSource()
+    allowed = await remaining_budget(db, source)
+    if allowed is not None and allowed <= 0:
+        logger.info("[Sub-Sync] Daily request budget used up - skipping.")
+        return 0
 
-    # Fetch live data from the OPEN status endpoint
-    live_data = await fetch_ipos_from_ipoalerts("open")
-    live_map: Dict[str, Dict[str, Any]] = {}
-    for raw in live_data:
-        sym = (raw.get("symbol") or raw.get("name") or "").upper().strip()
-        if sym:
-            live_map[sym] = raw
-
-    for ipo in open_ipos:
-        clean_sym = (ipo.symbol or "").upper().replace("-EQ", "").strip()
-        raw = live_map.get(clean_sym)
-        if not raw:
-            continue
-
-        sub_dict = raw.get("subscription", {}) or {}
-        sub_retail = float(raw.get("subscription_retail") or sub_dict.get("retail") or 0.0)
-        sub_shni = float(raw.get("subscription_shni") or sub_dict.get("shni") or 0.0)
-        sub_bhni = float(raw.get("subscription_bhni") or sub_dict.get("bhni") or 0.0)
-        sub_qib = float(raw.get("subscription_qib") or sub_dict.get("qib") or 0.0)
-        sub_total = float(raw.get("subscription_total") or sub_dict.get("total") or 0.0)
-
-        ipo.subscription_retail = sub_retail
-        ipo.subscription_shni = sub_shni
-        ipo.subscription_bhni = sub_bhni
-        ipo.subscription_qib = sub_qib
-        ipo.subscription_total = sub_total
-        updated += 1
-        logger.info(
-            f"[Sub-Sync] {ipo.symbol}: QIB={sub_qib}x sHNI={sub_shni}x bHNI={sub_bhni}x "
-            f"Retail={sub_retail}x Total={sub_total}x"
-        )
-
-    if updated:
+    result = await source.fetch(requests_allowed=allowed)
+    await add_usage(db, source, result.requests_used)
+    if result.error:
+        logger.warning(f"[Sub-Sync] {source.name} failed: {result.error}")
         await db.commit()
+        return 0
 
-    logger.info(f"[Sub-Sync] Refreshed {updated}/{len(open_ipos)} open IPO subscription metrics.")
+    live = {}
+    for rec in result.records:
+        sym = (rec.get("symbol") or "").upper().replace("-EQ", "").strip()
+        if sym:
+            live[sym] = rec
+
+    fields = ["subscription_retail", "subscription_shni", "subscription_bhni", "subscription_qib", "subscription_total"]
+    updated = 0
+    for ipo in open_ipos:
+        rec = live.get((ipo.symbol or "").upper().replace("-EQ", "").strip())
+        if not rec:
+            continue
+        changed = False
+        for f in fields:
+            val = rec.get(f)
+            if val is not None and float(val) > 0 and float(val) != float(getattr(ipo, f) or 0.0):
+                setattr(ipo, f, float(val))
+                changed = True
+        if changed:
+            await refresh_stored_score(db, ipo)
+            updated += 1
+            logger.info(f"[Sub-Sync] {ipo.symbol}: total={ipo.subscription_total}x qib={ipo.subscription_qib}x")
+
+    await db.commit()
+    logger.info(f"[Sub-Sync] Updated {updated}/{len(open_ipos)} open IPOs.")
     return updated
