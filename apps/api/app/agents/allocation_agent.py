@@ -73,8 +73,10 @@ FAMILY PORTFOLIO CAPACITY:
             })
 
         return {
+            "analysis_failed": True,
+            "source": "heuristic",
             "recommended_primary_category": rec_cat,
-            "capital_efficiency_score": 85,
+            "capital_efficiency_score": None,
             "rationale": f"With {gmp}% GMP, deploying {rec_cat} maximizes risk-adjusted listing day upside across connected demats.",
             "lottery_probability_assessment": "Standard lottery odds for retail. High probability of allotment in sHNI/bHNI if applied early.",
             "suggested_actions_per_account": actions,

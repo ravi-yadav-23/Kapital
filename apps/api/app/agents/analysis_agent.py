@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import BaseAgent
 from app.agents.prompts import ANALYSIS_AGENT_SYSTEM
-from app.agents.tools import get_ipo_full_profile, get_sector_benchmarks
+from app.agents.tools import get_ipo_full_profile
 
 logger = logging.getLogger("agent.analysis")
 
@@ -31,7 +31,6 @@ class AnalysisAgent(BaseAgent):
             raise ValueError(f"IPO '{ipo_id_or_symbol}' not found.")
 
         ai_cfg = await self.get_ai_config(db)
-        benchmarks = get_sector_benchmarks(ipo.get("type"))
 
         user_prompt = f"""
 COMPANY: {ipo.get('name')} ({ipo.get('symbol')})
@@ -42,7 +41,6 @@ ISSUE SIZE: {ipo.get('issue_size')} (Approx ₹{ipo.get('issue_size_cr')} Cr)
 ABOUT: {ipo.get('about')}
 STATED STRENGTHS: {json.dumps(ipo.get('strengths', []))}
 STATED RISKS: {json.dumps(ipo.get('risks', []))}
-SECTOR BENCHMARKS: {json.dumps(benchmarks)}
 """
 
         res = await self.call_llm(ANALYSIS_AGENT_SYSTEM, user_prompt, ai_cfg)
@@ -75,7 +73,7 @@ SECTOR BENCHMARKS: {json.dumps(benchmarks)}
             "strengths_summary": sector_data["strengths"],
             "concerns_summary": sector_data["risks"],
             "accounting_red_flags": [],
-            "fair_value_estimate_inr": (ipo.get("price_band_max") or 100.0) * 1.15,
+            "fair_value_estimate_inr": None,
             "analyst_verdict": "",
         }
 

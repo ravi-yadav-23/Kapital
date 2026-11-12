@@ -27,23 +27,30 @@ class IpoDueDiligenceOrchestrator:
 
     @staticmethod
     def compute_weighted_score(
-        financial_quality: int,
-        industry_tailwinds: int,
-        subscription_momentum: int,
-        valuation_safety: int,
-        gmp_strength: int,
-        promoter_integrity: int,
+        financial_quality: Optional[int],
+        industry_tailwinds: Optional[int],
+        subscription_momentum: Optional[int],
+        valuation_safety: Optional[int],
+        gmp_strength: Optional[int],
+        promoter_integrity: Optional[int],
         penalties: int = 0,
     ) -> int:
-        raw_score = (
-            (financial_quality * 0.25)
-            + (valuation_safety * 0.20)
-            + (gmp_strength * 0.20)
-            + (promoter_integrity * 0.15)
-            + (industry_tailwinds * 0.10)
-            + (subscription_momentum * 0.10)
-            - penalties
-        )
+        """Weighted score over the components that were actually assessed.
+
+        A component that is None ("not assessed") is left out and the remaining weights are
+        renormalised, so a missing assessment can never silently count as an average score.
+        """
+        components = [
+            (financial_quality, 0.25),
+            (valuation_safety, 0.20),
+            (gmp_strength, 0.20),
+            (promoter_integrity, 0.15),
+            (industry_tailwinds, 0.10),
+            (subscription_momentum, 0.10),
+        ]
+        present = [(v, w) for v, w in components if v is not None]
+        total_weight = sum(w for _, w in present)
+        raw_score = (sum(v * w for v, w in present) / total_weight if total_weight else 0.0) - penalties
         return max(1, min(100, int(round(raw_score))))
 
     @staticmethod
@@ -87,11 +94,22 @@ class IpoDueDiligenceOrchestrator:
             except Exception:
                 return default
 
-        # Extract dimension scores
-        fin = _safe_int(analysis_res.get("financial_quality_score"), 70)
-        val = _safe_int(analysis_res.get("valuation_safety_score"), 65)
-        gov = _safe_int(news_res.get("promoter_integrity_score"), 75)
-        ind = _safe_int(news_res.get("industry_tailwinds_score"), 75)
+        def _opt_score(val: Any) -> Optional[int]:
+            """None / non-numeric means 'not assessed' - never replaced by a default number."""
+            if val is None or isinstance(val, bool):
+                return None
+            try:
+                return max(0, min(100, int(float(val))))
+            except (TypeError, ValueError):
+                return None
+
+        # Extract dimension scores (None == not assessed)
+        fin = _opt_score(analysis_res.get("financial_quality_score"))
+        val = _opt_score(analysis_res.get("valuation_safety_score"))
+        gov = _opt_score(news_res.get("promoter_integrity_score"))
+        ind = _opt_score(news_res.get("industry_tailwinds_score"))
+        # "Audited" means an AI assessment actually produced at least one score.
+        has_model_scores = any(v is not None for v in (fin, val, gov, ind))
 
         gmp_pct = float(ipo.get("gmp_percent") or 0.0)
         gmp_s = min(100, max(0, int(gmp_pct * 2.0)))
@@ -136,7 +154,11 @@ class IpoDueDiligenceOrchestrator:
                 all_red_flags.append({"title": desc, "flag": desc, "severity": "MEDIUM", "description": desc, "penalty_points": 5, "penalty": 5})
 
         penalties = sum(rf.get("penalty_points", 0) for rf in all_red_flags)
-        overall_score = self.compute_weighted_score(fin, ind, sub_m, val, gmp_s, gov, penalties)
+        if has_model_scores:
+            overall_score = self.compute_weighted_score(fin, ind, sub_m, val, gmp_s, gov, penalties)
+        else:
+            # Same preliminary formula the stored-report endpoint uses, so both always agree.
+            overall_score = int(round(gmp_s * 0.60 + sub_m * 0.40))
 
         price_max = float(ipo.get("price_band_max") or 100.0)
         est_listing_price = round(price_max * (1 + (gmp_pct / 100.0)), 2)
@@ -159,6 +181,8 @@ class IpoDueDiligenceOrchestrator:
             missing_fields.append("SEBI Draft Prospectus (DRHP)")
             missing_fields.append("OFS vs Fresh Issue Split")
             missing_fields.append("Restated Financial Statements")
+        else:
+            missing_fields.append("Prospectus figures (not parsed by Kapitl)")
         if not ipo.get("price_band_min") or not ipo.get("price_band_max"):
             missing_fields.append("Price Band")
         if not ipo.get("issue_size_cr"):
@@ -167,7 +191,13 @@ class IpoDueDiligenceOrchestrator:
             missing_fields.append("Bidding Dates")
 
         drhp_disclaimer = None
-        if not has_drhp:
+        if has_drhp:
+            drhp_disclaimer = (
+                f"A prospectus is on file for {ipo.get('name')}, but Kapitl does not parse prospectus documents. "
+                "Restated financials, OFS split, litigation and peer multiples are NOT assessed; "
+                "scores reflect market signals and an AI reading of the listed highlights only."
+            )
+        else:
             drhp_disclaimer = (
                 f"DRHP Pre-Filing Notice: {ipo.get('name')} has not yet filed its Draft Red Herring Prospectus (DRHP) with SEBI. "
                 "Official restated financials (revenue, PAT, cash flow), capital structure split (OFS vs Fresh Issue), "
@@ -178,8 +208,7 @@ class IpoDueDiligenceOrchestrator:
         is_analysis_failed = (
             analysis_res.get("analysis_failed", False)
             or news_res.get("analysis_failed", False)
-            or allocation_res.get("analysis_failed", False)
-        )
+        )  # allocation advice is advisory and never affects scoring
 
         if is_analysis_failed:
             # Return an HONEST preliminary response — never fabricate or mark as audited.
@@ -267,7 +296,7 @@ class IpoDueDiligenceOrchestrator:
                 scored_at=stub_scored_at,
             )
         else:
-            recommendation = self.get_recommendation(overall_score)
+            recommendation = self.get_recommendation(overall_score) if has_model_scores else "PENDING"
             analyst_verdict = clean_text(analysis_res.get("analyst_verdict", ""))
             sentiment_summary = clean_text(news_res.get("sentiment_summary", ""))
 
@@ -283,9 +312,11 @@ class IpoDueDiligenceOrchestrator:
                 summary_narrative = sentiment_summary
             else:
                 summary_source = "template_fallback"
+                fin_txt = f"{fin}/100" if fin is not None else "not assessed"
+                val_txt = f"{val}/100" if val is not None else "not assessed"
                 summary_narrative = (
-                    f"{ipo['name']} exhibits a fundamental score of {overall_score}/100 with a '{recommendation}' recommendation. "
-                    f"Financial quality scored {fin}/100 and valuation safety scored {val}/100. "
+                    f"{ipo['name']} has an indicative score of {overall_score}/100 ('{recommendation}'). "
+                    f"Financial quality: {fin_txt}; valuation safety: {val_txt}. "
                     f"Market sentiment is {news_res.get('market_buzz_rating', 'MODERATE')} with current GMP at {gmp_pct}%. "
                     f"Optimal allocation strategy: {allocation_res.get('recommended_primary_category', 'RETAIL')} bidding."
                 )
@@ -306,6 +337,19 @@ class IpoDueDiligenceOrchestrator:
         raw_pat_hist = analysis_res.get("pat_history")
         raw_cfo_hist = analysis_res.get("cfo_history")
 
+        # The agents are given NO financial statements, so any series, growth figure or ratio the
+        # model returns is recall/invention, not data. Only accept them if the inputs carried them.
+        inputs_have_financials = bool(ipo.get("financial_statements"))
+        if not inputs_have_financials:
+            raw_rev_hist = raw_pat_hist = raw_cfo_hist = None
+            analysis_res = {
+                **analysis_res,
+                "revenue_growth_yoy": None,
+                "pat_growth_yoy": None,
+                "cfo_to_pat_ratio": None,
+                "growth_demand_verdict": None,
+            }
+
         # Validate that historical figures are legitimately provided lists of items
         has_real_rev = isinstance(raw_rev_hist, list) and len(raw_rev_hist) > 0 and all(isinstance(x, dict) and "amount_cr" in x for x in raw_rev_hist)
         has_real_pat = isinstance(raw_pat_hist, list) and len(raw_pat_hist) > 0 and all(isinstance(x, dict) and "amount_cr" in x for x in raw_pat_hist)
@@ -316,7 +360,7 @@ class IpoDueDiligenceOrchestrator:
         cfo_hist = raw_cfo_hist if has_real_cfo else []
 
         # Determine data sufficiency:
-        if has_real_rev and has_real_pat and len(rev_hist) >= 3:
+        if inputs_have_financials and has_real_rev and has_real_pat and len(rev_hist) >= 3:
             data_sufficiency = "full"
         elif ipo.get("price_band_max") or ipo.get("issue_size") or ipo.get("gmp_percent"):
             data_sufficiency = "partial"
@@ -378,194 +422,68 @@ class IpoDueDiligenceOrchestrator:
             financial_metrics = None
 
         # 2. Gatekeeper Checks (PASS / FAIL / WARN)
-        if not has_drhp:
-            ofs_pct = None
-            fresh_pct = None
-            pe_ratio = None
-            peer_pe = None
-            lit_claims = None
-            financial_metrics = None  # Never fabricate financials if DRHP is not filed
+        # Kapitl supplies no prospectus data to the model, so none of these can be assessed. Figures the
+        # model may return for them (OFS %, P/E, peer P/E, litigation) are never trusted.
+        ofs_pct = None
+        pe_ratio = None
+        peer_pe = None
 
-            is_sme = (ipo.get("type") == "SME") or ("SME" in (ipo.get("name") or ""))
-            gatekeepers = [
-                {
-                    "key": "ofs_split",
-                    "name": "OFS vs. Fresh Issue Split",
-                    "details": "DRHP not yet filed with SEBI — issue breakdown pending official regulatory draft.",
-                    "status": "WARN",
-                    "threshold": "OFS ≤ 40% (Fresh ≥ 60%)",
-                    "impact": "Pending official DRHP to verify whether promoters or early investors are offloading equity.",
-                },
-                {
-                    "key": "anchor_quality",
-                    "name": "Anchor Book Quality",
-                    "details": (
-                        "Exempt for SME platform issues (SEBI ICDR regulations)"
-                        if is_sme
-                        else "Anchor allocation disclosures release 1 day prior to issue opening; pending DRHP clearance."
-                    ),
-                    "status": "WARN",
-                    "threshold": "N/A (SME platform)" if is_sme else "Domestic MFs > 30%",
-                    "impact": (
-                        "Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms."
-                        if is_sme
-                        else "Institutional price floor will be evaluated once anchor allocations are published."
-                    ),
-                },
-                {
-                    "key": "cfo_conversion",
-                    "name": "Cash Flow vs. PAT Conversion",
-                    "details": "Audited restated financial history pending SEBI DRHP filing.",
-                    "status": "WARN",
-                    "threshold": "CFO / PAT Ratio ≥ 0.70x",
-                    "impact": "Cannot assess cash collection quality without statutory auditor-certified financials.",
-                },
-                {
-                    "key": "valuation_cushion",
-                    "name": "Valuation Room vs. Listed Peers",
-                    "details": "Price band and P/E valuation multiples not yet announced by lead book runners.",
-                    "status": "WARN",
-                    "threshold": "≥ 15% discount to peers",
-                    "impact": "Valuation discount will be determined once merchant bankers fix the issue price band.",
-                },
-                {
-                    "key": "litigation_exposure",
-                    "name": "Litigation Liability Ratio",
-                    "details": "Litigation annexures and contingent liabilities pending official DRHP disclosure.",
-                    "status": "WARN",
-                    "threshold": "Claims < 5% of Issue Size",
-                    "impact": "Regulatory and litigation risks will be audited once SEBI filing is released.",
-                },
-            ]
-        else:
-            ofs_pct = float(analysis_res.get("ofs_percentage") or 25.0)
-            fresh_pct = max(0.0, 100.0 - ofs_pct)
-            pe_ratio = float(analysis_res.get("pe_ratio") or 24.5)
-            peer_pe = float(analysis_res.get("peer_avg_pe") or 32.0)
-            lit_claims = float(analysis_res.get("litigation_claims_cr") or round(issue_size_cr * 0.02, 1))
-            lit_pct = round((lit_claims / issue_size_cr) * 100.0, 1) if issue_size_cr > 0 else 2.0
-
-            # Gatekeeper 1: OFS vs Fresh
-            if ofs_pct > 70.0:
-                ofs_status = "FAIL"
-                ofs_impact = "Promoter/PE dumping shares; high listing morning supply overhang."
-            elif ofs_pct > 40.0:
-                ofs_status = "WARN"
-                ofs_impact = "Moderate OFS component; monitor secondary absorption."
-            else:
-                ofs_status = "PASS"
-                ofs_impact = "Capital stays inside the company to fuel growth and debt reduction."
-
-            # Gatekeeper 2: Anchor Book Quality
-            anchor_quality = news_res.get("anchor_quality_verdict") or ""
-            if not anchor_quality or "not assessed" in anchor_quality.lower():
-                anchor_status = "PASS"
-                anchor_quality = "Not assessed (no verified anchor disclosures in input)"
-            elif "weak" in anchor_quality.lower() or "cautious" in anchor_quality.lower():
-                anchor_status = "WARN"
-            elif "poor" in anchor_quality.lower() or "avoid" in anchor_quality.lower():
-                anchor_status = "FAIL"
-            else:
-                anchor_status = "PASS"
-
-            # Gatekeeper 3: Cash Flow vs PAT (Quality of Earnings)
-            cfo_last = (
-                float(cfo_hist[-1]["amount_cr"])
-                if cfo_hist and isinstance(cfo_hist[-1], dict) and "amount_cr" in cfo_hist[-1]
-                else None
-            )
-            pat_last = (
-                float(pat_hist[-1]["amount_cr"])
-                if pat_hist and isinstance(pat_hist[-1], dict) and "amount_cr" in pat_hist[-1]
-                else None
-            )
-
-            if cfo_last is not None and pat_last is not None and cfo_last < 0 and pat_last > 0:
-                cfo_status = "FAIL"
-                cfo_impact = "Negative operating cash flow with positive PAT indicates aggressive pre-IPO billing."
-            elif cfo_to_pat is not None and cfo_to_pat < 0.60:
-                cfo_status = "WARN"
-                cfo_impact = "Working capital elongation; receivables growing faster than cash collections."
-            elif cfo_to_pat is not None:
-                cfo_status = "PASS"
-                cfo_impact = "Real cash conversion backing reported net profits; drives institutional buying."
-            else:
-                cfo_status = "PASS"
-                cfo_impact = "Cash flow trajectory pending detailed audited financial statements."
-
-            # Gatekeeper 4: Valuation Cushion vs Listed Peers
-            pe_discount_pct = round(((peer_pe - pe_ratio) / peer_pe) * 100.0, 1) if peer_pe > 0 else 0.0
-            if pe_ratio <= peer_pe * 0.85:
-                val_status = "PASS"
-                val_impact = f"{abs(pe_discount_pct)}% discount to listed peers leaves money on table for listing pop."
-            elif pe_ratio <= peer_pe * 1.15:
-                val_status = "WARN"
-                val_impact = "Fairly valued relative to listed peers; listing pop depends on market sentiment."
-            else:
-                val_status = "FAIL"
-                val_impact = f"{abs(pe_discount_pct)}% premium over peers; aggressive pricing leaves zero margin of safety."
-
-            # Gatekeeper 5: Material Litigation Ratio
-            if lit_pct > 15.0:
-                lit_status = "FAIL"
-                lit_impact = f"Pending court claims equal {lit_pct}% of total issue size; high litigation freeze risk."
-            elif lit_pct > 5.0:
-                lit_status = "WARN"
-                lit_impact = f"Contingent tax/court claims equal {lit_pct}% of issue size; moderate overhang."
-            else:
-                lit_status = "PASS"
-                lit_impact = f"Disputed claims represent only {lit_pct}% of issue size; clean regulatory slate."
-
-            gatekeepers = [
-                {
-                    "key": "ofs_split",
-                    "name": "OFS vs. Fresh Issue Split",
-                    "details": f"Fresh: {fresh_pct:.0f}% | OFS: {ofs_pct:.0f}%",
-                    "status": ofs_status,
-                    "threshold": "OFS ≤ 40% (Fresh ≥ 60%)",
-                    "impact": ofs_impact,
-                },
-                {
-                    "key": "anchor_quality",
-                    "name": "Anchor Book Quality",
-                    "details": "Tier-1 Domestic Mutual Funds (HDFC, SBI, Nippon) anchored with 30-day lock-in.",
-                    "status": anchor_status,
-                    "threshold": "Domestic MFs > 30%",
-                    "impact": "Provides institutional price floor and reduces listing day volatility.",
-                },
-                {
-                    "key": "cfo_conversion",
-                    "name": "Cash Flow vs. PAT Conversion",
-                    "details": (
-                        f"CFO/PAT ratio {cfo_to_pat}x (₹{cfo_last:.1f} Cr CFO vs ₹{pat_last:.1f} Cr PAT)"
-                        if (cfo_last is not None and pat_last is not None)
-                        else (
-                            f"CFO/PAT ratio: {cfo_to_pat}x"
-                            if cfo_to_pat is not None
-                            else "Historical CFO and PAT figures pending audited disclosures"
-                        )
-                    ),
-                    "status": cfo_status,
-                    "threshold": "CFO / PAT Ratio ≥ 0.70x",
-                    "impact": cfo_impact,
-                },
-                {
-                    "key": "valuation_cushion",
-                    "name": "Valuation Room vs. Listed Peers",
-                    "details": f"IPO P/E: {pe_ratio:.1f}x vs Peer Avg: {peer_pe:.1f}x ({pe_discount_pct:+.1f}% discount)",
-                    "status": val_status,
-                    "threshold": "≥ 15% discount to peers",
-                    "impact": val_impact,
-                },
-                {
-                    "key": "litigation_exposure",
-                    "name": "Litigation Liability Ratio",
-                    "details": f"Disputed court claims ₹{lit_claims:.1f} Cr ({lit_pct}% of issue size)",
-                    "status": lit_status,
-                    "threshold": "Claims < 5% of Issue Size",
-                    "impact": lit_impact,
-                },
-            ]
+        is_sme = (ipo.get("type") == "SME") or ("SME" in (ipo.get("name") or ""))
+        pending = (
+            "Prospectus is on file but Kapitl does not parse it"
+            if has_drhp
+            else "DRHP not yet filed with SEBI"
+        )
+        gatekeepers = [
+            {
+                "key": "ofs_split",
+                "name": "OFS vs. Fresh Issue Split",
+                "details": f"Not assessed: {pending}.",
+                "status": "WARN",
+                "threshold": "OFS <= 40% (Fresh >= 60%)",
+                "impact": "Cannot tell whether promoters or early investors are offloading equity.",
+            },
+            {
+                "key": "anchor_quality",
+                "name": "Anchor Book Quality",
+                "details": (
+                    "Exempt for SME platform issues (SEBI ICDR regulations)"
+                    if is_sme
+                    else "Not assessed: no verified anchor allocation data is supplied."
+                ),
+                "status": "WARN",
+                "threshold": "N/A (SME platform)" if is_sme else "Domestic MFs > 30%",
+                "impact": (
+                    "Anchor investor reservation is optional for SME issues under BSE SME / NSE Emerge norms."
+                    if is_sme
+                    else "Institutional price floor cannot be evaluated from the supplied data."
+                ),
+            },
+            {
+                "key": "cfo_conversion",
+                "name": "Cash Flow vs. PAT Conversion",
+                "details": f"Not assessed: {pending}; no financial statements supplied.",
+                "status": "WARN",
+                "threshold": "CFO / PAT Ratio >= 0.70x",
+                "impact": "Cannot assess cash collection quality without auditor-certified financials.",
+            },
+            {
+                "key": "valuation_cushion",
+                "name": "Valuation Room vs. Listed Peers",
+                "details": "Not assessed: no earnings or peer multiples are supplied.",
+                "status": "WARN",
+                "threshold": ">= 15% discount to peers",
+                "impact": "Valuation versus peers cannot be determined from the supplied data.",
+            },
+            {
+                "key": "litigation_exposure",
+                "name": "Litigation Liability Ratio",
+                "details": f"Not assessed: {pending}; litigation annexures are not read.",
+                "status": "WARN",
+                "threshold": "Claims < 5% of Issue Size",
+                "impact": "Regulatory and litigation risks are not assessed.",
+            },
+        ]
 
         # Persist report to database
         stmt = select(AiReport).where(AiReport.ipo_id == ipo["id"])
@@ -593,7 +511,7 @@ class IpoDueDiligenceOrchestrator:
             report_row.ofs_percentage = ofs_pct
             report_row.financial_metrics = financial_metrics
             report_row.gatekeepers = gatekeepers
-            report_row.is_audited = True
+            report_row.is_audited = has_model_scores
             report_row.scored_at = scored_at
         else:
             report_row = AiReport(
@@ -619,7 +537,7 @@ class IpoDueDiligenceOrchestrator:
                 ofs_percentage=ofs_pct,
                 financial_metrics=financial_metrics,
                 gatekeepers=gatekeepers,
-                is_audited=True,  # Full LLM audit completed successfully
+                is_audited=has_model_scores,
                 scored_at=scored_at,
             )
             db.add(report_row)
@@ -644,7 +562,7 @@ class IpoDueDiligenceOrchestrator:
             ipo_name=ipo.get("name"),
             ipo_symbol=ipo.get("symbol"),
             overall_score=report_row.overall_score,
-            is_audited=True,  # Full LLM audit completed successfully
+            is_audited=has_model_scores,
             data_sufficiency=data_sufficiency,
             drhp_status=drhp_status,
             drhp_disclaimer=drhp_disclaimer,

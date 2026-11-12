@@ -13,12 +13,12 @@ class AiReport(BaseModel):
     recommendation = Column(String(50), nullable=False)  # STRONG_APPLY, MODERATE_APPLY, WATCH, AVOID
     
     # 6-Dimension Score Breakdown (0 to 100 or weighted)
-    score_financial_quality = Column(Integer, default=0)
-    score_industry_tailwinds = Column(Integer, default=0)
+    score_financial_quality = Column(Integer, nullable=True)
+    score_industry_tailwinds = Column(Integer, nullable=True)
     score_subscription_momentum = Column(Integer, default=0)
-    score_valuation_safety = Column(Integer, default=0)
+    score_valuation_safety = Column(Integer, nullable=True)
     score_gmp_strength = Column(Integer, default=0)
-    score_promoter_integrity = Column(Integer, default=0)
+    score_promoter_integrity = Column(Integer, nullable=True)
 
     # Narrative Breakdown & AI Findings
     executive_summary = Column(Text, nullable=True)

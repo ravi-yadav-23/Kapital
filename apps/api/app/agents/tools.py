@@ -32,6 +32,8 @@ async def get_ipo_full_profile(db: AsyncSession, ipo_id_or_symbol: str) -> Optio
         "issue_close_date": ipo.issue_close_date,
         "listing_date": ipo.listing_date,
         "about": ipo.about,
+        "drhp_url": ipo.drhp_url,
+        "rhp_url": ipo.rhp_url,
         "strengths": ipo.strengths or [],
         "risks": ipo.risks or [],
         "gmp_percent": ipo.gmp_percent or 0.0,
