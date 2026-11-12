@@ -221,3 +221,83 @@ Each point comes from a rule with evidence. An area that cannot be assessed is "
 *For the allocator (money decisions)*: add **expected value = allotment probability x expected gain** instead of ranking by GMP x score.
 
 Phase A (already approved) builds the plumbing: one scoring module, momentum and fundamental separated, history stored. These weights are a starting proposal and only become trustworthy after the outcome backtest.
+
+---
+
+# UPDATE 2026-11-13 (supersedes sections 9 and 11 below where they conflict)
+
+**Project goal, confirmed:** listing-day gain only. Buy through the IPO, sell on the listing day, never hold long term. So the engine must predict *listing gain and the chance of a loss at listing*, with GMP and demand signals first. Long-term fundamentals only matter as a downside guard (fraud, absurd valuation, heavy promoter selling).
+
+## 12. What the sites' terms actually allow (read 2026-11-13; robots.txt + terms; not legal advice)
+
+I cannot "make" a site allow scraping; I can only choose sources whose rules allow what we do. Result:
+
+| Source | robots.txt | Terms of use (what I found) | Verdict for automated use |
+|---|---|---|---|
+| **ipoalerts.in API** | n/a (API) | Using its **published API** is the permitted way; scraping the site is banned. Display to end users in your own app/website is allowed, including commercial. No redistribution of the data. Keys must stay server-side. **Forbids "real-time trading, automated or algorithmic trading"** and says data is not a substitute for a live exchange feed. Free plan: **25 requests/day, 750/month, 6/minute, only currently OPEN issues, 1 IPO per request.** GMP is a **paid add-on** on the pricing page, although the GMP-trends page says "Free Preview until further notice" (contradictory, must be tested with a key). Pro plans start at Rs 499/month. | **Allowed** for open IPOs within quota, as long as nothing is traded automatically from it. Keep a human in the loop. |
+| **NSE** (nseindia.com) | allows `/` | Terms of Use bar "systematic or automated data collection" (scraping, data mining, harvesting). Sub-sites say the same. NSE offers an official MCP/AI access page for informational use only (no licence to exploit commercially or train AI). | **No automated scraping.** Manual personal download of a document is fine. |
+| **BSE** (bseindia.com) | returned 403 to my fetch (blocks bots) | Main disclaimer: no reproduction/redistribution without written consent. The BSEPlus sub-site bans systematic downloading into a database. Full main-site terms not retrieved. | **Treat as no automated access.** |
+| **SEBI** (sebi.gov.in) | allows everything except `/js` and `/css` | Website policy: material may be reproduced free after **permission requested by email**, accurately and with credit. Automated retrieval is not addressed. | **Low-volume document download is likely tolerable, but get written permission** (email SEBI) to be safe. |
+| **Groww** (/ipo) | allows `/ipo` | Section IV.2 prohibits copying, reproducing or "enter[ing] into a database" platform content; IV.4 bars copying or displaying content without authorisation. | **Not allowed.** The current Groww scraper conflicts with these terms. |
+| **IPO Watch** (ipowatch.in) | allows pages (blocks `/api/`, year archives) | Terms of Use grant a licence for **personal, non-commercial** access only; copying, republishing or commercial exploitation is restricted. | **Not allowed** for a public demo without permission. The current GMP scraper conflicts. |
+| **Chittorgarh** | allows pages (blocks AI crawlers such as GPTBot) | Disclaimer bars reuse of contents for public/commercial purposes without prior written permission (page is old). | **Needs written permission.** |
+
+### What this means (honest conclusion)
+- There is **no free, clearly permitted, fully automatic source** for GMP or live subscription. The only clean automated source is the **ipoalerts API** (open IPOs only, tiny free quota).
+- The code today scrapes **Groww** and **IPO Watch**, which their terms do not allow. For a public live demo that is a real risk (takedown, IP block, reputational). This should be fixed first (new item **A0 - compliance**): disable those two scrapers by default and replace them as below.
+
+### Recommended free and compliant data plan
+1. **IPO basics for OPEN issues**: ipoalerts free API (25/day budget: one call per open IPO per day, plus one list call).
+2. **Offer documents (RHP/DRHP)**: the admin **downloads the PDF manually** from SEBI/NSE/BSE (allowed for personal use) and drops it into the repo/storage or uploads it in an admin screen. The nightly Action then analyses it. Optionally email SEBI for permission to automate fetching. For a demo of 5-10 IPOs this is realistic and fully compliant.
+3. **GMP**: (a) first test whether the ipoalerts GMP-trends preview works on the free key; (b) otherwise an **admin form** where you type the GMP you see on public sites (with source + timestamp) - keep **at least 2 sources**; (c) email IPO Watch / Chittorgarh asking for written permission to read their GMP table automatically; (d) paid add-on later when this becomes a real product.
+4. **Subscription (category-wise)**: ipoalerts if it exposes it (not stated on the pricing page - test), else the same admin form (the exchange pages are fine to *read by eye*, not to scrape).
+5. **Never auto-trade from this data** (ipoalerts clause). The app suggests; a human decides and places or stages the order. Mark this in the README.
+
+## 13. Listing-Gain Engine v1 (new scoring engine; replaces the three old formulas)
+
+**What it predicts:** the expected % gain at listing (issue price -> listing price), the probability of listing at a loss, and the expected rupee gain per application after allotment odds. Nothing about long-term value.
+
+**Inputs (all known before or at close of bidding):**
+
+| Group | Signals | Weight in the listing-gain score |
+|---|---|---|
+| **A. Grey market (primary)** | GMP as % of upper band (median of >= 2 sources), 3-day GMP trend (rising/falling/flat), GMP stability (std dev), source agreement | **40%** |
+| **B. Demand** | final subscription: QIB (x), NII/HNI (sNII and bNII), retail (x), total; late-day surge on the last day; QIB share of the book | **30%** |
+| **C. Anchor book** | anchor size as % of issue, share of mutual funds / long-term funds, any famous marquee names | **8%** |
+| **D. Supply and structure** | issue size and float (small issues pop more, huge ones less), OFS share, pre-IPO placements below issue price, QIB reserved share | **8%** |
+| **E. Pricing guard** | P/E (or P/S for loss-makers) at the upper band vs disclosed peers: expensive pricing caps the upside | **6%** |
+| **F. Market regime** | Nifty 5-day trend, average listing gain of the last ~10 IPOs, number of IPOs open the same week (liquidity drain) | **8%** |
+
+**Hard rules (override the weights):**
+- **Red-flag caps** from the offer document: fraud/regulatory action on promoters, negative operating cash flow with large OFS, extreme valuation, pledged promoter holding - cap the verdict at Neutral/Avoid no matter how high GMP is, because listing day collapses on bad news.
+- **Data-quality rule:** if GMP has fewer than 2 sources, or is older than 24 h, or sources disagree by a wide margin, confidence is Low and the verdict is shown as "unreliable data".
+- **Manipulation guard:** a GMP that jumps while subscription stays weak is down-weighted.
+
+**Outputs:**
+1. `expected_listing_gain_pct` with a range (low / base / high), not a single point.
+2. `p_gain_positive`, `p_gain_above_10pct`, `p_loss`.
+3. `confidence` (Low / Medium / High) from data completeness and source agreement.
+4. **Signal badge** in the corner (Apply / Neutral / Avoid) from a documented matrix, plus the **reasons** list as the main content ("GMP +32% rising 3 days; QIB 78x; anchor 62% MFs; P/E 38 vs peers 41"; red flags listed separately).
+5. **Per-application expected value**: `P(allotment) x expected_gain x application_amount - costs`. Retail allotment probability is about `1 / retail_subscription_multiple` when oversubscribed (lottery); sHNI/bHNI are proportional. This feeds the optimizer so it ranks by expected rupees, not by GMP x score.
+6. **Exit note** for listing day (informational, not advice): after the listing price is discovered, a price band applies for the rest of the day (the width depends on issue size and segment - verify current NSE/BSE rules), which limits further upside and downside that day.
+
+**Calibration (what makes it honest):**
+- Keep an **`ipo_outcomes`** table: issue price, listing price, listing gain %, day-1 close. Seed it with the past ~50-100 mainboard IPOs by manual CSV import from public pages (by eye/manual download), and add each new listing automatically.
+- Store a **GMP/subscription snapshot at bidding close** for every IPO so the feature values used for prediction are reproducible.
+- Fit the weights with a simple, transparent method (for example a ridge regression or monotonic rules) and publish the backtest: predicted vs actual, hit rate of "p_gain_positive", average error. Until at least a few dozen outcomes exist the engine is labelled **"uncalibrated v1 - rules of thumb"**.
+- **No claim of accuracy** is made beyond what the backtest shows. GMP is the best-known leading indicator but is unofficial and can be wrong or manipulated.
+
+**What this changes in the earlier plan:**
+- The LLM/document pipeline shrinks to what it is good for here: red-flag hard-stops, offer structure (fresh vs OFS, pre-IPO placements), and peer P/E from the RHP. It is **no longer the core score**, which saves free-tier tokens and makes results deterministic.
+- Fundamental long-term sub-scores (ROE trends, moat etc.) are dropped from the headline; they remain optional detail only.
+- Report page: top = signal badge + expected gain range + probabilities + confidence; then reasons; then red flags/green flags; then "data we could not verify".
+
+## 14. Revised phase order for the free, listing-gain version
+1. **A0 compliance**: disable the Groww and IPO Watch scrapers by default (config switch), document sources and limits, switch IPO basics to the ipoalerts API for open issues.
+2. **A honest UI + one scoring module + score history** (as before).
+3. **B1 data capture**: `gmp_snapshots`, `subscription_snapshots`, `ipo_outcomes` tables; admin entry forms; nightly snapshot at 02:00 IST.
+4. **B2 Listing-Gain Engine v1** (rules above) + unit tests + backtest script over `ipo_outcomes`.
+5. **B3 allotment-odds expected value** and optimizer switch to expected rupees.
+6. **C document analysis (small)**: manual PDF drop -> chunked extraction -> red-flag hard-stops and peer P/E, stored append-only.
+7. **D UI redesign** and guest queue/cap (50 clicks/day, global).
+8. **E calibration** as outcomes accumulate; publish the backtest in the README.
