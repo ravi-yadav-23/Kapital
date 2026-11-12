@@ -236,7 +236,7 @@ async def google_auth(req: GoogleAuthRequest):
         logger.error(f"google_auth failed: {e}\n{tb}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Google authentication failed: {str(e)}",
+            detail="Google authentication failed. Please try again.",
         )
 
 
@@ -347,7 +347,7 @@ async def guest_login():
         logger.error(f"guest_login failed: {e}\n{tb}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Guest login failed: {str(e)}",
+            detail="Guest login failed. Please try again.",
         )
 
 

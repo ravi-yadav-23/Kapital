@@ -29,22 +29,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 )
             return response
         except Exception as exc:
-            import traceback
-            from starlette.responses import JSONResponse
+            # Log server-side only. Re-raise so the app-level exception handler returns a generic
+            # 500 body (no exception text, no traceback, no wildcard CORS) to the caller.
             duration_ms = (time.perf_counter() - start_time) * 1000
-            tb = traceback.format_exc()
-            logger.error(f"{request.method} {path} -> FAILED: {exc}\n{tb} ({duration_ms:.2f}ms)")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": str(exc),
-                    "type": type(exc).__name__,
-                    "path": path,
-                    "traceback": tb.split("\n"),
-                },
-                headers={
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Credentials": "true",
-                    "X-Process-Time": f"{duration_ms:.2f}ms",
-                },
+            logger.error(
+                f"{request.method} {path} -> FAILED: {exc} ({duration_ms:.2f}ms)",
+                exc_info=True,
             )
+            raise
