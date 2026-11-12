@@ -414,6 +414,23 @@ class OrderService:
         if not order_obj:
             raise ValueError("Order not found")
 
+        # State guard: an allotment result applies once, and only to a live application.
+        requested = (result or "").upper()
+        if requested not in ("ALLOTTED", "NOT_ALLOTTED"):
+            raise ValueError("Invalid allotment result. Must be 'ALLOTTED' or 'NOT_ALLOTTED'.")
+        if order_obj.status == requested:
+            return {
+                "success": True,
+                "status": requested,
+                "already_processed": True,
+                "message": f"Order already marked {requested}; no changes made.",
+            }
+        if order_obj.status not in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED"):
+            raise ValueError(
+                f"Cannot record allotment result '{requested}' for an order in status "
+                f"'{order_obj.status}'. Only live applications can be allotted or released."
+            )
+
         acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
         acc = acc_res.scalar_one_or_none()
 
