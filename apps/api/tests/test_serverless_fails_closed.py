@@ -23,7 +23,7 @@ def test_serverless_signing_key_is_not_the_public_default(serverless, monkeypatc
     monkeypatch.setenv("ENVIRONMENT", "development")
     s = Settings(_env_file=None)
     assert s.jwt_secret_key == s.secret_key != _INSECURE_DEFAULT_KEY
-    assert s.master_api_key == s.secret_key
+    assert s.master_api_key == ""  # API-key auth stays disabled unless explicitly configured
 
 
 def test_local_development_is_unchanged(monkeypatch):

@@ -108,22 +108,17 @@ async def get_current_user(
             "is_guest": (role == "GUEST"),
         }
 
-    # 2. Check X-API-Key Header
+    # 2. Check X-API-Key Header (service-to-service). Disabled unless MASTER_API_KEY is explicitly
+    #    configured: the JWT-signing SECRET_KEY must never double as an admin credential.
     api_key_header = request.headers.get("X-API-Key")
     if api_key_header:
-        # Use dedicated MASTER_API_KEY with constant-time comparison to prevent timing attacks.
-        # Fall back to secret_key only in dev if master_api_key is not set.
-        expected_key = (settings.master_api_key or "").strip() or (settings.secret_key or "").strip()
+        expected_key = (settings.master_api_key or "").strip()
         if expected_key and secrets_module.compare_digest(api_key_header.encode(), expected_key.encode()):
             return {"id": "system-api-key", "email": "", "username": "system", "role": "ADMIN", "is_guest": False}
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API Key",
         )
-
-    # 3. Development fallback ONLY when running automated tests without auth config
-    if settings.environment.lower() == "test" and settings.environment.lower() not in ["production", "prod"]:
-        return {"id": "test-admin", "email": "test@kapitl.local", "username": "admin", "role": "ADMIN", "is_guest": False}
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

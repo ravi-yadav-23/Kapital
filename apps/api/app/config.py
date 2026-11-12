@@ -161,8 +161,6 @@ class Settings(BaseSettings):
             # Auto-populate separated keys if not explicitly provided
             if not self.jwt_secret_key:
                 self.jwt_secret_key = self.secret_key
-            if not self.master_api_key:
-                self.master_api_key = self.secret_key
             if not self.fernet_key:
                 import base64, hashlib
                 derived = base64.urlsafe_b64encode(hashlib.sha256(self.secret_key.encode()).digest()).decode()

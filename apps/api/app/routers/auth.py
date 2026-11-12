@@ -1,4 +1,5 @@
 import io
+import time
 import base64
 import logging
 from pathlib import Path
@@ -26,6 +27,19 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 TOTP_STORE_FILE = Path(__file__).resolve().parent.parent.parent / ".totp_secret"
 TOTP_TMP_FILE = Path("/tmp/.totp_secret")
 _in_memory_totp_secret: Optional[str] = None
+
+# Brute-force protection for the 6-digit TOTP step (per signed-in Google identity).
+# In-memory: per instance. On serverless this only slows an attacker down; use Redis for a hard limit.
+_TOTP_MAX_FAILURES = 5
+_TOTP_WINDOW_SECONDS = 300
+_totp_failures: Dict[str, list] = {}
+
+
+def _totp_recent_failures(key: str) -> int:
+    now = time.time()
+    recent = [t for t in _totp_failures.get(key, []) if now - t < _TOTP_WINDOW_SECONDS]
+    _totp_failures[key] = recent
+    return len(recent)
 
 
 def get_admin_totp_secret() -> Optional[str]:
@@ -263,6 +277,13 @@ async def verify_totp(req: TotpVerifyRequest):
             detail="Authenticator code must be exactly 6 digits.",
         )
 
+    limiter_key = (payload.get("email") or "unknown").lower()
+    if _totp_recent_failures(limiter_key) >= _TOTP_MAX_FAILURES:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many incorrect codes. Please wait a few minutes and sign in with Google again.",
+        )
+
     # 2. Determine TOTP secret (either pending from first-time setup or saved)
     is_setup = "pending_secret" in payload
     totp_secret = payload.get("pending_secret") or get_admin_totp_secret()
@@ -278,10 +299,13 @@ async def verify_totp(req: TotpVerifyRequest):
     is_valid = totp.verify(code, valid_window=1)
 
     if not is_valid:
+        _totp_failures.setdefault(limiter_key, []).append(time.time())
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect 6-digit code. Please check your Google Authenticator app and try again.",
         )
+
+    _totp_failures.pop(limiter_key, None)
 
     # If first time, save the verified secret
     if is_setup:
