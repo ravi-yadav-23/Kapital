@@ -196,6 +196,10 @@ class Settings(BaseSettings):
     allowed_email: str = ""
     admin_totp_secret: str = ""
 
+    # Real IPO bids via Angel One stay OFF until the IPO-apply endpoint/payload is verified
+    # against broker documentation. Demo/test clients are unaffected.
+    enable_live_ipo_apply: bool = False
+
     # IPO Data Sources
     ipoalerts_api_key: str = ""  # Free key from ipoalerts.in — sign up at https://ipoalerts.in
 

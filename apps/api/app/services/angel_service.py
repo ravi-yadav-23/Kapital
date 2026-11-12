@@ -545,8 +545,9 @@ class AngelOneSmartApiService:
                     session = self.sessions.get(client_id)
 
         if not session or not session.get("jwtToken"):
-            # Safe simulation for test fixtures and demo accounts
-            is_test_env = getattr(settings, "environment", "").lower() in ("test", "testing", "dev", "development")
+            # Simulation is allowed ONLY for demo/test fixture client ids - never inferred
+            # from ENVIRONMENT, otherwise a real account with an expired session would get a
+            # fake "successful" bid recorded and its funds locked.
             is_demo_or_mock_client = (
                 str(client_id).startswith("DEMO_")
                 or str(client_id).startswith("acc-test")
@@ -555,9 +556,9 @@ class AngelOneSmartApiService:
             )
             is_prod = getattr(settings, "environment", "").lower() in ("production", "prod")
 
-            if (is_demo_or_mock_client or is_test_env) and not (is_prod and not is_demo_or_mock_client):
+            if is_demo_or_mock_client and not is_prod:
                 sim_id = f"ANGEL-IPO-{str(uuid.uuid4())[:8].upper()}"
-                logger.info(f"[{client_id}] Test/Demo environment: simulated IPO order {sim_id}")
+                logger.info(f"[{client_id}] Demo/test client: simulated IPO order {sim_id}")
                 return {
                     "success": True,
                     "broker_order_id": sim_id,
@@ -576,6 +577,21 @@ class AngelOneSmartApiService:
                 "error": "Broker session is not authenticated or expired. Please re-authenticate your Angel One account before placing bids.",
                 "is_simulation": False,
                 "message": "Authentication required: Active Angel One SmartAPI session not found.",
+            }
+
+        if not getattr(settings, "enable_live_ipo_apply", False):
+            logger.error(f"[{client_id}] Live IPO apply is disabled (ENABLE_LIVE_IPO_APPLY=false); nothing was sent.")
+            return {
+                "success": False,
+                "broker_order_id": None,
+                "status": "NOT_ENABLED",
+                "mandate_status": "FAILED",
+                "error": (
+                    "Live IPO application is not enabled: the Angel One IPO-apply endpoint has not been "
+                    "verified. Apply in the broker app, then use 'mark as applied'."
+                ),
+                "is_simulation": False,
+                "message": "Live IPO application is not enabled.",
             }
 
         jwt_token = session["jwtToken"]
