@@ -13,6 +13,10 @@ from app.agents.analysis_agent import analysis_agent
 from app.agents.news_agent import news_agent
 from app.agents.allocation_agent import allocation_agent
 from app.agents.tools import get_ipo_full_profile
+from app.utils.scoring import (
+    gmp_known, subscription_known, gmp_strength as _gmp_strength,
+    subscription_momentum as _sub_momentum, momentum_score,
+)
 
 logger = logging.getLogger("agent.orchestrator")
 
@@ -112,10 +116,11 @@ class IpoDueDiligenceOrchestrator:
         has_model_scores = any(v is not None for v in (fin, val, gov, ind))
 
         gmp_pct = float(ipo.get("gmp_percent") or 0.0)
-        gmp_s = min(100, max(0, int(gmp_pct * 2.0)))
-
         qib_sub = float(ipo.get("subscription_qib") or 0.0)
-        sub_m = min(100, max(20, int(qib_sub * 8.0) if qib_sub > 0 else 50))
+        sub_total_in = float(ipo.get("subscription_total") or 0.0)
+        # Same formulas as every other endpoint (app.utils.scoring); None == no market data.
+        gmp_s = _gmp_strength(gmp_pct) if gmp_known(ipo.get("gmp_percent")) else None
+        sub_m = _sub_momentum(sub_total_in or qib_sub) if subscription_known(sub_total_in, qib_sub) else None
 
         # Collect red flags
         all_red_flags = []
@@ -158,7 +163,7 @@ class IpoDueDiligenceOrchestrator:
             overall_score = self.compute_weighted_score(fin, ind, sub_m, val, gmp_s, gov, penalties)
         else:
             # Same preliminary formula the stored-report endpoint uses, so both always agree.
-            overall_score = int(round(gmp_s * 0.60 + sub_m * 0.40))
+            overall_score = momentum_score(ipo.get("gmp_percent"), qib_sub, sub_total_in)
 
         price_max = float(ipo.get("price_band_max") or 100.0)
         est_listing_price = round(price_max * (1 + (gmp_pct / 100.0)), 2)
@@ -213,18 +218,22 @@ class IpoDueDiligenceOrchestrator:
         if is_analysis_failed:
             # Return an HONEST preliminary response — never fabricate or mark as audited.
             # Score only from live market signals (GMP + subscription).
-            gmp_pct = float(ipo.get("gmp_percent") or 0.0)
-            gmp_s = min(100, max(0, int(gmp_pct * 2.0)))
-            qib_sub = float(ipo.get("subscription_qib") or 0.0)
-            sub_m = min(100, max(20, int(qib_sub * 8.0) if qib_sub > 0 else 50))
-            preliminary_score = int(round(gmp_s * 0.60 + sub_m * 0.40))
+            preliminary_score = momentum_score(ipo.get("gmp_percent"), qib_sub, sub_total_in)
+            audit_reason = (
+                analysis_res.get("error") or news_res.get("error") or "the AI analysis did not complete"
+            )
 
             # Persist a minimal stub to DB so the UI shows "Audit Pending" on subsequent GETs
             # without re-triggering the full pipeline.
+            score_txt = (
+                f"Score ({preliminary_score}/100) is an indicative preliminary estimate from market signals."
+                if preliminary_score is not None
+                else "There is no score yet: no grey market premium or subscription numbers are available."
+            )
             stub_summary = (
-                f"DRHP not yet filed with SEBI. Score ({preliminary_score}/100) is an indicative preliminary estimate from market signals."
+                f"DRHP not yet filed with SEBI. {score_txt}"
                 if not has_drhp
-                else "AI audit not yet run. Configure an LLM API key in Settings to enable full due diligence. Score is a preliminary market-signal estimate only."
+                else f"AI audit not run. {score_txt}"
             )
             stub_scored_at = datetime.now(timezone.utc).strftime("%d %b %Y")
 
@@ -235,7 +244,7 @@ class IpoDueDiligenceOrchestrator:
             if report_row:
                 # Only overwrite if the row is NOT already a fully audited report
                 if not getattr(report_row, "is_audited", False):
-                    report_row.overall_score = preliminary_score
+                    report_row.overall_score = preliminary_score if preliminary_score is not None else 0  # placeholder, never displayed
                     report_row.recommendation = "PENDING"
                     report_row.executive_summary = stub_summary
                     report_row.summary_source = "preliminary_market_signals"
@@ -248,7 +257,7 @@ class IpoDueDiligenceOrchestrator:
                 report_row = AiReport(
                     id=f"rep-{str(uuid.uuid4())[:8]}",
                     ipo_id=ipo["id"],
-                    overall_score=preliminary_score,
+                    overall_score=preliminary_score if preliminary_score is not None else 0,  # placeholder, never displayed
                     recommendation="PENDING",
                     executive_summary=stub_summary,
                     summary_source="preliminary_market_signals",
@@ -491,7 +500,7 @@ class IpoDueDiligenceOrchestrator:
         report_row = res.scalar_one_or_none()
 
         if report_row:
-            report_row.overall_score = overall_score
+            report_row.overall_score = overall_score if overall_score is not None else 0  # placeholder when unscored
             report_row.recommendation = recommendation
             report_row.executive_summary = summary_narrative
             report_row.summary_source = summary_source
@@ -517,7 +526,7 @@ class IpoDueDiligenceOrchestrator:
             report_row = AiReport(
                 id=f"rep-{str(uuid.uuid4())[:8]}",
                 ipo_id=ipo["id"],
-                overall_score=overall_score,
+                overall_score=overall_score if overall_score is not None else 0,  # placeholder when unscored
                 recommendation=recommendation,
                 executive_summary=summary_narrative,
                 summary_source=summary_source,
@@ -547,9 +556,10 @@ class IpoDueDiligenceOrchestrator:
         res_ipo = await db.execute(stmt_ipo)
         db_ipo = res_ipo.scalar_one_or_none()
         if db_ipo:
-            db_ipo.score = overall_score
-            db_ipo.recommendation = recommendation
             db_ipo.scored_at = scored_at
+            await db.flush()
+            from app.services.ipo_service import refresh_stored_score
+            await refresh_stored_score(db, db_ipo)
 
         await db.commit()
         await db.refresh(report_row)
@@ -561,7 +571,7 @@ class IpoDueDiligenceOrchestrator:
             ipo_id=report_row.ipo_id,
             ipo_name=ipo.get("name"),
             ipo_symbol=ipo.get("symbol"),
-            overall_score=report_row.overall_score,
+            overall_score=overall_score,
             is_audited=has_model_scores,
             data_sufficiency=data_sufficiency,
             drhp_status=drhp_status,

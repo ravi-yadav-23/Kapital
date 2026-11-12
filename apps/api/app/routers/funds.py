@@ -237,7 +237,7 @@ async def run_pulp_optimization(
                 "price_band_max": ipo.price_band_max or 100.0,
                 "min_investment": ipo.min_investment or ((ipo.lot_size or 1) * (ipo.price_band_max or 100.0)),
                 "gmp_percent": min(float(ipo.gmp_percent or 0.0), 80.0),  # Cap at 80%
-                "score": ipo.score or 50,
+                "score": ipo.score,  # None = no score yet; the optimizer treats it as neutral internally
             }
             for ipo in db_ipos
         ]

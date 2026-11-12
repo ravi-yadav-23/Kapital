@@ -11,6 +11,7 @@ from app.agents import orchestrator as om
 from app.agents.orchestrator import orchestrator
 from app.models.ipo import Ipo
 from app.models.report import AiReport
+from app.utils.scoring import momentum_score
 
 HIST = [{"year": "FY24", "amount_cr": 100.0}, {"year": "FY25", "amount_cr": 130.0}, {"year": "FY26", "amount_cr": 170.0}]
 NULL_ANALYSIS = {"financial_quality_score": None, "valuation_safety_score": None, "data_sufficiency": "partial",
@@ -52,9 +53,9 @@ async def test_null_model_scores_stay_null_and_do_not_enter_the_score(db):
     rep = await _run(db, NULL_ANALYSIS, NULL_NEWS)
     sb = rep.score_breakdown
     assert (sb.financial_quality, sb.valuation_safety, sb.promoter_integrity, sb.industry_tailwinds) == (None,) * 4
-    # nothing assessed by the model -> preliminary market-signal score (gmp 20% -> 40, subscription floor 50),
-    # the same formula the stored-report endpoint uses
-    assert rep.overall_score == round(40 * 0.60 + 50 * 0.40)
+    # nothing assessed by the model -> preliminary market-signal score from the single shared formula:
+    # GMP 20% -> 60, and no subscription data yet, so GMP alone (no invented default for missing data)
+    assert rep.overall_score == momentum_score(20.0, 0.0, 0.0) == 60
     assert rep.recommendation == "PENDING"
 
 
@@ -91,7 +92,8 @@ async def test_model_scores_that_are_present_are_used(db):
     rep = await _run(db, analysis, news)
     assert rep.is_audited is True
     assert rep.score_breakdown.financial_quality == 80
-    assert rep.overall_score == round(80 * .25 + 60 * .20 + 40 * .20 + 70 * .15 + 90 * .10 + 50 * .10)
+    # components without data (subscription) are left out and the remaining weights renormalised
+    assert rep.overall_score == round((80 * .25 + 60 * .20 + 60 * .20 + 70 * .15 + 90 * .10) / 0.90)
 
 
 def test_weighted_score_renormalises_over_available_components():

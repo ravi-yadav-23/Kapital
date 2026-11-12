@@ -90,7 +90,7 @@ class AiReportResponse(BaseModel):
     ipo_id: str
     ipo_name: Optional[str] = None
     ipo_symbol: Optional[str] = None
-    overall_score: int
+    overall_score: Optional[int] = None  # None = "No score yet" (no market data, nothing assessed)
     is_audited: bool = False
     data_sufficiency: Optional[str] = "partial"  # "full", "partial", "none"
     drhp_status: Optional[str] = "FILED"  # "FILED", "NOT_FILED", "PENDING_SEBI"

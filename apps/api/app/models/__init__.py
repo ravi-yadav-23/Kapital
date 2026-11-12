@@ -7,6 +7,7 @@ from app.models.allotment import Allotment, AsbaLock
 from app.models.setting import SystemSetting
 from app.models.fund import FundSnapshot
 from app.models.pnl import RealizedPnl
+from app.models.score_history import ScoreHistory
 
 __all__ = [
     "Base",
@@ -22,4 +23,5 @@ __all__ = [
     "SystemSetting",
     "FundSnapshot",
     "RealizedPnl",
+    "ScoreHistory",
 ]
