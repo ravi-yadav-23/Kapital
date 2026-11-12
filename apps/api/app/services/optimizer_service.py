@@ -244,8 +244,10 @@ class AllocationOptimizer:
         if HAS_PULP:
             try:
                 plan = cls._solve_with_pulp(active_accounts, active_ipos)
-            except Exception:
+            except Exception as exc:
+                logger.error(f"PuLP MILP solve failed ({exc}); using greedy heuristic.", exc_info=True)
                 plan = cls._solve_greedy(active_accounts, active_ipos)
+                plan.warnings.append("MILP solver did not finish (error); showing a greedy heuristic plan, not a proven optimum.")
         else:
             plan = cls._solve_greedy(active_accounts, active_ipos)
 
@@ -410,9 +412,13 @@ class AllocationOptimizer:
 
         # Check solver status — if infeasible or error, fall back to greedy knapsack
         solver_status = pulp.LpStatus[prob.status]
-        if solver_status not in ("Optimal", "Not Solved"):
-            logger.warning(f"PuLP MILP solver status is '{solver_status}' — falling back to optimal greedy knapsack.")
-            return cls._solve_greedy(active_accounts, active_ipos)
+        if solver_status != "Optimal":
+            logger.warning(f"PuLP MILP solver status is '{solver_status}' — falling back to greedy heuristic.")
+            fallback = cls._solve_greedy(active_accounts, active_ipos)
+            fallback.warnings.append(
+                f"MILP solver did not finish (status: {solver_status}); showing a greedy heuristic plan, not a proven optimum."
+            )
+            return fallback
 
         entries = []
         total_deployed = 0.0
