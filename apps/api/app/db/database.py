@@ -51,49 +51,88 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-async def init_db():
-    """Called on startup — verifies DB connection and ensures tables exist."""
+# Columns the application expects that older databases may lack (kept in sync by Alembic migration
+# e5c3a9d41b27). Only SQLite (local development) is patched at start-up; PostgreSQL uses Alembic.
+_EXPECTED_COLUMNS = [
+    ("ai_reports", "financial_metrics", "JSON"),
+    ("ai_reports", "gatekeepers", "JSON"),
+    ("ai_reports", "is_audited", "BOOLEAN DEFAULT 0"),
+    ("family_accounts", "pan", "VARCHAR(10)"),
+    ("family_accounts", "has_ddpi", "BOOLEAN DEFAULT 0"),
+    ("family_accounts", "tpin", "VARCHAR(255)"),
+]
+
+
+async def init_db(eng=None):
+    """Called on startup - verifies the connection and makes sure missing TABLES exist.
+
+    PostgreSQL: only `create_all` (creates missing tables, never alters anything). Column changes are
+    applied by `alembic upgrade head`; a warning is logged if the schema is behind. The old code ran
+    `ALTER ... BOOLEAN DEFAULT 0` (invalid on PostgreSQL) inside the same transaction as create_all, which
+    aborted the transaction and silently rolled everything back.
+    SQLite (local dev): create_all plus best-effort column patches, each in its own transaction.
+
+    Does not touch the network. Initial data load is `bootstrap_data_if_empty()`.
+    """
+    from sqlalchemy import inspect as sa_inspect, text
+
+    eng = eng or engine
     try:
-        async with engine.connect() as conn:
+        async with eng.connect() as conn:
             await conn.exec_driver_sql("SELECT 1")
-        logger.info(f"[DB] Primary database connection OK ({engine.url.drivername})")
+        logger.info(f"[DB] Primary database connection OK ({eng.url.drivername})")
     except Exception as e:
         logger.warning(f"[DB Warning] Primary database unavailable: {e}")
         return
 
     try:
-        async with engine.begin() as conn:
+        async with eng.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            # Safe non-destructive column checks for migrations
-            from sqlalchemy import text
-            for tbl, col, col_type in [
-                ("ai_reports", "financial_metrics", "JSON"),
-                ("ai_reports", "gatekeepers", "JSON"),
-                ("ai_reports", "is_audited", "BOOLEAN DEFAULT 0"),
-                ("family_accounts", "pan", "VARCHAR(10)"),
-                ("family_accounts", "has_ddpi", "BOOLEAN DEFAULT 0"),
-                ("family_accounts", "tpin", "VARCHAR(255)"),
-            ]:
-                try:
-                    await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}"))
-                except Exception:
-                    pass
-        logger.info(f"[DB] All tables verified and ready ({engine.url.drivername})")
-
-        try:
-            async with AsyncSessionLocal() as session:
-                from sqlalchemy import select, func
-                from app.models.ipo import Ipo
-                from app.tasks.ipo_tasks import sync_ipos_pipeline
-                res = await session.execute(select(func.count(Ipo.id)))
-                ipo_count = res.scalar() or 0
-                if ipo_count == 0:
-                    logger.info("[DB] Database empty. Running initial live market feed sync...")
-                    await sync_ipos_pipeline(session)
-        except Exception as sync_err:
-            logger.warning(f"[DB Warning] Initial live market sync skipped: {sync_err}")
     except Exception as e:
-        logger.warning(f"[DB Warning] Could not sync metadata tables: {e}")
+        logger.warning(f"[DB Warning] Could not create missing tables: {e}")
+        return
+
+    dialect = eng.dialect.name
+    if dialect == "sqlite":
+        for tbl, col, col_type in _EXPECTED_COLUMNS:
+            try:
+                async with eng.begin() as conn:
+                    await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}"))
+            except Exception:
+                pass  # column already exists
+    else:
+        try:
+            async with eng.connect() as conn:
+                def _missing(sync_conn):
+                    insp = sa_inspect(sync_conn)
+                    out = []
+                    for tbl, col, _ in _EXPECTED_COLUMNS:
+                        if insp.has_table(tbl) and col not in {c["name"] for c in insp.get_columns(tbl)}:
+                            out.append(f"{tbl}.{col}")
+                    return out
+                missing = await conn.run_sync(_missing)
+            if missing:
+                logger.warning(
+                    f"[DB] Schema is behind the code (missing {', '.join(missing)}). Run `alembic upgrade head`."
+                )
+        except Exception as e:
+            logger.warning(f"[DB] Could not check schema version: {e}")
+    logger.info(f"[DB] Tables verified ({eng.url.drivername})")
+
+
+async def bootstrap_data_if_empty():
+    """First-run convenience: load the live IPO feeds once if the ipos table is empty (uses the network)."""
+    try:
+        async with AsyncSessionLocal() as session:
+            from sqlalchemy import select, func
+            from app.models.ipo import Ipo
+            from app.tasks.ipo_tasks import sync_ipos_pipeline
+            ipo_count = (await session.execute(select(func.count(Ipo.id)))).scalar() or 0
+            if ipo_count == 0:
+                logger.info("[DB] Database empty. Running initial live market feed sync...")
+                await sync_ipos_pipeline(session)
+    except Exception as sync_err:
+        logger.warning(f"[DB Warning] Initial live market sync skipped: {sync_err}")
 
 
 async def get_db() -> AsyncSession:

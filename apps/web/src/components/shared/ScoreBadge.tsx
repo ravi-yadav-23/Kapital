@@ -4,7 +4,7 @@ import React from 'react'
 import { getScoreBadgeClass, getScoreRecommendation, getRecommendationLabel } from '@/lib/formatters'
 
 interface ScoreBadgeProps {
-  score?: number
+  score?: number | null
   showLabel?: boolean
   size?: 'sm' | 'md' | 'lg'
   className?: string
@@ -14,7 +14,7 @@ export function ScoreBadge({ score, showLabel = false, size = 'md', className = 
   if (score === undefined || score === null) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded text-2xs font-mono bg-surface-elevated text-text-muted">
-        N/A
+        No score yet
       </span>
     )
   }

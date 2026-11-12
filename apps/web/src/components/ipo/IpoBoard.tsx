@@ -106,7 +106,7 @@ export function IpoBoard({
       if (selectedType !== 'ALL' && ipo.type !== selectedType) return false
 
       // 3. Score filter
-      if (ipo.score !== undefined && ipo.score < minScore) return false
+      if (ipo.score !== undefined && ipo.score !== null && ipo.score < minScore) return false
 
       // 4. Min Investment filter
       if (ipo.min_investment > maxInvestment) return false
@@ -329,7 +329,7 @@ export function IpoBoard({
             </thead>
             <tbody>
               {displayList.map((ipo) => {
-                const score = ipo.score || 50
+                const score = ipo.score ?? undefined
                 const rec = getScoreRecommendation(score)
                 const recLabel = getRecommendationLabel(rec)
                 const avatar = getCompanyAvatarProps(ipo.name)
@@ -390,11 +390,11 @@ export function IpoBoard({
                     </td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[13px] text-ink font-medium w-6">{score}</span>
+                        <span className="font-mono text-[13px] text-ink font-medium w-6">{score ?? "—"}</span>
                         <div className="w-14 h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
                           <div
-                            className={`h-full ${getScoreBarColor(score)} transition-all`}
-                            style={{ width: `${score}%` }}
+                            className={`h-full ${getScoreBarColor(score ?? 0)} transition-all`}
+                            style={{ width: `${score ?? 0}%` }}
                           />
                         </div>
                       </div>

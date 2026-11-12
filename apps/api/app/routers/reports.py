@@ -152,7 +152,12 @@ async def trigger_ai_analysis(
 
     # 1. Return cached report if present and force is False
     if existing and not force:
-        return report_service.format_report_response(existing, ipo)
+        cached = report_service.format_report_response(existing, ipo)
+        cached.audit_state = "CACHED"
+        cached.audit_note = (
+            f"Showing the latest stored report (scored {existing.scored_at or 'earlier'}). No new analysis was run."
+        )
+        return cached
 
     is_admin = bool(user and user.get("role") == "ADMIN" and not user.get("is_guest"))
 
@@ -164,7 +169,13 @@ async def trigger_ai_analysis(
             detail="Force re-running AI audit requires Administrator privileges. Viewing cached report.",
         )
     if not is_admin:
-        return report_service.build_fallback_report_response(ipo)
+        fallback = report_service.build_fallback_report_response(ipo)
+        fallback.audit_state = "NOT_RUN"
+        fallback.audit_note = (
+            "No AI analysis was run. Analyses are produced by the scheduled job or an administrator; "
+            "this is the preliminary market-signal view."
+        )
+        return fallback
 
     # 3. Distributed Redis lock per IPO to serialize concurrent audits
     import uuid

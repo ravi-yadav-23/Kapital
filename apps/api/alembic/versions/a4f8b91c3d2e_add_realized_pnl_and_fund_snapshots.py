@@ -18,11 +18,17 @@ down_revision: Union[str, None] = 'c13dc79076eb'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+def _create_table(name, *args, **kwargs):
+    """Idempotent: the application's create_all may already have created the table."""
+    if not sa.inspect(op.get_bind()).has_table(name):
+        op.create_table(name, *args, **kwargs)
+
+
 
 def upgrade() -> None:
     # ── realized_pnl ─────────────────────────────────────────────────────────
     # P&L ledger for completed IPO exits and pre-listing sell orders.
-    op.create_table(
+    _create_table(
         'realized_pnl',
         sa.Column('allotment_id', sa.String(length=36), nullable=False),
         sa.Column('account_id', sa.String(length=36), nullable=False),
@@ -49,7 +55,7 @@ def upgrade() -> None:
 
     # ── fund_snapshots ────────────────────────────────────────────────────────
     # Historical daily record of family corpus balances and ASBA lock utilization.
-    op.create_table(
+    _create_table(
         'fund_snapshots',
         sa.Column('snapshot_date', sa.Date(), nullable=False),
         sa.Column('total_family_corpus', sa.Float(), nullable=False),
@@ -64,7 +70,8 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
     )
-    op.create_index('ix_fund_snapshots_snapshot_date', 'fund_snapshots', ['snapshot_date'])
+    if 'ix_fund_snapshots_snapshot_date' not in {i['name'] for i in sa.inspect(op.get_bind()).get_indexes('fund_snapshots')}:
+        op.create_index('ix_fund_snapshots_snapshot_date', 'fund_snapshots', ['snapshot_date'])
 
 
 def downgrade() -> None:

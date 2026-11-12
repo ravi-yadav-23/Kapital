@@ -5,7 +5,7 @@
 ## ADR-011: ipoalerts.in API as Primary IPO Data Source
 
 **Date**: 2026-08-30  
-**API Key**: `b5a488488ff4bc9cc2915535297aa7829faee2be8e244f17146074164353b43e` (stored in `.env` as `IPOALERTS_API_KEY`)  
+**API Key**: `<IPOALERTS_API_KEY - set in environment>` (stored in `.env` as `IPOALERTS_API_KEY`)  
 **Decision**: Use ipoalerts.in free tier as primary structured IPO data source  
 **Endpoint pattern**: `GET https://api.ipoalerts.in/ipos?status={open|upcoming|closed}`  
 **Auth**: `Authorization: Bearer {api_key}`  

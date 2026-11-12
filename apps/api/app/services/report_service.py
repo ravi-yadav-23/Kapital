@@ -10,6 +10,14 @@ from app.config import settings
 from app.models.report import AiReport
 from app.models.ipo import Ipo
 from app.models.setting import SystemSetting
+from app.utils.scoring import (
+    momentum_score,
+    recommendation_for,
+    gmp_known,
+    subscription_known,
+    gmp_strength as gmp_strength_fn,
+    subscription_momentum as subscription_momentum_fn,
+)
 from app.schemas.report import AiReportResponse, ScoreBreakdownSchema, RedFlagSchema
 
 logger = logging.getLogger("report_service")
@@ -214,7 +222,10 @@ class AiDueDiligenceService:
                 gmp_strength=existing.score_gmp_strength,
                 promoter_integrity=None,
             )
-            overall_score = int(round((existing.score_gmp_strength or 0) * 0.60 + (existing.score_subscription_momentum or 0) * 0.40))
+            if ipo is not None:
+                overall_score = momentum_score(ipo.gmp_percent, ipo.subscription_qib, ipo.subscription_total)
+            else:
+                overall_score = int(round((existing.score_gmp_strength or 0) * 0.60 + (existing.score_subscription_momentum or 0) * 0.40))
         else:
             sb = ScoreBreakdownSchema(
                 financial_quality=existing.score_financial_quality,
@@ -259,7 +270,7 @@ class AiDueDiligenceService:
             drhp_status=drhp_status,
             drhp_disclaimer=drhp_disclaimer,
             missing_fields=missing_fields,
-            recommendation=existing.recommendation,
+            recommendation=existing.recommendation if audited else recommendation_for(overall_score),
             score_breakdown=sb,
             executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo_name}.",
             summary_source=getattr(existing, "summary_source", "ai_generated") or "ai_generated",
@@ -293,31 +304,14 @@ class AiDueDiligenceService:
         gmp = float(ipo.gmp_percent or 0.0)
         sub_total = float(ipo.subscription_total or 0.0)
 
-        # 1. GMP Signal (0 - 100)
-        if gmp >= 50.0:
-            gmp_strength = min(100, int(80 + (gmp - 50) * 0.4))
-        elif gmp >= 20.0:
-            gmp_strength = int(60 + (gmp - 20) * (20 / 30))
-        elif gmp >= 5.0:
-            gmp_strength = int(40 + (gmp - 5) * (20 / 15))
-        elif gmp >= 0.0:
-            gmp_strength = int(25 + gmp * 3)
-        else:
-            gmp_strength = max(0, int(25 + gmp))
-
-        # 2. Subscription Momentum (0 - 100)
-        if sub_total >= 20.0:
-            subscription_momentum = min(100, int(80 + (sub_total - 20) * 0.5))
-        elif sub_total >= 5.0:
-            subscription_momentum = int(60 + (sub_total - 5) * (20 / 15))
-        elif sub_total >= 1.0:
-            subscription_momentum = int(40 + (sub_total - 1) * 5)
-        else:
-            subscription_momentum = 30  # Baseline neutral prior to subscription opening
-
-        # Displayed weights total 100%: 60% GMP + 40% Subscription
-        score = int(round(gmp_strength * 0.60 + subscription_momentum * 0.40))
-        rec = self.get_recommendation(score)
+        # Single formula (app.utils.scoring); None == "No score yet" when there is no market data.
+        score = momentum_score(ipo.gmp_percent, ipo.subscription_qib, ipo.subscription_total)
+        gmp_strength = gmp_strength_fn(gmp) if gmp_known(ipo.gmp_percent) else None
+        subscription_momentum = (
+            subscription_momentum_fn(sub_total or float(ipo.subscription_qib or 0.0))
+            if subscription_known(ipo.subscription_total, ipo.subscription_qib) else None
+        )
+        rec = recommendation_for(score)
         price_max = ipo.price_band_max or 100.0
         est_price = round(price_max * (1 + (gmp / 100.0)), 2)
 
@@ -449,7 +443,9 @@ class AiDueDiligenceService:
                 promoter_integrity=None, # DRHP-dependent: Not assessed
             ),
             executive_summary=(
-                f"DRHP not yet filed with SEBI. Preliminary rating ({score}/100) derived solely from live grey market premium ({gmp}%) and market signals. Full audit will unlock once draft prospectus is published."
+                ("No market data yet (no grey market premium or subscription numbers), so there is no score. " if score is None
+                 else f"Preliminary rating ({score}/100) derived solely from live grey market premium ({gmp}%) and market signals. ")
+                + ("DRHP not yet filed with SEBI." if not has_drhp else "No AI audit has run, so red flags are unknown.")
                 if not has_drhp
                 else f"No audit has run, so red flags are unknown. Preliminary rating derived solely from live grey market premium ({gmp}%) and subscription demand."
             ),
@@ -459,7 +455,7 @@ class AiDueDiligenceService:
             red_flags=[],
             financial_metrics=fallback_fin,
             gatekeepers=fallback_gatekeepers,
-            pe_ratio=None if not has_drhp else 24.0,
+            pe_ratio=None,  # never invent a P/E
             peer_avg_pe=None if not has_drhp else 30.0,
             ofs_percentage=None if not has_drhp else 25.0,
             gmp_percent=gmp,

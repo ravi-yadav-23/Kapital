@@ -15,6 +15,7 @@ import {
   getStatusPillClass,
   getStatusLabel,
   getScoreRecommendation,
+  formatScore,
   getRecommendationLabel,
   getScoreBarColor,
   cleanTradingSymbol,
@@ -247,10 +248,14 @@ export default function ReportsPage() {
         if (rep.ipo_id && rep.ipo_id !== currentIpo.id) {
           setSelectedIpo((prev) => (prev ? { ...prev, id: rep.ipo_id } : prev))
         }
-        setToast({
-          message: `AI due diligence audit completed for ${currentIpo.name}!`,
-          type: 'success',
-        })
+        if (rep.audit_state === 'AI_COMPLETE') {
+          setToast({ message: `AI analysis completed for ${currentIpo.name}.`, type: 'success' })
+        } else {
+          setToast({
+            message: rep.audit_note || `No AI analysis was run for ${currentIpo.name}; showing the preliminary view.`,
+            type: 'error',
+          })
+        }
         setTimeout(() => setToast(null), 4000)
       }
     } catch (err: any) {
@@ -283,45 +288,15 @@ export default function ReportsPage() {
   const subVal = breakdown?.subscription_momentum ?? 65
   const indVal = breakdown?.industry_tailwinds ?? (breakdown as any)?.industry_tailwind ?? 75
 
-  // Canonical score computer used identically across list items and main dossier (reconciled 100% weights)
-  const getIpoScore = useCallback((ipo: Ipo, rep?: AiReport | null): number => {
-    const isAud = Boolean(
-      rep?.is_audited ||
-      (rep?.score_breakdown?.financial_quality != null && rep.score_breakdown.financial_quality > 0)
-    )
-    if (isAud && rep?.score_breakdown) {
-      const fin = rep.score_breakdown.financial_quality ?? 50
-      const val = rep.score_breakdown.valuation_safety ?? 50
-      const gmp = rep.score_breakdown.gmp_strength ?? 50
-      const prom = rep.score_breakdown.promoter_integrity ?? 50
-      const ind = (rep.score_breakdown as any).industry_tailwinds ?? 50
-      const sub = rep.score_breakdown.subscription_momentum ?? 50
-      return Math.round(fin * 0.25 + val * 0.20 + gmp * 0.20 + prom * 0.15 + ind * 0.10 + sub * 0.10)
-    }
-    if (rep?.overall_score != null && isAud) {
-      return rep.overall_score
-    }
-    // Live preliminary score derived strictly from 60% GMP strength + 40% subscription momentum
-    const gmpPct = ipo.gmp_percent || 0
-    let gmpStr = 25
-    if (gmpPct >= 50.0) gmpStr = Math.min(100, Math.round(80 + (gmpPct - 50) * 0.4))
-    else if (gmpPct >= 20.0) gmpStr = Math.round(60 + (gmpPct - 20) * (20 / 30))
-    else if (gmpPct >= 5.0) gmpStr = Math.round(40 + (gmpPct - 5) * (20 / 15))
-    else if (gmpPct >= 0.0) gmpStr = Math.round(25 + gmpPct * 3)
-    else gmpStr = Math.max(0, Math.round(25 + gmpPct))
-
-    const sub = ipo.subscription_total || 0
-    let subStr = 30
-    if (sub >= 20.0) subStr = Math.min(100, Math.round(80 + (sub - 20) * 0.5))
-    else if (sub >= 5.0) subStr = Math.round(60 + (sub - 5) * (20 / 15))
-    else if (sub >= 1.0) subStr = Math.round(40 + (sub - 1) * 5)
-
-    return Math.round(gmpStr * 0.60 + subStr * 0.40)
+  // The frontend never computes a score: it shows the one the API returns (null = "No score yet").
+  const getIpoScore = useCallback((ipo: Ipo, rep?: AiReport | null): number | null => {
+    if (rep?.overall_score !== undefined && rep?.overall_score !== null) return rep.overall_score
+    return ipo.score ?? null
   }, [])
 
-  const compositeScore = currentIpo ? getIpoScore(currentIpo, currentReport) : 50
+  const compositeScore = currentIpo ? getIpoScore(currentIpo, currentReport) : null
 
-  const recommendation = currentReport?.recommendation || currentIpo?.recommendation || getScoreRecommendation(compositeScore)
+  const recommendation = currentReport?.recommendation || currentIpo?.recommendation || getScoreRecommendation(compositeScore ?? undefined)
   const recLabel = getRecommendationLabel(recommendation)
 
   const redFlags = currentReport?.red_flags || currentIpo?.red_flags || []
@@ -375,8 +350,8 @@ export default function ReportsPage() {
           name: 'OFS vs. Fresh Issue Split',
           details: !hasDrhp
             ? 'DRHP not yet filed with SEBI — issue breakdown pending official regulatory draft.'
-            : isAudited ? 'Fresh: 80% | OFS: 20%' : 'Awaiting DRHP parse',
-          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
+            : 'Awaiting DRHP parse',
+          status: !hasDrhp ? 'WARN' : 'WARN',
           threshold: 'OFS ≤ 40% (Fresh ≥ 60%)',
           impact: !hasDrhp
             ? 'Pending official DRHP to verify whether promoters or early investors are offloading equity.'
@@ -389,8 +364,8 @@ export default function ReportsPage() {
             ? 'Not applicable for SME issues (SEBI ICDR regulations exempt SME issues)'
             : !hasDrhp
             ? 'Anchor book disclosures release 1 day prior to issue opening; pending DRHP clearance.'
-            : isAudited ? 'Tier-1 Domestic MFs with 30-day lock-in' : 'Awaiting anchor book release',
-          status: isSme ? 'PASS' : !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
+            : 'Awaiting anchor book release',
+          status: isSme ? 'PASS' : !hasDrhp ? 'WARN' : 'WARN',
           threshold: isSme ? 'N/A (SME platform)' : 'Domestic MFs > 30%',
           impact: isSme
             ? 'Anchor investor reservation is optional and exempt for SME listing norms.'
@@ -403,8 +378,8 @@ export default function ReportsPage() {
           name: 'Cash Flow vs. PAT Conversion',
           details: !hasDrhp
             ? 'Audited restated accounts pending SEBI DRHP publication.'
-            : isAudited ? 'CFO/PAT ratio ~0.92x (Healthy cash backing)' : 'Awaiting Restated Accounts',
-          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
+            : 'Awaiting Restated Accounts',
+          status: !hasDrhp ? 'WARN' : 'WARN',
           threshold: 'CFO / PAT Ratio ≥ 0.70x',
           impact: 'Cannot assess cash collection quality without statutory auditor-certified financials.',
         },
@@ -413,8 +388,8 @@ export default function ReportsPage() {
           name: 'Valuation Room vs. Listed Peers',
           details: !hasDrhp
             ? 'Price band and P/E valuation multiples not yet fixed by book running lead managers.'
-            : isAudited ? 'P/E discount vs listed peer sector average' : 'Awaiting valuation multiple check',
-          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
+            : 'Awaiting valuation multiple check',
+          status: !hasDrhp ? 'WARN' : 'WARN',
           threshold: '≥ 15% discount to peers',
           impact: 'Valuation discount will be determined once merchant bankers fix the issue price band.',
         },
@@ -423,8 +398,8 @@ export default function ReportsPage() {
           name: 'Litigation Liability Ratio',
           details: !hasDrhp
             ? 'Legal annexures and contingent tax claims pending official DRHP disclosure.'
-            : isAudited ? 'Disputed court claims < 5% of issue size' : 'Awaiting legal annexure review',
-          status: !hasDrhp ? 'WARN' : isAudited ? 'PASS' : 'WARN',
+            : 'Awaiting legal annexure review',
+          status: !hasDrhp ? 'WARN' : 'WARN',
           threshold: 'Claims < 5% of Issue Size',
           impact: 'Contingent legal liabilities can only be quantified from official SEBI DRHP filing.',
         },
@@ -608,9 +583,9 @@ export default function ReportsPage() {
                       {/* Reconciled Score Number */}
                       <div className="flex items-center gap-1 flex-shrink-0 font-mono text-[13px]">
                         <span className="text-ink font-medium">
-                          {ipoScore}
+                          {ipoScore ?? '—'}
                         </span>
-                        <span className="text-[13px] text-ink-3">/100</span>
+                        {ipoScore !== null && <span className="text-[13px] text-ink-3">/100</span>}
                       </div>
                     </button>
                   )
@@ -711,9 +686,9 @@ export default function ReportsPage() {
                       <div className="flex items-baseline gap-2 mt-1">
                         {/* Score number in ink, NOT amber */}
                         <span className="text-[32px] font-mono font-medium text-ink leading-none">
-                          {compositeScore}
+                          {formatScore(compositeScore)}
                         </span>
-                        <span className="text-[13px] text-ink-3 font-mono">/ 100</span>
+                        {compositeScore !== null && <span className="text-[13px] text-ink-3 font-mono">/ 100</span>}
                         <span className="text-[13px] text-ink-3">·</span>
                         {/* Preliminary estimate in ink-2/muted, NOT amber */}
                         <span className="text-[13px] font-medium tracking-wide text-ink-2 uppercase">
@@ -735,8 +710,8 @@ export default function ReportsPage() {
                   {/* 6px Score Bar colored by verdict band */}
                   <div className="w-full h-[6px] bg-surface rounded-full overflow-hidden border border-line">
                     <div
-                      className={`h-full ${getScoreBarColor(compositeScore)} transition-all duration-400`}
-                      style={{ width: `${compositeScore}%` }}
+                      className={`h-full ${getScoreBarColor(compositeScore ?? 0)} transition-all duration-400`}
+                      style={{ width: `${compositeScore ?? 0}%` }}
                     />
                   </div>
                 </div>

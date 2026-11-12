@@ -18,25 +18,32 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Idempotent: some databases already have these objects because the application created them
+    # outside Alembic (init_db create_all) while alembic_version stayed at the initial revision.
+    insp = sa.inspect(op.get_bind())
+
     # ── system_settings ──────────────────────────────────────────────────────
-    op.create_table(
-        'system_settings',
-        sa.Column('id', sa.String(length=36), nullable=False),
-        sa.Column('key', sa.String(length=50), nullable=False),
-        sa.Column('value', sa.JSON(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('key', name='uq_system_settings_key'),
-    )
-    op.create_index('ix_system_settings_key', 'system_settings', ['key'], unique=True)
+    if not insp.has_table('system_settings'):
+        op.create_table(
+            'system_settings',
+            sa.Column('id', sa.String(length=36), nullable=False),
+            sa.Column('key', sa.String(length=50), nullable=False),
+            sa.Column('value', sa.JSON(), nullable=False),
+            sa.Column('created_at', sa.DateTime(), nullable=False),
+            sa.Column('updated_at', sa.DateTime(), nullable=False),
+            sa.PrimaryKeyConstraint('id'),
+            sa.UniqueConstraint('key', name='uq_system_settings_key'),
+        )
+        op.create_index('ix_system_settings_key', 'system_settings', ['key'], unique=True)
 
     # ── allotments: UniqueConstraint(account_id, ipo_id) ─────────────────────
-    op.create_unique_constraint(
-        'uq_allotment_account_ipo',
-        'allotments',
-        ['account_id', 'ipo_id'],
-    )
+    existing_uniques = {u['name'] for u in insp.get_unique_constraints('allotments')}
+    if 'uq_allotment_account_ipo' not in existing_uniques:
+        op.create_unique_constraint(
+            'uq_allotment_account_ipo',
+            'allotments',
+            ['account_id', 'ipo_id'],
+        )
 
     # ── asba_locks: is_conflict Boolean type migration ────────────────────────
     # Handles both SQLite and Postgres gracefully

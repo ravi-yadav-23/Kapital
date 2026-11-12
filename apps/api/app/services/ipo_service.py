@@ -8,6 +8,14 @@ from app.models.ipo import Ipo, IpoSchedule, IpoAlias
 from app.schemas.ipo import IpoResponse, IpoScheduleSchema
 from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 from app.utils.text_utils import clean_text, clean_text_list
+from app.utils.scoring import (
+    momentum_score,
+    recommendation_for,
+    gmp_known,
+    subscription_known,
+    gmp_strength as gmp_strength_fn,
+    subscription_momentum as subscription_momentum_fn,
+)
 from app.utils.date_utils import compute_ipo_status, today_ist, normalize_ipo_dates
 from sqlalchemy.orm import selectinload
 import re
@@ -15,6 +23,47 @@ import re
 
 
 import difflib
+
+def effective_rating(ipo, report=None):
+    """The ONE rule for an IPO's current score, verdict and audited flag.
+
+    - an audited report decides (stable: live GMP does not rewrite it);
+    - a stored preliminary stub is NOT an audit;
+    - otherwise the market-momentum score from live GMP/subscription, or None ("No score yet").
+    Returns (score or None, recommendation, is_audited).
+    """
+    if report is not None and getattr(report, "is_audited", False) and getattr(report, "overall_score", None) is not None:
+        return report.overall_score, report.recommendation, True
+    score = momentum_score(ipo.gmp_percent, ipo.subscription_qib, ipo.subscription_total)
+    return score, recommendation_for(score), False
+
+
+def _momentum_reason(ipo) -> str:
+    parts = []
+    if gmp_known(ipo.gmp_percent):
+        parts.append(f"GMP {float(ipo.gmp_percent):.1f}%")
+    if subscription_known(ipo.subscription_total, ipo.subscription_qib):
+        parts.append(f"subscription {float(ipo.subscription_total or 0.0):.1f}x (QIB {float(ipo.subscription_qib or 0.0):.1f}x)")
+    return ", ".join(parts) or "no market data"
+
+
+async def refresh_stored_score(db, ipo) -> None:
+    """Keep the stored Ipo.score/recommendation equal to the effective rating and log changes."""
+    from sqlalchemy import select as _select
+    from app.models.report import AiReport as _AiReport
+    from app.services.score_history import record_score
+
+    rep = (await db.execute(_select(_AiReport).where(_AiReport.ipo_id == ipo.id))).scalar_one_or_none()
+    score, rec, audited = effective_rating(ipo, rep)
+    ipo.score = score
+    ipo.recommendation = rec
+    await record_score(
+        db, ipo.id, "overall" if audited else "momentum", score, rec,
+        "AI report score" if audited else _momentum_reason(ipo),
+        {"gmp_percent": ipo.gmp_percent, "subscription_qib": ipo.subscription_qib,
+         "subscription_total": ipo.subscription_total, "audited": audited},
+    )
+
 
 # Standard stop words and legal entities for financial markets
 LEGAL_STOP_WORDS = {
@@ -99,11 +148,12 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
     effective_status = compute_ipo_status(d_open, d_close)
 
     # Score: One single source of truth across Dashboard, IPO Board, and Reports
-    has_audit = bool(getattr(ipo, "report", None))
+    _rep = getattr(ipo, "report", None)
+    _score, _rec, has_audit = effective_rating(ipo, _rep)
     if has_audit:
         rep = ipo.report
-        score = rep.overall_score
-        recommendation = rep.recommendation
+        score = _score
+        recommendation = _rec
         is_audited = True
         score_breakdown = ScoreBreakdownSchema(
             financial_quality=rep.score_financial_quality,
@@ -115,31 +165,17 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
         )
         red_flags = [RedFlagSchema(**rf) if isinstance(rf, dict) else rf for rf in (rep.red_flags or [])]
     else:
-        # Canonical preliminary rating from live data: exactly matches build_fallback_report_response
+        # Canonical market-momentum rating from live data (single formula in app.utils.scoring).
+        # None means "No score yet": there is no GMP and no subscription data.
         gmp = float(ipo.gmp_percent or 0.0)
         sub_total = float(ipo.subscription_total or 0.0)
-        if gmp >= 50.0:
-            gmp_strength = min(100, int(80 + (gmp - 50) * 0.4))
-        elif gmp >= 20.0:
-            gmp_strength = int(60 + (gmp - 20) * (20 / 30))
-        elif gmp >= 5.0:
-            gmp_strength = int(40 + (gmp - 5) * (20 / 15))
-        elif gmp >= 0.0:
-            gmp_strength = int(25 + gmp * 3)
-        else:
-            gmp_strength = max(0, int(25 + gmp))
-
-        if sub_total >= 20.0:
-            subscription_momentum = min(100, int(80 + (sub_total - 20) * 0.5))
-        elif sub_total >= 5.0:
-            subscription_momentum = int(60 + (sub_total - 5) * (20 / 15))
-        elif sub_total >= 1.0:
-            subscription_momentum = int(40 + (sub_total - 1) * 5)
-        else:
-            subscription_momentum = 30
-
-        score = int(round(gmp_strength * 0.60 + subscription_momentum * 0.40))
-        recommendation = ipo.recommendation or ("STRONG_APPLY" if score >= 80 else "MODERATE_APPLY" if score >= 60 else "WATCH" if score >= 45 else "AVOID")
+        score = _score
+        gmp_strength = gmp_strength_fn(gmp) if gmp_known(ipo.gmp_percent) else None
+        subscription_momentum = (
+            subscription_momentum_fn(sub_total or float(ipo.subscription_qib or 0.0))
+            if subscription_known(ipo.subscription_total, ipo.subscription_qib) else None
+        )
+        recommendation = _rec
         is_audited = False
         score_breakdown = ScoreBreakdownSchema(
             financial_quality=None,
@@ -450,18 +486,10 @@ class IpoService:
 
             if ipo_dict.get("gmp_percent") is not None and float(ipo_dict.get("gmp_percent")) > 0:
                 existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
-                from app.utils.score_engine import IpoScoreEngine
-                new_score, new_rec, _ = IpoScoreEngine.compute_score({
-                    "gmp_percent": existing.gmp_percent,
-                    "subscription_qib": existing.subscription_qib or 0.0,
-                    "subscription_total": existing.subscription_total or 0.0,
-                    "issue_size_cr": existing.issue_size_cr or 0.0,
-                })
-                existing.score = new_score
-                existing.recommendation = new_rec
-            elif ipo_dict.get("score") and not existing.score:
-                existing.score = ipo_dict.get("score")
-                existing.recommendation = ipo_dict.get("recommendation")
+
+            # Single rule for the stored score/verdict (+ history row when it changes). An audited
+            # report keeps its score; live GMP can no longer overwrite it.
+            await refresh_stored_score(db, existing)
 
             # Ensure this alias is recorded in Tier 2
             if norm_key:
@@ -540,6 +568,7 @@ class IpoService:
         )
         db.add(ipo_obj)
         await db.flush()
+        await refresh_stored_score(db, ipo_obj)  # feed-supplied scores are ignored: one formula only
 
         # Register primary alias in Tier 2
         if norm_key:

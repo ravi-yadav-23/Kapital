@@ -115,7 +115,7 @@ export default function IpoDetailPage() {
   )
 
   const breakdown = report?.score_breakdown || ipo.score_breakdown
-  const score = isAudited ? (report?.overall_score || ipo.score || 0) : (ipo.score || 0)
+  const score: number | null = isAudited ? (report?.overall_score ?? ipo.score ?? null) : (ipo.score ?? null)
   const recommendation = isAudited
     ? (report?.recommendation || ipo.recommendation)
     : ipo.recommendation
@@ -195,7 +195,7 @@ export default function IpoDetailPage() {
               </div>
               <div className="text-right">
                 <span className="text-[32px] font-mono font-medium text-ink tabular-nums leading-none">
-                  {score}<span className="text-[13px] text-ink-3">/100</span>
+                  {score ?? "No score yet"}{score !== null && <span className="text-[13px] text-ink-3">/100</span>}
                 </span>
               </div>
             </div>
@@ -204,8 +204,8 @@ export default function IpoDetailPage() {
           {/* 6px Horizontal score bar colored by verdict band */}
           <div className="h-[6px] w-full bg-surface-raised rounded-full overflow-hidden border border-line">
             <div
-              className={`h-full ${getScoreBarColor(score)} transition-all`}
-              style={{ width: `${score}%` }}
+              className={`h-full ${getScoreBarColor(score ?? 0)} transition-all`}
+              style={{ width: `${score ?? 0}%` }}
             />
           </div>
         </div>

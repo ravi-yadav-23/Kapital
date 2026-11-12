@@ -52,6 +52,8 @@ jobs:
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql+asyncpg://kapitl:password@localhost:5432/kapitl_test
+          # enables the Postgres-only migration/init tests (each test creates and drops its own database)
+          MIGRATION_TEST_DATABASE_URL: postgresql://kapitl:password@localhost:5432/kapitl_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci-only-not-used-in-prod
         run: pytest tests/
