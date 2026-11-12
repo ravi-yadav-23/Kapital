@@ -31,7 +31,7 @@ export const DOCS_CHAPTERS: Chapter[] = [
         title: 'End-to-End System Architecture',
         chapter: 'getting-started',
         badge: 'Design',
-        description: 'Microservices flow: from SEBI EDGAR prospectuses to SmartAPI execution matching.',
+        description: 'Service flow: from IPO feed ingestion to SmartAPI execution matching.',
       },
       {
         id: 'quick-start',
@@ -52,7 +52,7 @@ export const DOCS_CHAPTERS: Chapter[] = [
         title: 'Dual-Agent LLM Orchestrator',
         chapter: 'ai-forensics',
         badge: 'Claude & Gemini',
-        description: 'How Claude 3.5 Sonnet and Gemini 2.5 Flash parse 400-page DRHPs without hallucination.',
+        description: 'How the configured LLM summarises feed data, and what is reported as not assessed.',
       },
       {
         id: 'listing-gatekeepers',

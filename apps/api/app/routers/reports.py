@@ -10,7 +10,6 @@ from app.schemas.report import AiReportResponse
 from app.services.report_service import report_service
 from app.services.pnl_service import pnl_service
 from app.middleware.auth import get_current_user_optional, get_viewer
-from app.db.seed_data import seed_initial_ipos_and_reports
 from app.utils.date_utils import compute_ipo_status
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -30,13 +29,6 @@ async def list_ai_reports(db: AsyncSession = Depends(get_db)):
     )
     res = await db.execute(stmt)
     rows = res.all()
-
-    # If database has no IPOs, trigger live market sync
-    if not rows:
-        from app.tasks.ipo_tasks import sync_ipos_pipeline
-        await sync_ipos_pipeline(db)
-        res = await db.execute(stmt)
-        rows = res.all()
 
     reports = []
     for ipo_row, report_row in rows:
@@ -90,12 +82,6 @@ async def get_ai_report(
             ipo = res_alias.scalars().first()
         except Exception:
             pass
-
-    if not ipo:
-        # Check if benchmark IPOs need to be seeded
-        await seed_initial_ipos_and_reports(db)
-        res = await db.execute(stmt)
-        ipo = res.scalar_one_or_none()
 
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
@@ -157,11 +143,6 @@ async def trigger_ai_analysis(
             pass
 
     if not ipo:
-        await seed_initial_ipos_and_reports(db)
-        res = await db.execute(stmt)
-        ipo = res.scalar_one_or_none()
-
-    if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
 
     # Check if report already exists in database
@@ -173,12 +154,17 @@ async def trigger_ai_analysis(
     if existing and not force:
         return report_service.format_report_response(existing, ipo)
 
-    # 2. If forcing refresh, require Administrator privileges
-    if force and (not user or user.get("role") != "ADMIN" or user.get("is_guest")):
+    is_admin = bool(user and user.get("role") == "ADMIN" and not user.get("is_guest"))
+
+    # 2. Only administrators may spend LLM budget. Others get the cached report (above) or the
+    #    honest preliminary report, never a fresh generation.
+    if force and not is_admin:
         raise HTTPException(
             status_code=403,
             detail="Force re-running AI audit requires Administrator privileges. Viewing cached report.",
         )
+    if not is_admin:
+        return report_service.build_fallback_report_response(ipo)
 
     # 3. Distributed Redis lock per IPO to serialize concurrent audits
     import uuid

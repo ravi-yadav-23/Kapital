@@ -21,6 +21,7 @@ import {
   MOCK_REPORTS,
   MOCK_APP_SETTINGS,
 } from './mock-data'
+import { mockAllowed, listOrMock, requireMutationOk } from './data-policy'
 
 function getApiBaseUrl(): string {
   // 1. Runtime service binding injected by Vercel for server functions
@@ -56,6 +57,26 @@ function isGuestSession(): boolean {
     if (!token || token === 'demo-guest-jwt-token') return true
   } catch {}
   return true
+}
+
+/** Sample data is only ever shown to guest sessions or explicit mock builds - never to a real session. */
+export function canShowMockData(): boolean {
+  return mockAllowed({ useMockEnv: USE_MOCK_DATA, isGuest: isGuestSession() })
+}
+
+function unavailablePlan(): AllocationPlan {
+  return {
+    plan_id: '',
+    status: 'ERROR',
+    generated_at: new Date().toISOString(),
+    total_capital_deployed: 0,
+    entries: [],
+    skipped_ipos: [],
+    warnings: ['The optimizer could not be reached. No allocation was generated - please try again.'],
+    is_demo: false,
+    asba_lock_overlaps_detected: 0,
+    upcoming_conflicts: [],
+  } as unknown as AllocationPlan
 }
 
 // Local mock stores (prevents mutating exported constants)
@@ -206,8 +227,9 @@ async function handleMutationResponse<T>(res: Response): Promise<T> {
   if (res.ok) {
     return await res.json()
   }
-  const err = await res.json().catch(() => ({ detail: 'Operation failed' }))
-  throw new Error(err.detail || err.message || 'API request failed')
+  const err = await res.json().catch(() => null)
+  requireMutationOk(res, err?.detail || err?.message)
+  throw new Error('API request failed')
 }
 
 
@@ -257,19 +279,20 @@ export const apiClient = {
       }
     } catch {}
 
-    const result = cached && cached.length > 0 ? cached : MOCK_IPOS
+    const result = listOrMock(cached, MOCK_IPOS, canShowMockData())
     setCached(cacheKey, result)
     return result
   },
 
   async getIpoById(id: string): Promise<Ipo | null> {
-    const mockFallback =
-      MOCK_IPOS.find(
-        (ipo) =>
-          ipo.id === id ||
-          ipo.slug === id ||
-          ipo.symbol?.toLowerCase() === id.toLowerCase()
-      ) || null
+    const mockFallback = !canShowMockData()
+      ? null
+      : MOCK_IPOS.find(
+          (ipo) =>
+            ipo.id === id ||
+            ipo.slug === id ||
+            ipo.symbol?.toLowerCase() === id.toLowerCase()
+        ) || null
 
     if (USE_MOCK_DATA) {
       return mockFallback
@@ -475,7 +498,7 @@ export const apiClient = {
       const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
         method: 'POST',
       }, 20000)
-      let data = await handleResponse<any>(res, MOCK_ALLOCATION_PLAN)
+      let data = await handleResponse<any>(res, canShowMockData() ? MOCK_ALLOCATION_PLAN : unavailablePlan())
 
       // Handle async 202 background task pattern with polling
       if (data?.task_id && (data?.status === 'QUEUED' || res.status === 202)) {
@@ -529,8 +552,8 @@ export const apiClient = {
 
       return result
     } catch (err) {
-      console.warn('[Kapitl API] Allocation optimization fallback to mock/empty plan:', err)
-      return MOCK_ALLOCATION_PLAN
+      console.warn('[Kapitl API] Allocation optimization failed:', err)
+      return canShowMockData() ? MOCK_ALLOCATION_PLAN : unavailablePlan()
     }
   },
 
@@ -542,10 +565,10 @@ export const apiClient = {
       const res = await authFetch(`${API_BASE_URL}/funds/locks`)
       if (res.ok) {
         const data = await res.json()
-        if (Array.isArray(data) && data.length > 0) return data
+        if (Array.isArray(data)) return listOrMock(data, MOCK_ASBA_LOCKS, canShowMockData())
       }
     } catch {}
-    return MOCK_ASBA_LOCKS
+    return listOrMock(null, MOCK_ASBA_LOCKS, canShowMockData())
   },
 
   // ── Allotments ────────────────────────────────────────────────────────────
@@ -765,14 +788,14 @@ export const apiClient = {
       const res = await authFetch(`${API_BASE_URL}/reports`)
       if (res.ok) {
         const data = await res.json()
-        if (Array.isArray(data) && data.length > 0) return data
+        if (Array.isArray(data)) return listOrMock(data, MOCK_REPORTS, canShowMockData())
       }
     } catch {}
-    return MOCK_REPORTS
+    return listOrMock(null, MOCK_REPORTS, canShowMockData())
   },
 
   async getReportById(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport | null> {
-    const mockRep = MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null
+    const mockRep = canShowMockData() ? MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null : null
     if (USE_MOCK_DATA) {
       return mockRep
     }
@@ -849,6 +872,6 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
     })
-    return handleResponse(res, { success: true })
+    return handleMutationResponse<any>(res)
   },
 }

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.schemas.order import OrderResponse, OrderCreate, BatchOrderCreate, BatchOrderResponse
-from app.services.order_service import order_service
+from app.services.order_service import order_service, OrderStateError
 from app.services.demo_dataset import demo_dataset
 
 from app.middleware.auth import get_viewer, require_admin
@@ -80,6 +80,8 @@ async def cancel_staged_order(
     """Cancel a staged application and release the locked ASBA balance back to available funds."""
     try:
         return await order_service.cancel_order(db=db, order_id=order_id)
+    except OrderStateError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

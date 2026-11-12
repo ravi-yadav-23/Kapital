@@ -69,7 +69,8 @@ export interface AllocationEntry {
   shares?:       number                  // total shares allocated (lots * lot_size)
   lot_size?:     number                  // trading lot size of the IPO
   amount:        number
-  expected_return_pct: number            // optimizer's expected ROI estimate
+  expected_return_pct: number            // GMP-based indicative figure, not a forecast return
+  payment_method?: 'UPI' | 'NET_BANKING_ASBA' // UPI is capped at Rs 5,00,000 per IPO bid
   confidence?:   'HIGH' | 'MEDIUM' | 'LOW'
   reason?:       string                  // solver rationale with reservation note
 }

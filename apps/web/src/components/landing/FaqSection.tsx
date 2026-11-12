@@ -28,16 +28,16 @@ const FAQS: FaqItem[] = [
   {
     category: 'SYSTEM ARCHITECTURE',
     icon: DollarSign,
-    question: 'How does Kapitl keep AI analysis costs under ₹200/month?',
+    question: 'What does the AI analysis actually use?',
     answer:
-      'Rather than streaming entire 400-page DRHP PDFs through expensive frontier LLMs on every query, Kapitl employs an intelligent hybrid pipeline: PyPDF and structured table extraction filter key financial statements and auditor notes first. Targeted high-signal extracts are passed to Claude Haiku and Gemini Flash-Lite with prompt caching, keeping operating costs under ₹200/month.',
+      'Kapitl sends the configured LLM only structured feed data: price band, lot size, issue size, GMP, subscription multiples and the listed strengths and risks. It does not read prospectus PDFs, so restated financials, peer multiples, OFS split and litigation are shown as not assessed. Reports with no AI score are labelled preliminary.',
   },
   {
     category: 'AUTOMATION & BROKERS',
     icon: Zap,
     question: 'How does automated 09:00 AM listing day execution work via SmartAPI?',
     answer:
-      'Kapitl integrates with Angel One SmartAPI using TOTP session management. On listing morning, between 09:00 AM and 09:45 AM (NSE/BSE pre-open price discovery call auction), pre-open limit exit orders are queued directly at exchange tick, capturing listing gains without manual app login friction.',
+      'Kapitl can log in to Angel One SmartAPI with TOTP and, where the scheduler is running, place the limit sell price you staged on listing morning. Order placement has not been verified against a live broker account, and the schedule needs a running scheduler or the GitHub Actions cron; timing is best-effort.',
   },
 ]
 

@@ -64,20 +64,18 @@ async def websocket_endpoint(
     from app.config import settings
     from app.middleware.auth import decode_access_token
 
-    # Enforce authentication in production
-    is_prod = getattr(settings, "environment", "").lower() in ("production", "prod")
-    if is_prod:
-        if not token:
-            await websocket.close(code=1008, reason="Authentication token required")
-            return
-        try:
-            payload = decode_access_token(token)
-            if not payload or not payload.get("sub"):
-                await websocket.close(code=1008, reason="Invalid token")
-                return
-        except Exception:
-            await websocket.close(code=1008, reason="Unauthorized")
-            return
+    # The stream carries real account names and amounts: ADMIN sessions only, in every environment.
+    if not token:
+        await websocket.close(code=1008, reason="Authentication token required")
+        return
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+    if payload.get("role", "ADMIN") != "ADMIN" or payload.get("is_guest") or not payload.get("sub"):
+        await websocket.close(code=1008, reason="Administrator access required")
+        return
 
     await manager.connect(websocket)
     try:

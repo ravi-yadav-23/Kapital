@@ -33,8 +33,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "allotment_alerts": True,
         "listing_sell_alerts": True,
         "fund_unlock_alerts": True,
-        "telegram_enabled": True,
-        "whatsapp_enabled": True,
+        "telegram_enabled": False,
+        "whatsapp_enabled": False,
         "email_enabled": False,
     },
 }

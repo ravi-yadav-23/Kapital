@@ -50,7 +50,6 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/kapitl
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=kapitl-local-development-secret-key-32b
-      - ADMIN_PIN=7090
       - ENVIRONMENT=development
     volumes:
       - ./apps/api:/app
@@ -59,12 +58,13 @@ services:
     build:
       context: .
       dockerfile: ./apps/web/Dockerfile
+      args:
+        API_URL: http://api:8000
     container_name: kapitl-web
     restart: always
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:8000
     depends_on:
       - api
 

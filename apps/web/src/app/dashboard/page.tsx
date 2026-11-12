@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, canShowMockData } from '@/lib/api-client'
 import { Ipo, FundSummary, PnlSummary, IpoOrder, Allotment } from '@/types'
 import { useAuth } from '@/lib/auth-context'
 import {
@@ -41,12 +41,12 @@ export default function DashboardPage() {
 
   const [ipos, setIpos] = useState<Ipo[]>(() => {
     const cached = apiClient.getCachedIpos()
-    return cached && cached.length > 0 ? cached : MOCK_IPOS
+    return cached && cached.length > 0 ? cached : canShowMockData() ? MOCK_IPOS : []
   })
-  const [fundSummary, setFundSummary] = useState<FundSummary | null>(() => apiClient.getCachedFundSummary() || MOCK_FUND_SUMMARY)
-  const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(() => apiClient.getCachedPnlSummary() || MOCK_PNL_SUMMARY)
-  const [orders, setOrders] = useState<IpoOrder[]>(() => MOCK_ORDERS)
-  const [allotments, setAllotments] = useState<Allotment[]>(() => MOCK_ALLOTMENTS)
+  const [fundSummary, setFundSummary] = useState<FundSummary | null>(() => apiClient.getCachedFundSummary() || (canShowMockData() ? MOCK_FUND_SUMMARY : null))
+  const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(() => apiClient.getCachedPnlSummary() || (canShowMockData() ? MOCK_PNL_SUMMARY : null))
+  const [orders, setOrders] = useState<IpoOrder[]>(() => (canShowMockData() ? MOCK_ORDERS : []))
+  const [allotments, setAllotments] = useState<Allotment[]>(() => (canShowMockData() ? MOCK_ALLOTMENTS : []))
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {

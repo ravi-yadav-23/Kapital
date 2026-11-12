@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, canShowMockData } from '@/lib/api-client'
 import { Ipo, FamilyAccount } from '@/types'
 import { MOCK_IPOS, MOCK_ACCOUNTS } from '@/lib/mock-data'
 import { IpoBoard } from '@/components/ipo/IpoBoard'
@@ -10,8 +10,8 @@ import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { RefreshCw } from 'lucide-react'
 
 export default function IposPage() {
-  const [ipos, setIpos] = useState<Ipo[]>(MOCK_IPOS)
-  const [accounts, setAccounts] = useState<FamilyAccount[]>(MOCK_ACCOUNTS)
+  const [ipos, setIpos] = useState<Ipo[]>(() => (canShowMockData() ? MOCK_IPOS : []))
+  const [accounts, setAccounts] = useState<FamilyAccount[]>(() => (canShowMockData() ? MOCK_ACCOUNTS : []))
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
 

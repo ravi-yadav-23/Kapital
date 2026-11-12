@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import List, Optional, Any, Dict
 
 
@@ -20,6 +20,10 @@ class PnlSummaryResponse(BaseModel):
     allotment_rate_percent: float
 
 
+# UPI-based IPO bids are capped at Rs 5,00,000 per application; larger bids must use net-banking ASBA.
+UPI_IPO_LIMIT = 500_000.0
+
+
 class AllocationEntrySchema(BaseModel):
     account_id: str
     account_name: str
@@ -32,6 +36,13 @@ class AllocationEntrySchema(BaseModel):
     reason: Optional[str] = None
     shares: Optional[int] = None
     lot_size: Optional[int] = None
+    payment_method: Optional[str] = None  # "UPI" or "NET_BANKING_ASBA"; derived from amount when omitted
+
+    @model_validator(mode="after")
+    def _default_payment_method(self):
+        if not self.payment_method:
+            self.payment_method = "UPI" if self.amount <= UPI_IPO_LIMIT else "NET_BANKING_ASBA"
+        return self
 
 
 class SkippedIpoSchema(BaseModel):

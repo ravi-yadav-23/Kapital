@@ -343,7 +343,7 @@ async def run_pulp_optimization(
         logger.error(f"Failed to initiate PuLP optimization: {exc}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Optimization unavailable at this moment: {str(exc)}",
+            detail="Optimization is unavailable at this moment. Please try again.",
         )
 
 

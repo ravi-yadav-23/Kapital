@@ -81,6 +81,12 @@ class AllotmentService:
         if not alt:
             return {"success": False, "message": "Allotment not found"}
 
+        if alt.status != "ACTIVE" or alt.sell_order_id:
+            raise ValueError(
+                f"Cannot stage a sell for an allotment in status '{alt.status}'"
+                f"{' with an existing sell order' if alt.sell_order_id else ''}. Only ACTIVE holdings can be staged."
+            )
+
         alt.staged_sell_limit_price = data.limit_price
         alt.status = "SELL_SUBMITTED"
         await db.flush()
@@ -94,8 +100,10 @@ class AllotmentService:
                 client_code = acc.angel_client_id
                 alt.angel_client_id = client_code
 
+        placed = False
         try:
-            # Trigger order staging via SmartAPI using real client_id code
+            # Try to place the order now via SmartAPI. Before listing the instrument usually has no
+            # token yet, so this commonly fails; the 09:00 listing-day job then places it.
             api_res = await angel_service.stage_listing_sell_order(
                 client_id=client_code or alt.account_name,
                 symbol=alt.ipo_symbol,
@@ -105,18 +113,27 @@ class AllotmentService:
             if api_res.get("success"):
                 alt.sell_order_id = api_res.get("sell_order_id")
                 alt.status = "STAGED"
+                placed = True
             else:
                 alt.status = "ACTIVE"
             await db.flush()
             await db.refresh(alt)
-        except Exception as e:
+        except Exception:
             alt.status = "ACTIVE"
             await db.flush()
-            raise e
+            raise
 
+        if placed:
+            message = f"Sell order placed with the broker at ₹{data.limit_price} for {alt.ipo_symbol}."
+        else:
+            message = (
+                f"Limit price ₹{data.limit_price} saved for {alt.ipo_symbol}. The broker did not accept the "
+                "order yet, so it is queued: the 09:00 IST listing-day job will place it if the scheduler is running."
+            )
         return {
             "success": True,
-            "message": f"Pre-listing sell staged at ₹{data.limit_price} for {alt.ipo_symbol} (09:00:00 AM IST)",
+            "placed_with_broker": placed,
+            "message": message,
             "allotment": _model_to_allotment_response(alt),
         }
 
@@ -136,7 +153,12 @@ class AllotmentService:
         today = date.today()
         stmt = select(IpoOrder).where(IpoOrder.status.in_(["SUBMITTED", "CONFIRMED", "APPLIED"]))
         res = await db.execute(stmt)
-        orders = res.scalars().all()
+        # Snapshot plain values: a rollback after one failing order expires ORM instances.
+        from types import SimpleNamespace
+        orders = [
+            SimpleNamespace(id=o.id, ipo_id=o.ipo_id, account_id=o.account_id, account_name=o.account_name)
+            for o in res.scalars().all()
+        ]
 
         results = {"allotted": 0, "not_allotted": 0, "pending": 0, "details": []}
         holdings_by_client: Dict[str, List[Dict[str, Any]]] = {}
@@ -149,6 +171,7 @@ class AllotmentService:
 
             allot_date = ipo.allotment_date
             listing_date = ipo.listing_date
+            ipo_name = ipo.name  # captured: ORM state is expired after a rollback
 
             if allot_date and today < allot_date:
                 results["pending"] += 1
@@ -214,15 +237,27 @@ class AllotmentService:
                     credited_qty = 0
 
             if matched_holding and credited_qty > 0:
-                await order_service.process_allotment_result(
-                    db, ord.id, result="ALLOTTED", allotted_qty=credited_qty
-                )
+                try:
+                    await order_service.process_allotment_result(
+                        db, ord.id, result="ALLOTTED", allotted_qty=credited_qty
+                    )
+                except Exception as exc:
+                    await db.rollback()
+                    results["pending"] += 1
+                    results["details"].append(f"[{ord.account_name}] Could not record allotment for {ipo_name}: {exc}")
+                    continue
                 results["allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Allotted {credited_qty} shares of {ipo.name}")
             elif listing_date and today > (listing_date + timedelta(days=3)):
                 # ONLY infer NOT_ALLOTTED when broker confirmed demat holdings successfully (holdings is list, not None)
                 # and today is at least 3 days post-listing
-                await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
+                try:
+                    await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
+                except Exception as exc:
+                    await db.rollback()
+                    results["pending"] += 1
+                    results["details"].append(f"[{ord.account_name}] Could not release funds for {ipo_name}: {exc}")
+                    continue
                 results["not_allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Not allotted for {ipo.name} (Funds released)")
             else:

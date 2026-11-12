@@ -1,8 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class StageSellRequest(BaseModel):
-    limit_price: float
+    limit_price: float = Field(gt=0)
     trigger_time: str = "09:00:00"
     buffer_percent: float = 5.0
 

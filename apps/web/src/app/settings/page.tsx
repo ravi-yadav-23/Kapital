@@ -14,8 +14,8 @@ export default function SettingsPage() {
   const [defaultUpi, setDefaultUpi] = useState('')
   const [maxAllocationPct, setMaxAllocationPct] = useState(80)
   const [limitBufferPct, setLimitBufferPct] = useState(5)
-  const [telegramAlerts, setTelegramAlerts] = useState(true)
-  const [whatsappAlerts, setWhatsappAlerts] = useState(true)
+  const [telegramAlerts, setTelegramAlerts] = useState(false)
+  const [whatsappAlerts, setWhatsappAlerts] = useState(false)
   const [emailAlerts, setEmailAlerts] = useState(false)
   const [isRefreshingAuth, setIsRefreshingAuth] = useState(false)
   const [savedToast, setSavedToast] = useState(false)
@@ -100,13 +100,21 @@ export default function SettingsPage() {
   }
 
   const handleSendTestAlert = () => {
-    setTestAlertSent(true)
-    setTimeout(() => setTestAlertSent(false), 2500)
+    // No notification sender exists yet: say so instead of pretending an alert went out.
+    setErrorToast('Notifications are not implemented yet - no test alert was sent.')
+    setTimeout(() => setErrorToast(null), 4000)
   }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        <div
+          role="note"
+          className="px-3 py-2 rounded text-xs text-[var(--ink-2)] bg-[var(--bg-subtle)] border border-[var(--border-default)]"
+        >
+          Only the AI provider, model and API keys below take effect today. Score thresholds, allocation cap, limit buffer,
+          default UPI and notification toggles are saved but not used yet, and no alerts are sent.
+        </div>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -301,7 +309,7 @@ export default function SettingsPage() {
                     {aiProvider === 'anthropic' && (
                       <>
                         <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Default)</option>
-                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                        <option value="claude-3-5-sonnet-20241022">Anthropic · claude-3-5-sonnet-20241022</option>
                       </>
                     )}
                   </select>

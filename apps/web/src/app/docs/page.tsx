@@ -375,13 +375,13 @@ export default function DocsPage() {
                     <div className="p-3 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)]">
                       <div className="text-[var(--ink-3)] text-2xs mb-1">STAGE 1</div>
                       <div className="text-xs text-[var(--ink-1)] font-medium">Scraping & Normalization</div>
-                      <div className="text-[10px] text-[var(--ink-3)] mt-1">NSE / BSE / Chittorgarh / SEBI</div>
+                      <div className="text-[10px] text-[var(--ink-3)] mt-1">ipoalerts.in / Groww / ipowatch.in</div>
                     </div>
 
                     <div className="p-3 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)]">
                       <div className="text-[var(--ink-3)] text-2xs mb-1">STAGE 2</div>
                       <div className="text-xs text-[var(--ink-1)] font-medium">Dual-Agent AI Diligence</div>
-                      <div className="text-[10px] text-[var(--ink-3)] mt-1">Claude 3.5 Sonnet + Gemini 2.5</div>
+                      <div className="text-[10px] text-[var(--ink-3)] mt-1">Configured LLM (default Groq)</div>
                     </div>
 
                     <div className="p-3 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)]">
@@ -405,7 +405,7 @@ export default function DocsPage() {
 ├── apps/
 │   ├── api/                     # Python 3.10+ FastAPI Asynchronous Backend
 │   │   ├── app/
-│   │   │   ├── agents/          # Multi-Agent DRHP & GMP Analyzers (Claude & Gemini)
+│   │   │   ├── agents/          # Multi-agent GMP/feed summarisers (configurable LLM)
 │   │   │   ├── db/              # SQLAlchemy Async Models & Migrations
 │   │   │   ├── routers/         # REST API Routes (/ipos, /funds, /reports, /orders)
 │   │   │   ├── schemas/         # Pydantic v2 Contract Validation
@@ -468,36 +468,36 @@ npm run dev
                   <span>AI FORENSICS</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl font-medium tracking-tight text-[var(--ink-1)]">
-                  Dual-Agent Forensic Diligence Pipeline
+                  Two-Agent AI Summary Pipeline
                 </h1>
                 <p className="text-sm text-[var(--ink-2)] max-w-3xl leading-relaxed">
-                  How Claude 3.5 Sonnet and Gemini 2.5 Flash parse 400-page DRHP filings and live grey market premiums to detect accounting anomalies and compute objective conviction scores.
+                  How the configured LLM summarises feed data and live grey market premiums into an indicative score. Prospectus filings are not parsed; anything that needs them is reported as not assessed.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 rounded-md bg-[var(--bg-card)] border border-[var(--border-default)] space-y-2">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-medium text-[var(--ink-1)]">Agent 1: Forensic Prospectus Auditor</h4>
-                      <span className="text-2xs font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-400">Claude 3.5</span>
+                      <h4 className="text-xs font-medium text-[var(--ink-1)]">Agent 1: Equity Research Summariser</h4>
+                      <span className="text-2xs font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-400">Configured LLM</span>
                     </div>
                     <p className="text-2xs text-[var(--ink-3)] leading-relaxed">
-                      Scrapes SEBI EDGAR filings to extract balance sheet restatements, contingent liabilities, related-party loans, and working capital cycles.
+                      Reads price band, issue size and the listed strengths and risks. It is not given balance sheets, contingent liabilities or related-party data.
                     </p>
                   </div>
 
                   <div className="p-4 rounded-md bg-[var(--bg-card)] border border-[var(--border-default)] space-y-2">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-medium text-[var(--ink-1)]">Agent 2: Grey Market & Sentiment Auditor</h4>
-                      <span className="text-2xs font-mono px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-400">Gemini 2.5 Flash</span>
+                      <h4 className="text-xs font-medium text-[var(--ink-1)]">Agent 2: Market Sentiment Summariser</h4>
+                      <span className="text-2xs font-mono px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-400">Configured LLM</span>
                     </div>
                     <p className="text-2xs text-[var(--ink-3)] leading-relaxed">
-                      Audits unofficial Kostak rates, Subject-to-Sauda trades, and institutional QIB demand curves to filter speculative noise from genuine listing demand.
+                      Reads grey market premium and subscription multiples (Retail, sHNI, bHNI, QIB). Kostak/Sauda rates and news are not ingested.
                     </p>
                   </div>
                 </div>
 
                 <Callout type="note" title="Token Optimization & Latency">
-                  By pruning raw financial tables and employing client-side SWR caching, full multi-agent prospectus forensics cost under <strong>₹2.00 per audited report</strong>.
+                  Each report is two short LLM calls on structured feed data. Cost per report depends on your provider and model and has not been measured.
                 </Callout>
               </section>
 

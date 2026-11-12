@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone, date, timedelta
 import uuid
 
@@ -10,6 +10,7 @@ from app.models.account import FamilyAccount
 from app.models.ipo import Ipo
 from app.models.allotment import AsbaLock, Allotment
 from app.schemas.order import OrderCreate, OrderResponse
+from app.schemas.fund import UPI_IPO_LIMIT
 from app.services.angel_service import angel_service
 from app.routers.websocket import broadcast_event
 
@@ -32,6 +33,10 @@ def _model_to_response(o: IpoOrder) -> OrderResponse:
         reject_reason=o.reject_reason,
         placed_at=o.placed_at.isoformat() if o.placed_at else datetime.now(timezone.utc).isoformat(),
     )
+
+
+class OrderStateError(ValueError):
+    """The requested action is not valid for the order's current status (HTTP 409)."""
 
 
 class OrderService:
@@ -108,6 +113,12 @@ class OrderService:
                 f"bHNI (Big HNI) application amount (₹{amount:,.2f}) must exceed ₹10,00,000."
             )
 
+        if amount > UPI_IPO_LIMIT:
+            raise ValueError(
+                f"Application amount (₹{amount:,.2f}) exceeds the ₹{UPI_IPO_LIMIT:,.0f} UPI limit for IPO bids. "
+                "Apply via net-banking ASBA in your broker app, then use 'mark as applied' here."
+            )
+
         # Check duplicate active applications under same account/PAN
         dup_stmt = select(IpoOrder).where(
             (IpoOrder.account_id == data.account_id)
@@ -121,6 +132,28 @@ class OrderService:
                 f"An active application already exists for '{acc.name}' in '{ipo.name}' (Status: {existing_bid.status}). "
                 "SEBI rules prohibit multiple applications under the same PAN."
             )
+
+        # SEBI: one application per PAN per IPO across ALL family demat accounts.
+        pan_norm = (acc.pan or "").strip().upper()
+        if pan_norm:
+            pan_stmt = (
+                select(IpoOrder.id, IpoOrder.account_name)
+                .join(FamilyAccount, FamilyAccount.id == IpoOrder.account_id)
+                .where(
+                    (IpoOrder.ipo_id == data.ipo_id)
+                    & (IpoOrder.account_id != data.account_id)
+                    & (IpoOrder.status.in_(["PENDING", "SUBMITTED", "CONFIRMED", "APPLIED", "ALLOTTED"]))
+                    & (func.upper(func.trim(FamilyAccount.pan)) == pan_norm)
+                )
+                .limit(1)
+            )
+            clash = (await db.execute(pan_stmt)).first()
+            if clash:
+                raise ValueError(
+                    f"Another account ('{clash.account_name}') already has an active application in "
+                    f"'{ipo.name}' under the same PAN. SEBI treats multiple applications under one PAN "
+                    "as duplicates and may reject them."
+                )
 
         # Validate sufficient liquid balance
         avail = acc.available_liquid_balance or 0.0
@@ -324,6 +357,11 @@ class OrderService:
         if order_obj.status == "CANCELLED":
             return _model_to_response(order_obj)
 
+        if order_obj.status not in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED"):
+            raise OrderStateError(
+                f"Order is {order_obj.status}; only live applications (pending, submitted, confirmed, applied) can be cancelled."
+            )
+
         # Release ASBA lock on account
         acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
         acc = acc_res.scalar_one_or_none()
@@ -341,7 +379,10 @@ class OrderService:
             await db.delete(existing_lock)
 
         order_obj.status = "CANCELLED"
-        order_obj.reject_reason = "Cancelled by user"
+        order_obj.reject_reason = (
+            "Cancelled in Kapitl only. If the application was already submitted, "
+            "also cancel it in your broker app / UPI mandate."
+        )
         order_obj.mandate_status = "REVOKED"
         await db.commit()
 
@@ -413,6 +454,23 @@ class OrderService:
         order_obj = res.scalar_one_or_none()
         if not order_obj:
             raise ValueError("Order not found")
+
+        # State guard: an allotment result applies once, and only to a live application.
+        requested = (result or "").upper()
+        if requested not in ("ALLOTTED", "NOT_ALLOTTED"):
+            raise ValueError("Invalid allotment result. Must be 'ALLOTTED' or 'NOT_ALLOTTED'.")
+        if order_obj.status == requested:
+            return {
+                "success": True,
+                "status": requested,
+                "already_processed": True,
+                "message": f"Order already marked {requested}; no changes made.",
+            }
+        if order_obj.status not in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED"):
+            raise ValueError(
+                f"Cannot record allotment result '{requested}' for an order in status "
+                f"'{order_obj.status}'. Only live applications can be allotted or released."
+            )
 
         acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
         acc = acc_res.scalar_one_or_none()

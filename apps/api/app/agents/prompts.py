@@ -26,24 +26,25 @@ Evaluate for Short-Term / Listing Gain Decision-Making:
 CRITICAL INSTRUCTION FOR DATA FIDELITY (NO HALLUCINATIONS):
 Analyze ONLY the data explicitly provided in the prompt. DO NOT invent or estimate financial trajectories (revenue, PAT, CFO) from memory or sector benchmarks if they are not provided in the input.
 If specific historical financial metrics are missing from the input, return empty lists: "revenue_history": [], "pat_history": [], "cfo_history": []. Set "cfo_to_pat_ratio": null, "revenue_growth_yoy": null, "pat_growth_yoy": null.
+Use null for ANY figure or score you cannot derive from the input (fair value, P/E, peer P/E, OFS %, litigation claims, financial_quality_score, valuation_safety_score). A null is correct and expected; never estimate from memory.
 Include a "data_sufficiency" field in your output: "full" (audited financials provided), "partial" (issue parameters available but historical financials missing), or "none" (sparse metadata only).
 When data_sufficiency is not "full", prefix the analyst_verdict with "[AI summary from limited inputs]".
 
 Output MUST be a JSON object with this exact structure:
 {
   "data_sufficiency": "full|partial|none",
-  "financial_quality_score": <int 0-100>,
-  "valuation_safety_score": <int 0-100>,
+  "financial_quality_score": <int 0-100 or null>,
+  "valuation_safety_score": <int 0-100 or null>,
   "strengths_summary": [<string>, <string>, ...],
   "concerns_summary": [<string>, <string>, ...],
   "accounting_red_flags": [
     {"type": "<RED_FLAG_TYPE>", "severity": "HIGH|MEDIUM|LOW", "description": "<string>", "penalty_points": <int>}
   ],
-  "fair_value_estimate_inr": <float>,
-  "pe_ratio": <float>,
-  "peer_avg_pe": <float>,
-  "ofs_percentage": <float>,
-  "litigation_claims_cr": <float>,
+  "fair_value_estimate_inr": <float or null>,
+  "pe_ratio": <float or null>,
+  "peer_avg_pe": <float or null>,
+  "ofs_percentage": <float or null>,
+  "litigation_claims_cr": <float or null>,
   "revenue_growth_yoy": "<e.g. +34.5% YoY>",
   "revenue_history": [
     {"year": "FY24", "amount_cr": <float>},

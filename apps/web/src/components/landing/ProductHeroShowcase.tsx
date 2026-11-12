@@ -30,7 +30,7 @@ const SHOWCASE_STEPS: ShowcaseStep[] = [
     id: 'audit',
     num: '01',
     title: 'Forensic DRHP Audit',
-    subtitle: 'LLM agents parse 400-page prospectuses, promoter litigation, and live GMP',
+    subtitle: 'LLM summaries of listed highlights, with live GMP and subscription data',
     badge: 'AI DUE DILIGENCE',
   },
   {
@@ -472,7 +472,7 @@ export function ProductHeroShowcase() {
                   <span className="text-sm font-medium text-[var(--ink-1)] tabular-nums mt-1 block">
                     09:00:00.042 AM
                   </span>
-                  <span className="text-2xs text-[var(--positive)] mt-0.5 block">Sub-50ms Exchange Latency</span>
+                  <span className="text-2xs text-[var(--positive)] mt-0.5 block">Exchange latency: not measured</span>
                 </div>
 
                 <div className="p-3 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)]">

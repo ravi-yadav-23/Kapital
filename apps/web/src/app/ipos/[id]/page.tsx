@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, canShowMockData } from '@/lib/api-client'
 import { Ipo, FamilyAccount, AiReport } from '@/types'
 import { MOCK_IPOS, MOCK_ACCOUNTS } from '@/lib/mock-data'
 import { IpoSchedule } from '@/components/ipo/IpoSchedule'
@@ -32,12 +32,13 @@ export default function IpoDetailPage() {
   const params = useParams()
   const id = (params?.id as string) || ''
   const [ipo, setIpo] = useState<Ipo | null>(() => {
+    if (!canShowMockData()) return null
     return MOCK_IPOS.find((i) => i.id === id || i.slug === id || i.symbol?.toLowerCase() === id.toLowerCase()) || null
   })
   const [report, setReport] = useState<AiReport | null>(null)
   const [accounts, setAccounts] = useState<FamilyAccount[]>(() => {
     const cached = apiClient.getCachedAccounts()
-    return cached && cached.length > 0 ? cached : MOCK_ACCOUNTS
+    return cached && cached.length > 0 ? cached : canShowMockData() ? MOCK_ACCOUNTS : []
   })
   const [loading, setLoading] = useState(false)
   const [isApplyOpen, setIsApplyOpen] = useState(false)

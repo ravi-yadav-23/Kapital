@@ -1,7 +1,25 @@
+import re
+
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 from app.utils.security import mask_pan
+
+
+_PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+
+
+def _validate_pan(v: Optional[str]) -> Optional[str]:
+    """Normalise and validate a PAN. A masked value ('A*****234F') is rejected so the UI can never
+    write a display mask over the real PAN. An empty string is allowed on update to clear the field."""
+    if v is None:
+        return None
+    pan = v.strip().upper()
+    if pan == "":
+        return ""
+    if not _PAN_RE.match(pan):
+        raise ValueError("PAN must be 10 characters: 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).")
+    return pan
 
 
 class AccountCreate(BaseModel):
@@ -18,6 +36,8 @@ class AccountCreate(BaseModel):
     available_balance: float = 0.0
     preferred_category: str = "RETAIL"
 
+    _check_pan = field_validator("pan")(classmethod(lambda cls, v: _validate_pan(v)))
+
 class AccountUpdate(BaseModel):
     name: Optional[str] = None
     relation: Optional[str] = None
@@ -27,6 +47,8 @@ class AccountUpdate(BaseModel):
     available_balance: Optional[float] = None
     preferred_category: Optional[str] = None
     is_active: Optional[bool] = None
+
+    _check_pan = field_validator("pan")(classmethod(lambda cls, v: _validate_pan(v)))
 
 class AccountResponse(BaseModel):
     id: str

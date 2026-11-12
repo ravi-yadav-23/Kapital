@@ -286,9 +286,10 @@ export function getStatusPillClass(status: IpoStatus | string): string {
 
 export function getScoreRecommendation(score?: number): ScoreRecommendation {
   if (score === undefined || score === null) return 'PENDING'
-  if (score >= 70) return 'STRONG_APPLY'
-  if (score >= 55) return 'MODERATE_APPLY'
-  if (score >= 40) return 'WATCH'
+  // Must match backend IpoDueDiligenceOrchestrator.get_recommendation (80 / 62 / 45).
+  if (score >= 80) return 'STRONG_APPLY'
+  if (score >= 62) return 'MODERATE_APPLY'
+  if (score >= 45) return 'WATCH'
   return 'AVOID'
 }
 

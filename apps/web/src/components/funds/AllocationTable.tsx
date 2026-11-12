@@ -125,6 +125,11 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
                       <span className="px-2 py-0.5 rounded text-2xs font-mono font-medium uppercase bg-[var(--bg-subtle)] text-[var(--ink-2)] border border-[var(--border-default)]">
                         {entry.category}
                       </span>
+                      {entry.payment_method === 'NET_BANKING_ASBA' && (
+                        <div className="mt-1 text-2xs text-[var(--warning,#f59e0b)]" title="Bids above Rs 5,00,000 cannot be paid by UPI">
+                          Net-banking ASBA (above UPI limit)
+                        </div>
+                      )}
                     </td>
                     <td className="font-mono text-xs text-[var(--ink-2)] tabular-nums">
                       {entry.lots} {entry.lots === 1 ? 'lot' : 'lots'} ({shareCount.toLocaleString('en-IN')} shs)

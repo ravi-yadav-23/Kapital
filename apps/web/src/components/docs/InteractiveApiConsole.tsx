@@ -139,7 +139,7 @@ console.log('Optimized entries count:', plan.entries.length)`,
     method: 'GET',
     path: '/api/reports/{id}',
     title: 'Dual-Agent AI Forensic Audit',
-    description: 'Retrieves 400-page DRHP forensic diligence, 5 SEBI listing gatekeepers, and score breakdown.',
+    description: 'Retrieves the AI due-diligence report, listing gatekeeper checks (mostly not assessed) and score breakdown.',
     curlSnippet: `curl -X GET "https://kapital-gamma-nine.vercel.app/api/reports/tonbo-imaging-2026" \\
   -H "Accept: application/json"`,
     pythonSnippet: `import httpx
