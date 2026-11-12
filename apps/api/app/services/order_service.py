@@ -35,6 +35,10 @@ def _model_to_response(o: IpoOrder) -> OrderResponse:
     )
 
 
+class OrderStateError(ValueError):
+    """The requested action is not valid for the order's current status (HTTP 409)."""
+
+
 class OrderService:
 
     @staticmethod
@@ -353,6 +357,11 @@ class OrderService:
         if order_obj.status == "CANCELLED":
             return _model_to_response(order_obj)
 
+        if order_obj.status not in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED"):
+            raise OrderStateError(
+                f"Order is {order_obj.status}; only live applications (pending, submitted, confirmed, applied) can be cancelled."
+            )
+
         # Release ASBA lock on account
         acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
         acc = acc_res.scalar_one_or_none()
@@ -370,7 +379,10 @@ class OrderService:
             await db.delete(existing_lock)
 
         order_obj.status = "CANCELLED"
-        order_obj.reject_reason = "Cancelled by user"
+        order_obj.reject_reason = (
+            "Cancelled in Kapitl only. If the application was already submitted, "
+            "also cancel it in your broker app / UPI mandate."
+        )
         order_obj.mandate_status = "REVOKED"
         await db.commit()
 
