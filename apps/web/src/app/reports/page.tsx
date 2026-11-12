@@ -644,7 +644,7 @@ export default function ReportsPage() {
                       {!hasDrhp
                         ? isAudited ? 'Pre-filing AI assessment · DRHP awaited with SEBI' : 'Preliminary score · DRHP not yet filed with SEBI'
                         : isAudited
-                        ? 'AI forensic audit · Gemini Flash & Claude Haiku'
+                        ? 'AI summary of listed highlights · financials not assessed'
                         : 'Preliminary score · AI audit not run'}
                     </div>
                   </div>

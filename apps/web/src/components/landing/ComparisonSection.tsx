@@ -7,8 +7,8 @@ export function ComparisonSection() {
   const comparisons = [
     {
       feature: 'Draft Prospectus (DRHP) Audit',
-      manual: '2 to 3 hours reading 400-page PDFs, prone to financial ratio blindspots and Telegram hype.',
-      kapitl: '30 seconds: Claude Haiku & Gemini Flash-Lite extract audited financials, promoter litigation, and peer multiples.',
+      manual: '2 to 3 hours reading prospectuses, prone to financial ratio blindspots and Telegram hype.',
+      kapitl: 'Seconds: GMP, subscription and an AI summary of listed highlights in one place. Financials and litigation are not analysed.',
       highlight: true,
     },
     {

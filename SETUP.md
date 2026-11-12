@@ -5,7 +5,7 @@ This guide walks you through running both the **FastAPI Backend** and the **Next
 ---
 
 ## 📋 Prerequisites
-- **Node.js**: v18.18+ or v20+
+- **Node.js**: v22+ (needed for `npm test`, which uses `node --test` with TypeScript type stripping; `next build` alone works on 18.18+)
 - **Python**: 3.10, 3.11, or 3.12
 - **Package Manager**: `npm` or `pnpm`
 - **Database**: SQLite (built-in, zero setup) or PostgreSQL 15+
@@ -44,13 +44,25 @@ Copy the example environment template:
 ```bash
 cp ../../.env.example .env
 ```
-Key variables to verify:
+Key variables (see `.env.example` for the full list):
 ```ini
-DATABASE_URL=sqlite+aiosqlite:///../../kapitl_local.db
-SECRET_KEY=dev_secret_key_change_in_production
-ALLOWED_EMAIL=admin@kapitl.local
-ADMIN_PIN=123456
+ENVIRONMENT=development            # set to "production" on any internet-facing deploy
+SECRET_KEY=<random 32+ chars>      # signs login tokens; never reuse the dev default in production
+DATABASE_URL=sqlite+aiosqlite:///../../kapitl_local.db   # PostgreSQL required in production
+
+# Admin sign-in is Google + authenticator app (TOTP). There is no PIN login.
+GOOGLE_CLIENT_ID=<your Google OAuth web client id>
+ALLOWED_EMAIL=<the one Google account allowed to sign in as admin>
+ADMIN_TOTP_SECRET=<base32 secret; leave empty locally to enrol on first sign-in>
+
+# Needed only if something calls /api/cron/* (GitHub Actions workflow, Vercel cron...)
+CRON_SECRET=<random 32+ chars>
+
+# Legacy: no code reads it for login any more, but non-serverless production start-up validation
+# still requires a non-trivial value.
+# ADMIN_PIN=
 ```
+Without a Google account matching `ALLOWED_EMAIL` you cannot sign in as admin; the "Explore as Guest" button works with no setup and only shows sample data.
 
 ### Step 2.4 — Start the API Server
 ```bash

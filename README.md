@@ -14,8 +14,8 @@
 
 <br />
 
-> **An institutional-grade algorithmic engineering platform built for the Indian primary market (NSE/BSE).**  
-> Kapitl automates prospectus due diligence and grey market analysis with multi-agent LLMs, solves combinatorial multi-Demat family capital allocation using Mixed-Integer Linear Programming (MILP), enforces ASBA fund recycling with timeline lookahead, and autonomously executes pre-market 09:00:00 AM IST listing exits via Angel One SmartAPI.
+> **A FastAPI + Next.js planning and tracking tool for Indian retail IPO investors (NSE/BSE).**  
+> Kapitl combines IPO feed data and grey-market signals with an LLM summary, a heuristic MILP capital allocator across family demat accounts, ASBA lock tracking, and scheduled Angel One SmartAPI listing-day sell staging. Prospectus (DRHP) parsing is not implemented, and broker order placement has not been verified against a live account.
 
 <p align="center">
   <a href="https://kapital-gamma-nine.vercel.app"><strong>🚀 Explore Live Product (One-Click Guest Demo) »</strong></a>
@@ -35,7 +35,7 @@
 
 ## 📑 Executive Summary
 
-Every year, millions of Indian retail investors participate in IPOs using manual intuition, missing out on optimal category quotas or getting disqualified by PAN duplication. **Kapitl** replaces manual guesswork with mathematical certainty and institutional execution:
+Every year, millions of Indian retail investors participate in IPOs using manual intuition, missing out on optimal category quotas or getting disqualified by PAN duplication. **Kapitl** replaces spreadsheet guesswork with a rules-aware optimizer and scheduled execution tooling (heuristic, not a guarantee of allotment or profit):
 
 ```
 ┌─────────────────────────┐    ┌──────────────────────────┐    ┌─────────────────────────┐
@@ -45,9 +45,9 @@ Every year, millions of Indian retail investors participate in IPOs using manual
 └─────────────────────────┘    └──────────────────────────┘    └─────────────────────────┘
 ```
 
-1. **Multi-Agent Due Diligence**: Modular LLM agents (Groq LLaMA-3.3-70B by default, configurable to Anthropic Claude or Google Gemini) synthesize verified prospectus data, peer P/E multiples, subscription velocity, and real-time Grey Market Premiums (GMP) into an explainable 6-dimension score (0–100) with strict anti-hallucination safeguards and data sufficiency flags (`full | partial | none`).
-2. **Operations Research Capital Allocation**: Replaces naive heuristic splitting with a **PuLP Mixed-Integer Linear Programming (MILP)** solver. Given family capital across multiple Demat accounts, it optimizes bids across SEBI Retail (≤₹2L), sHNI (₹2L–₹10L), and bHNI (>₹10L) to maximize expected portfolio profit while guaranteeing zero PAN duplication penalties and enforcing a 14-day ASBA fund reuse timeline.
-3. **Autonomous Listing Day Engine**: Depository polling detects credited shares via Angel One SmartAPI with exact ISIN/scrip matching. At **09:00:00 AM IST** on listing day, the system dispatches pre-market limit sell mandates to capture opening gains with distributed execution locks and post-market reconciliation sweeps (09:55 AM & 10:05 AM).
+1. **AI-assisted IPO scoring**: an LLM (Groq `openai/gpt-oss-120b` by default; Anthropic Claude or Google Gemini can be selected in Settings, one provider at a time) summarises the IPO's feed metadata (price band, lot size, GMP, subscription, listed strengths and risks). Market-signal components (GMP, subscription) are computed deterministically. Anything the model cannot be given - restated financials, peer multiples, OFS split, litigation - is shown as **not assessed**; prospectus (DRHP/RHP) parsing is not implemented.
+2. **Heuristic capital allocation (PuLP MILP)**: given family balances across demat accounts, ranks bids across SEBI Retail (≤₹2L), sHNI (₹2L–₹10L) and bHNI (>₹10L) by a GMP × score weighting, with per-account budgets, one bid per PAN within a plan, a reservation of capital for high-score upcoming IPOs, and UPI-vs-net-banking tagging (UPI is capped at ₹5L per bid). The objective is a ranking heuristic, **not** expected profit: it has no allotment-probability model, so it makes no profit or allotment guarantee.
+3. **Listing-day sell staging (self-hosted scheduler or GitHub Actions cron)**: holdings credited in the demat are detected via Angel One SmartAPI (exact ISIN/symbol matching) and the sell limit price you stage is submitted around 09:00 IST on listing day, with a 10:05 reconciliation that books P&L only from real broker fills. Timing is best-effort, and the broker calls have not been verified against a live account.
 
 ---
 
@@ -112,7 +112,7 @@ $$\max \sum_{a \in A} \sum_{i \in I} \mathbb{E}\left[\text{Gain}_{a,i}(y_{a,i})\
 4. **ASBA Overlap Timeline Feasibility**:
    A fund blocked in IPO $i_1$ cannot be reused for IPO $i_2$ unless $\text{ReleaseDate}_{i_1} < \text{OpenDate}_{i_2}$.
 
-The solver executes deterministically using the COIN-OR CBC algorithm, outputting an optimal, fully compliant lot distribution matrix across all family members.
+The solver runs the COIN-OR CBC algorithm; if it cannot finish, the plan falls back to a greedy heuristic and says so in the plan warnings.
 
 ---
 
@@ -122,8 +122,8 @@ Kapitl avoids hallucination by feeding verified primary market attributes throug
 
 | Agent Role | Model Architecture | Responsibility & Metrics Extracted |
 | :--- | :--- | :--- |
-| **Equity Research Agent** | Groq LLaMA-3.3-70B / Claude / Gemini | Synthesizes price band, valuation multiples, issue structure (OFS vs Fresh), reported strengths, and key prospectus risk disclosures. |
-| **Market Intelligence Agent** | Groq LLaMA-3.3-70B / Claude / Gemini | Evaluates subscription velocity across Retail, sHNI, bHNI, and QIB books alongside live Grey Market Premiums. |
+| **Equity Research Agent** | Configured provider (default Groq `openai/gpt-oss-120b`) | Reads price band, lot size, issue size, listed strengths and risks. Financial series, P/E, OFS split and litigation are **not** supplied and are reported as not assessed. |
+| **Market Intelligence Agent** | Configured provider (default Groq `openai/gpt-oss-120b`) | Reads subscription multiples (Retail, sHNI, bHNI, QIB) and the grey market premium. No news or promoter data is supplied, so promoter/industry scores are null unless the model can justify them from the input. |
 | **Composite Arbiter** | Deterministic Python Engine | Computes the 6-factor vector (Financial Quality, Valuation Safety, Promoter Integrity, Industry Tailwinds, Subscription Velocity, GMP Strength) and applies red-flag penalty deductions. |
 
 **Anti-Hallucination & Transparency Policy**:
@@ -150,7 +150,7 @@ Kapitl avoids hallucination by feeding verified primary market attributes throug
 
 ### 4. SmartAPI RFC 6238 TOTP Integration & Distributed Locks
 - Automated Angel One SmartAPI session management using hardware TOTP generation via `pyotp`.
-- Redis-backed distributed lock with local in-memory fallback guarantees listing-day sell orders are dispatched exactly once across distributed worker processes.
+- A Redis-backed job lock (falling back to a per-process lock when Redis is unavailable) reduces duplicate runs of scheduled jobs. It is best-effort, not an exactly-once guarantee, and has not been exercised against a live broker.
 
 ---
 
@@ -160,10 +160,10 @@ Kapitl avoids hallucination by feeding verified primary market attributes throug
 Frontend:            Next.js 14.2 (App Router) • React 18 • TypeScript • Tailwind CSS • Lucide
 Backend:             FastAPI (Asynchronous) • Python 3.10+ • Pydantic v2 • Uvicorn ASGI
 Database:            PostgreSQL 15 • SQLite (Local dev/testing) • SQLAlchemy 2.0 (AsyncIO)
-Mathematical Engine: PuLP MILP • COIN-OR CBC Solver • SciPy • NumPy
-AI Ingestion:        Groq LLaMA-3.3-70B (Default) • Anthropic Claude • Google Gemini
+Optimization:        PuLP MILP • COIN-OR CBC Solver
+AI summaries:        Groq openai/gpt-oss-120b (default) • Anthropic Claude • Google Gemini (one provider at a time)
 Broker APIs:         Angel One SmartAPI v3 • PyOTP • WebSockets (Real-time telemetry)
-DevOps & Cloud:      Vercel Edge Network • GitHub Actions CI/CD • Docker
+DevOps & Cloud:      Vercel • GitHub Actions CI/CD • Docker
 ```
 
 ---
@@ -177,7 +177,7 @@ GET    /api/ipos                       # Filter active, closing today, upcoming,
 GET    /api/ipos/{id}                  # Detailed IPO profile, prospectus highlights, and 6-factor score
 POST   /api/ipos/sync                  # Trigger live feed ingestion (ipoalerts, Groww, ipowatch)
 GET    /api/funds/summary              # Aggregated family corpus, ASBA blocked totals, liquid balance
-GET    /api/funds/accounts             # Registered Demat accounts (masked PAN, admin-gated)
+GET    /api/funds/accounts             # Registered Demat accounts (masked PAN); sample data unless signed in as admin
 POST   /api/funds/optimize             # Trigger PuLP MILP solver to generate optimal lot distribution
 GET    /api/allotments                 # Active Demat holdings and historical listing sales
 POST   /api/allotments/{id}/stage-sell # Stage 09:00:00 AM IST pre-market limit sell mandate
@@ -190,7 +190,7 @@ WS     /api/ws                         # Live market telemetry, allotment update
 ## 🚀 Quick Local Setup & Tests
 
 ### Prerequisites
-- Node.js 18+ & npm
+- Node.js 22+ & npm (18.18+ is enough for the build, 22+ for `npm test`)
 - Python 3.10+
 - `uv` (recommended) or `pip`
 - PostgreSQL (or local SQLite for quick evaluation)
@@ -227,7 +227,7 @@ npm run dev
 ### 4. Run Automated Test Suite
 ```bash
 cd apps/api
-uv run pytest apps/api/tests -v
+uv run pytest tests -v
 ```
 *121+ automated tests covering role-based data isolation, PAN masking, MILP ASBA timeline feasibility, SmartAPI order payloads, and partial allotment fund reconciliation.*
 

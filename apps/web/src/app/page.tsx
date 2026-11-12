@@ -227,7 +227,7 @@ export default function LandingPage() {
                 DRHP & Forensic Due Diligence
               </h3>
               <p className="text-xs text-[var(--ink-2)] leading-relaxed">
-                Claude Haiku and Gemini Flash-Lite inspect financial statements, forensic red flags, auditor qualifications, and live grey market premiums to generate a 0–100 quality score.
+                An LLM reads the IPO’s listed highlights and risks alongside live grey market premium and subscription data to generate an indicative 0–100 score. Restated financials and prospectus documents are not analysed.
               </p>
             </div>
 

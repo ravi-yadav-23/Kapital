@@ -70,7 +70,7 @@ export default function LoginPage() {
         return false
       }
       try {
-        // Initialize Google Identity Services exactly once across the window lifecycle to avoid [GSI_LOGGER] multiple init warnings
+        // Initialize Google Identity Services once per window lifecycle to avoid [GSI_LOGGER] multiple init warnings
         if (!(window as any).__googleIdInitialized) {
           google.accounts.id.initialize({
             client_id: GOOGLE_CLIENT_ID,

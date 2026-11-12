@@ -36,7 +36,7 @@ const STEPS: SimulationStep[] = [
   {
     id: 1,
     title: 'Multi-Agent DRHP Analysis',
-    subtitle: 'Claude 3.5 & Gemini evaluate 400-page prospectus, GMP sentiment & peer multiples in parallel.',
+    subtitle: 'An LLM summarises listed highlights, GMP and subscription data (no prospectus or peer data).',
     detail: 'Evaluated 6 dimensions: Financial Quality (82/100), Valuation Multiple (78/100), GMP Surge (+27.8%).',
     icon: BrainCircuit,
     tag: 'STEP 1: AI SCORING',
@@ -265,7 +265,7 @@ export function LiveArchitectureSimulator() {
                 </div>
                 <div className="p-2.5 rounded-lg bg-[#f59e0b]/10 border border-[#f59e0b]/20 text-xs text-[#f59e0b] font-medium flex items-center gap-2">
                   <Sparkles className="w-4 h-4 flex-shrink-0" />
-                  Claude & Gemini Verdict: Strongly recommended for listing gain & long-term holding.
+                  Sample AI verdict (illustrative only).
                 </div>
               </div>
             )}

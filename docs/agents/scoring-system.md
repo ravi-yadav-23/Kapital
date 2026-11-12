@@ -4,8 +4,8 @@
 
 | Dimension | Weight | Source |
 |-----------|--------|--------|
-| Financial Quality | 25% | Claude Haiku (DRHP analysis) |
-| GMP Signal | 20% | Gemini Flash-Lite (news/grey market) |
+| Financial Quality | 25% | LLM opinion on listed highlights (model configurable; null if not assessed) |
+| GMP Signal | 20% | Deterministic from feed GMP % |
 | Subscription Hype | 20% | Gemini (social + news sentiment) |
 | Allotment Probability | 15% | Category math × subscription rate |
 | Industry Trend | 10% | Gemini (sector news) |
