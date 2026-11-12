@@ -58,6 +58,19 @@ export function useWebSocket(onMessage?: MessageHandler) {
       }
     }
 
+    // The stream is admin-only: send the session token, and skip the connection for guests / signed-out users.
+    let token: string | null = null
+    try {
+      token = localStorage.getItem('kapitl_token')
+      const rawUser = localStorage.getItem('kapitl_user')
+      const user = rawUser ? JSON.parse(rawUser) : null
+      if (user && (user.is_guest || user.role === 'GUEST')) token = null
+    } catch {
+      token = null
+    }
+    if (!token) return
+    wsUrl += (wsUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token)
+
     try {
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
