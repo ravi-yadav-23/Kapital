@@ -9,6 +9,9 @@ RUN pnpm install --frozen-lockfile || pnpm install
 
 COPY apps/web ./apps/web
 ENV NEXT_TELEMETRY_DISABLED=1
+# next.config.mjs rewrites are fixed at build time, so the API address must be a build argument.
+ARG API_URL=http://api:8000
+ENV API_URL=$API_URL
 RUN pnpm --filter @kapitl/web build
 
 FROM node:20-alpine AS runner
