@@ -1,0 +1,78 @@
+name: Scheduled jobs
+
+# Triggers the API's /api/cron/* webhooks, because the in-process scheduler cannot run on Vercel.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   API_BASE_URL  e.g. https://<your-deployment>   (no trailing slash)
+#   CRON_SECRET   must equal the CRON_SECRET environment variable on the API
+#
+# NOTE: GitHub Actions schedules are best-effort and can start several minutes late (cron times are UTC).
+# The 09:00 IST listing sell and 10:05 IST reconciliation may therefore run late; they are not guaranteed.
+# Only weekday market jobs are scheduled for the market-hours routes. IST = UTC + 5:30.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1-5"        # 08:30 IST  morning-login
+    - cron: "30 3 * * 1-5"       # 09:00 IST  listing-sell
+    - cron: "35 4 * * 1-5"       # 10:05 IST  reconcile-sells
+    - cron: "*/30 0-14 * * 1-5"  # 06:00-20:00 IST every 30 min  allotment-poll
+    - cron: "30 11 * * 1-5"      # 17:00 IST  daily-scrape
+    - cron: "30 16 * * *"        # 22:00 IST  nightly-maintenance
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run now"
+        required: true
+        type: choice
+        options:
+          - morning-login
+          - listing-sell
+          - reconcile-sells
+          - allotment-poll
+          - daily-scrape
+          - nightly-maintenance
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kapitl-cron-${{ github.event.schedule || inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve job name
+        id: job
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_JOB: ${{ inputs.job }}
+        run: |
+          if [ -n "$INPUT_JOB" ]; then
+            echo "name=$INPUT_JOB" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          case "$SCHEDULE" in
+            "0 3 * * 1-5")        echo "name=morning-login" >> "$GITHUB_OUTPUT" ;;
+            "30 3 * * 1-5")       echo "name=listing-sell" >> "$GITHUB_OUTPUT" ;;
+            "35 4 * * 1-5")       echo "name=reconcile-sells" >> "$GITHUB_OUTPUT" ;;
+            "*/30 0-14 * * 1-5")  echo "name=allotment-poll" >> "$GITHUB_OUTPUT" ;;
+            "30 11 * * 1-5")      echo "name=daily-scrape" >> "$GITHUB_OUTPUT" ;;
+            "30 16 * * *")        echo "name=nightly-maintenance" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unknown schedule: $SCHEDULE" >&2; exit 1 ;;
+          esac
+
+      - name: Call cron webhook
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          JOB: ${{ steps.job.outputs.name }}
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "API_BASE_URL and CRON_SECRET repository secrets must be set." >&2; exit 1
+          fi
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${API_BASE_URL%/}/api/cron/${JOB}"
