@@ -41,7 +41,6 @@ bcrypt<4.1.0             # Required for passlib compatibility on Python 3.12
 pyotp==2.9.0         # TOTP for Angel One login
 
 # Fund optimizer
-scipy==1.14.0
 pulp==2.9.0
 
 # Utilities

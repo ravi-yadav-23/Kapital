@@ -158,7 +158,7 @@ Kapitl avoids hallucination by feeding verified primary market attributes throug
 
 ```
 Frontend:            Next.js 14.2 (App Router) • React 18 • TypeScript • Tailwind CSS • Lucide
-Backend:             FastAPI (Asynchronous) • Python 3.10+ • Pydantic v2 • Uvicorn ASGI
+Backend:             FastAPI (Asynchronous) • Python 3.10–3.12 • Pydantic v2 • Uvicorn ASGI
 Database:            PostgreSQL 15 • SQLite (Local dev/testing) • SQLAlchemy 2.0 (AsyncIO)
 Optimization:        PuLP MILP • COIN-OR CBC Solver
 AI summaries:        Groq openai/gpt-oss-120b (default) • Anthropic Claude • Google Gemini (one provider at a time)
@@ -191,7 +191,7 @@ WS     /api/ws                         # Live market telemetry, allotment update
 
 ### Prerequisites
 - Node.js 22+ & npm (18.18+ is enough for the build, 22+ for `npm test`)
-- Python 3.10+
+- Python 3.10–3.12 (3.13 is not supported by the pinned requirements)
 - `uv` (recommended) or `pip`
 - PostgreSQL (or local SQLite for quick evaluation)
 

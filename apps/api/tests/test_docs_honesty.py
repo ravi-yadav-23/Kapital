@@ -61,3 +61,9 @@ def test_node_version_matches_what_the_tests_need():
     for name in ("README.md", "SETUP.md"):
         text = (ROOT / name).read_text(encoding="utf-8")
         assert "Node.js 18" not in text and "v18" not in text, f"{name}: web tests need Node 22+"
+
+
+def test_python_version_claim_matches_what_installs():
+    """Pinned dependencies (psycopg2-binary 2.9.9, aiohttp 3.10.0 ...) have no Python 3.13 wheels."""
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Python 3.10+" not in text, "README must say 3.10-3.12; 3.13 does not install with the pinned requirements"
