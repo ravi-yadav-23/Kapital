@@ -373,3 +373,50 @@ You are right that the hard part is **getting the PDF**, not reading it; chat to
 Not recommended: scraping NSE/BSE pages (explicitly against their terms), or unofficial NSE/BSE scraper libraries.
 
 Net effect: for most IPOs the document arrives **automatically** via SEBI (DRHP) and issuer/lead-manager links; you only intervene for the occasional missing link.
+
+---
+
+# FINAL DECISIONS 2026-11-13 and build order
+
+## 19. Decisions (owner: project author)
+1. **Fully automated, nothing manual.** Data comes from the **ipoalerts API plus scraping** of Groww, IPO Watch, Chittorgarh and other public sites. The project author accepts the terms-of-use risk documented in section 12 for this small portfolio project. (This supersedes the "disable the scrapers / manual admin form / paste-a-link" ideas in sections 12-14; the paste-a-link box may still exist as an optional last-resort fallback, not as a required step.)
+2. **Free only**: Groq free tier for the LLM, GitHub Actions for the nightly job at **02:00 IST**, no paid services.
+3. **Listing gain only**, Scoring v1.1 (section 15): company reality 30% + veto, demand 30%, GMP 20% (cross-checked), float 10%, market regime 10%.
+4. **Priority order each night:** open IPOs first, then upcoming by open date. Chunked analysis, every finished chunk stored; analyses are append-only and **never deleted**.
+5. **Guests**: read precomputed reports and may click "Run audit" (50 clicks/day globally, DB-enforced); a click returns the cached result or queues a job - it never calls the LLM directly.
+6. **Verdict**: signals + reasons as the main content; Apply / Neutral / Avoid as a corner badge.
+7. **Offer documents**: found automatically (SEBI draft-offer-document listing and issuer / lead-manager links), analysed from the DRHP early and diffed against the RHP/addendum later.
+
+## 20. Engineering rules that make a scraping-based design reliable (not legal points)
+Scrapers break and get blocked; the design must stay correct when a source fails:
+- **Each source is a plug-in** with a config switch, its own parser, and a recorded **health status** (last success, last error, rows parsed). A failing source is skipped, never fatal.
+- **Parsers are tested against saved HTML/JSON fixtures** (committed), so a site layout change shows up as a failing test or a health alert, not as silently wrong numbers.
+- **Datacenter IPs get blocked.** GitHub Actions runners often get 403/captcha pages from protected sites (BSE already returned 403 to my fetch). Mitigations: realistic headers, retries with back-off, prefer a site's JSON endpoint to its HTML, one request per page per night, response caching. If a source stays blocked the engine simply has fewer sources and lowers **confidence** (it already requires >= 2 sources for full GMP weight).
+- **Polite and cheap**: at most a few requests per site per night, custom User-Agent with a contact URL, honour `Retry-After`, cache by URL and date.
+- **Cross-source agreement is mandatory**: a value is trusted only when >= 2 sources agree within tolerance; disagreements are stored and shown ("sources disagree: 28% vs 41%").
+- **Quality gates in the pipeline**: schema validation, plausibility ranges (e.g. GMP between -50% and +300%, subscription >= 0), freshness stamps; anything failing is stored as `rejected` with the reason, never silently used.
+- **Data-quality is part of the report**: the page shows "sources used: 3 of 4, freshest 02:07 IST".
+- The ipoalerts free plan covers **open IPOs only (25 requests/day, 1 IPO per request)**, so upcoming and closed IPOs come from the scrapers.
+- Per ipoalerts' terms the data is never used to place or stage orders automatically; the app only suggests.
+
+## 21. Consolidated build order (milestones)
+| # | Milestone | Main content | Depends on |
+|---|---|---|---|
+| M1 | **Honest UI + one scoring module + history** (Phase A) | real audit states and toasts, no placeholder 27, single score function, momentum vs fundamental split, `score_history` | none |
+| M2 | **Source plug-in framework + health** | refactor existing scrapers into plug-ins, add Chittorgarh and more, fixtures, tests, health table, ipoalerts API for open IPOs | M1 |
+| M3 | **Snapshots and outcomes** | `gmp_snapshots`, `subscription_snapshots`, `ipo_outcomes`, nightly capture, listing-outcome capture after listing | M2 |
+| M4 | **Listing-Gain Engine v1.1** | demand + GMP cross-check + float + regime + caps, backtest script, expected gain range, probabilities, confidence | M3 |
+| M5 | **Allotment odds / expected value** | retail odds, sHNI/bHNI, optimizer ranks by expected rupees | M4 |
+| M6 | **Document pipeline** | SEBI listing discovery, issuer link discovery, PDF text/tables, DRHP vs RHP diff, chunk store, append-only versions | M2 |
+| M7 | **Red-flag engine** | trigger-phrase + table rules, Groq snippet classification, veto rules, evidence with page links | M6 |
+| M8 | **Nightly GitHub Actions job** | 02:00 IST, priority queue (open first), token budget, resume, secrets | M2-M7 |
+| M9 | **Report UI + guest queue** | badge + reasons + flags + data-quality panel, 50/day global cap, cached/queued runs | M4, M7, M8 |
+| M10 | **Calibration + live-demo proof** | backtest published in README, precomputed demo reports, screenshots | M3-M9 |
+
+Each milestone follows the same rules as the audit: failing test first, small commits, full suite green, AUDIT.md updated.
+
+## 22. What I need from the project author (one-time)
+- **ipoalerts API key** (free) -> GitHub secret `IPOALERTS_API_KEY`.
+- **Groq API key** -> GitHub secret `GROQ_API_KEY` (and keep the console limits page open while we measure tokens).
+- **Database URL** for the nightly job -> secret `DATABASE_URL` (the Postgres the app uses).
+- Approval for the **data-model changes** (new tables, append-only report versions, removing the cascade that would delete analyses).
