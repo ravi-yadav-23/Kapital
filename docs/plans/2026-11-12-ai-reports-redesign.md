@@ -301,3 +301,75 @@ I cannot "make" a site allow scraping; I can only choose sources whose rules all
 6. **C document analysis (small)**: manual PDF drop -> chunked extraction -> red-flag hard-stops and peer P/E, stored append-only.
 7. **D UI redesign** and guest queue/cap (50 clicks/day, global).
 8. **E calibration** as outcomes accumulate; publish the backtest in the README.
+
+---
+
+# UPDATE 2026-11-13 (late) - answers to: "GMP too high", "hidden red flags", "AI web search", "NSE/BSE documents"
+
+## 15. Scoring v1.1 - GMP is evidence, not the verdict (supersedes the weights in section 13)
+
+You are right: a 40% GMP weight lets a manipulated number decide. GMP is unofficial and can be pumped. New principle: **three layers, and GMP can only support a verdict that demand and company reality already allow.**
+
+| Layer | What | Weight in the listing-gain score |
+|---|---|---|
+| **1. Company reality (from the offer document)** | forensic red flags, financial health (cash flow vs profit, debt, accumulated losses), offer structure (fresh vs OFS, use of proceeds, pre-IPO placements, promoter selling), valuation vs disclosed peers | **30%** and a **veto** (see below) |
+| **2. Real demand (hard to fake)** | final subscription by category (QIB first, then NII, then retail), late-day pattern, anchor book size and quality | **30%** |
+| **3. Grey market** | GMP level, 3-day trend, agreement of >= 2 sources | **20%**, and automatically **discounted** when it disagrees with layers 1 and 2 |
+| **4. Float and supply** | issue size, free float, QIB share, listing-day liquidity | **10%** |
+| **5. Market regime** | Nifty trend, recent IPO listing average, IPOs open the same week | **10%** |
+
+**Rules that stop manipulation and hidden problems from winning:**
+1. **Red-flag veto:** a severe red flag (examples below) caps the verdict at Neutral, or at Avoid for the worst, **regardless of GMP**.
+2. **GMP sanity check:** GMP counts fully only if it is consistent with demand: e.g. GMP +40% with QIB under 5x, or GMP rising while subscription is flat, cuts GMP's contribution by half or more and shows "GMP not confirmed by demand".
+3. **Valuation cap:** an aggressive P/E vs disclosed peers caps the expected gain range.
+4. All weights, thresholds and caps live in one config file, versioned, and are tuned later against the `ipo_outcomes` backtest. Until then the label stays **"uncalibrated v1.1"**.
+
+GMP stays the single most visible input (it is the market's expectation), but it is no longer able to outvote the company's own filed numbers.
+
+## 16. Finding red flags the report tries to bury
+
+Companies put damaging facts deep in the document and in dense tables. A generic "find the red flags" prompt will miss them. The approach is **targeted extraction + trigger-phrase search + rules, with a page quote for every finding**:
+
+| Where it hides | What to look for (rule examples) |
+|---|---|
+| **Auditor's report / restated financials** | qualified opinion, emphasis-of-matter, going-concern note, CARO remarks, **big gap between audited and restated profit**, changes in accounting policy, prior-period adjustments |
+| **Cash flow vs profit** | CFO/PAT < 0.6 or negative, receivable days or inventory growing faster than revenue, high "other income" share of profit, exceptional gains, capitalised expenses |
+| **Related-party tables** | related-party share of revenue or purchases, loans/advances to promoters or group firms, guarantees given for group companies |
+| **Contingent liabilities and litigation** | amounts vs net worth, tax (income-tax/GST) disputes, criminal cases against promoters/directors, SEBI/RBI/ED actions, past non-compliance penalties |
+| **Objects of the issue** | "general corporate purposes" near the allowed ceiling, debt repayment to related/affiliated lenders, unidentified acquisitions |
+| **Offer structure** | OFS dominating the issue, promoters exiting, shares issued to insiders far below the issue price in the last 12-18 months, promoters' weighted average cost of acquisition vs issue price, ESOP overhang |
+| **Capital structure** | promoter pledge, low post-issue promoter holding, accumulated losses or negative net worth |
+| **Business dependence** | top-5 customer or supplier share, single licence/contract/regulatory dependence, expiring approvals |
+| **Risk-factor language** | historical wording such as "we have in the past not complied", "delays in filing", "show cause notice", "penalty", "default", "pledge", "adjudication", "investigation" |
+| **DRHP vs RHP changes** | the document often changes between the draft and the final RHP/addendum; diff the two and flag new or removed risks, changed financials, changed use of proceeds |
+
+How the pipeline does it: code searches the full text for these trigger phrases and parses the tables (related-party, litigation, objects of issue, financials) -> each hit is a candidate with a page and quote -> a small LLM call classifies/explains each candidate (never invents one) -> the rule engine assigns severity -> the report lists red flags with evidence. Because the search is over the whole document and not a summary, buried items are found. This is also token-cheap: the LLM only sees short candidate snippets, not 400 pages.
+
+## 17. "Let an AI model with web search get the data" - honest assessment
+
+It works technically, but it is not a free pass:
+1. **Groq's built-in web search** (Compound / agentic tools) exists in Groq's docs but **web searches are priced separately (about $5 per 1,000 basic searches in Groq's docs)**, free-tier limits for it are unclear (two aggregator sites disagree), users report "Request too large" errors on the free tier, and one third-party page claims Compound was removed in October 2026 (unconfirmed). **Do not build the core on it.** Check your Groq console limits page before relying on it.
+2. **Legal/terms:** an AI doing the reading does not change the site's terms. The scraping bans (Groww "enter into a database", IPO Watch personal-only, Chittorgarh permission needed, NSE automated-collection ban) apply to whoever fetches the page, and we would still be storing the result in our database. Facts such as "GMP is Rs 32" are not copyrightable, so the exposure is mostly breach-of-terms (IP block, takedown request), not copyright. At one low-volume read a day the practical risk is small, but it is real, and **it is your decision to accept it.**
+3. **Accuracy:** LLMs misread numbers and mix up dates, especially for GMP.
+
+**If you decide to use it, do it with guardrails (optional "AI research provider", off by default, switch in config):**
+- at most one pass per open IPO per day, in the 02:00 job, never per user click;
+- the model must return **numbers + source URL + the quoted text**; we verify that the quoted text actually contains the number; mismatches are discarded;
+- need >= 2 independent sources agreeing within a tolerance, otherwise the value is stored as "unverified" and GMP confidence is Low;
+- stored as a snapshot with timestamp, label "AI-retrieved, unofficial" in the UI, no redistribution of their pages or tables, attribution shown;
+- never used to place or stage orders automatically (ipoalerts' no-automated-trading clause);
+- in parallel, email the sites asking for permission; if granted, switch to a plain fetch.
+
+## 18. Offer documents without downloading by hand (the real blocker)
+
+You are right that the hard part is **getting the PDF**, not reading it; chat tools only "read" what a person uploads. Solution ladder, cheapest and most compliant first:
+
+1. **SEBI hosts the PDFs.** SEBI serves draft offer documents (DRHP, updated DRHP) and many prospectuses at stable URLs of the form `sebi.gov.in/sebi_data/attachdocs/<month-year>/<id>.pdf` (confirmed by search results). A DRHP appears **weeks to months before the IPO** and already contains almost everything (business, risk factors, restated financials, litigation, related parties, objects of the issue). So analyse the **DRHP/UDRHP early**; later, only diff against the **RHP/addendum** that appears days before opening. The nightly Action checks SEBI's draft-offer-document listing once a day for new links. SEBI's website policy says reuse is allowed after emailing for permission, and does not mention automation, so **email SEBI once** to say what you are doing (a portfolio project, one low-volume check a day) and keep the reply.
+2. **RHP link discovery, not downloading:** the RHP is also published on the issuer's site and the lead managers' sites (regulation requires it) and on the exchange issue pages. The nightly job finds the link (a search step) and downloads the PDF from the **issuer/lead-manager site**, which are public regulatory documents. Check each host's terms; a polite once-a-day download of a public prospectus is low risk.
+3. **NSE's official MCP/AI access** (nseindia.com/nse-mcp) is the sanctioned way for AI systems to use NSE data, **for informational/educational, non-commercial use, not for real-time trading**. That fits a portfolio demo. Whether it exposes offer documents is **unverified** (my fetch of that page timed out; a search says it lists equities, derivatives, indices and corporate actions). Test it first; do not use unofficial community NSE scrapers (they break NSE's terms).
+4. **Paste-a-link fallback (10 seconds per IPO, not a manual download):** an admin box where you paste the PDF URL; the pipeline downloads and analyses it. Only about 100 mainboard IPOs a year, with 3-10 open at any time, so even this fallback is minutes per week.
+5. **Permission request to NSE/BSE** for low-volume automated access, if the above is not enough.
+
+Not recommended: scraping NSE/BSE pages (explicitly against their terms), or unofficial NSE/BSE scraper libraries.
+
+Net effect: for most IPOs the document arrives **automatically** via SEBI (DRHP) and issuer/lead-manager links; you only intervene for the occasional missing link.
