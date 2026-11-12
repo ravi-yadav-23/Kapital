@@ -81,6 +81,12 @@ class AllotmentService:
         if not alt:
             return {"success": False, "message": "Allotment not found"}
 
+        if alt.status != "ACTIVE" or alt.sell_order_id:
+            raise ValueError(
+                f"Cannot stage a sell for an allotment in status '{alt.status}'"
+                f"{' with an existing sell order' if alt.sell_order_id else ''}. Only ACTIVE holdings can be staged."
+            )
+
         alt.staged_sell_limit_price = data.limit_price
         alt.status = "SELL_SUBMITTED"
         await db.flush()
@@ -94,8 +100,10 @@ class AllotmentService:
                 client_code = acc.angel_client_id
                 alt.angel_client_id = client_code
 
+        placed = False
         try:
-            # Trigger order staging via SmartAPI using real client_id code
+            # Try to place the order now via SmartAPI. Before listing the instrument usually has no
+            # token yet, so this commonly fails; the 09:00 listing-day job then places it.
             api_res = await angel_service.stage_listing_sell_order(
                 client_id=client_code or alt.account_name,
                 symbol=alt.ipo_symbol,
@@ -105,18 +113,27 @@ class AllotmentService:
             if api_res.get("success"):
                 alt.sell_order_id = api_res.get("sell_order_id")
                 alt.status = "STAGED"
+                placed = True
             else:
                 alt.status = "ACTIVE"
             await db.flush()
             await db.refresh(alt)
-        except Exception as e:
+        except Exception:
             alt.status = "ACTIVE"
             await db.flush()
-            raise e
+            raise
 
+        if placed:
+            message = f"Sell order placed with the broker at ₹{data.limit_price} for {alt.ipo_symbol}."
+        else:
+            message = (
+                f"Limit price ₹{data.limit_price} saved for {alt.ipo_symbol}. The broker did not accept the "
+                "order yet, so it is queued: the 09:00 IST listing-day job will place it if the scheduler is running."
+            )
         return {
             "success": True,
-            "message": f"Pre-listing sell staged at ₹{data.limit_price} for {alt.ipo_symbol} (09:00:00 AM IST)",
+            "placed_with_broker": placed,
+            "message": message,
             "allotment": _model_to_allotment_response(alt),
         }
 

@@ -33,7 +33,10 @@ async def stage_pre_listing_sell(
     admin: dict = Depends(require_admin),
 ):
     """Configure and stage 09:00:00 AM IST pre-market limit sell order on listing day."""
-    res = await allotment_service.stage_sell_order(db=db, allotment_id=allotment_id, data=data)
+    try:
+        res = await allotment_service.stage_sell_order(db=db, allotment_id=allotment_id, data=data)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not res.get("success"):
         raise HTTPException(status_code=404, detail=res.get("message"))
     return res
