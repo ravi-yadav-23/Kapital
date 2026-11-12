@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone, date, timedelta
 import uuid
 
@@ -121,6 +121,28 @@ class OrderService:
                 f"An active application already exists for '{acc.name}' in '{ipo.name}' (Status: {existing_bid.status}). "
                 "SEBI rules prohibit multiple applications under the same PAN."
             )
+
+        # SEBI: one application per PAN per IPO across ALL family demat accounts.
+        pan_norm = (acc.pan or "").strip().upper()
+        if pan_norm:
+            pan_stmt = (
+                select(IpoOrder.id, IpoOrder.account_name)
+                .join(FamilyAccount, FamilyAccount.id == IpoOrder.account_id)
+                .where(
+                    (IpoOrder.ipo_id == data.ipo_id)
+                    & (IpoOrder.account_id != data.account_id)
+                    & (IpoOrder.status.in_(["PENDING", "SUBMITTED", "CONFIRMED", "APPLIED", "ALLOTTED"]))
+                    & (func.upper(func.trim(FamilyAccount.pan)) == pan_norm)
+                )
+                .limit(1)
+            )
+            clash = (await db.execute(pan_stmt)).first()
+            if clash:
+                raise ValueError(
+                    f"Another account ('{clash.account_name}') already has an active application in "
+                    f"'{ipo.name}' under the same PAN. SEBI treats multiple applications under one PAN "
+                    "as duplicates and may reject them."
+                )
 
         # Validate sufficient liquid balance
         avail = acc.available_liquid_balance or 0.0
