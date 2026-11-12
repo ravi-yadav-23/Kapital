@@ -153,7 +153,12 @@ class AllotmentService:
         today = date.today()
         stmt = select(IpoOrder).where(IpoOrder.status.in_(["SUBMITTED", "CONFIRMED", "APPLIED"]))
         res = await db.execute(stmt)
-        orders = res.scalars().all()
+        # Snapshot plain values: a rollback after one failing order expires ORM instances.
+        from types import SimpleNamespace
+        orders = [
+            SimpleNamespace(id=o.id, ipo_id=o.ipo_id, account_id=o.account_id, account_name=o.account_name)
+            for o in res.scalars().all()
+        ]
 
         results = {"allotted": 0, "not_allotted": 0, "pending": 0, "details": []}
         holdings_by_client: Dict[str, List[Dict[str, Any]]] = {}
@@ -166,6 +171,7 @@ class AllotmentService:
 
             allot_date = ipo.allotment_date
             listing_date = ipo.listing_date
+            ipo_name = ipo.name  # captured: ORM state is expired after a rollback
 
             if allot_date and today < allot_date:
                 results["pending"] += 1
@@ -231,15 +237,27 @@ class AllotmentService:
                     credited_qty = 0
 
             if matched_holding and credited_qty > 0:
-                await order_service.process_allotment_result(
-                    db, ord.id, result="ALLOTTED", allotted_qty=credited_qty
-                )
+                try:
+                    await order_service.process_allotment_result(
+                        db, ord.id, result="ALLOTTED", allotted_qty=credited_qty
+                    )
+                except Exception as exc:
+                    await db.rollback()
+                    results["pending"] += 1
+                    results["details"].append(f"[{ord.account_name}] Could not record allotment for {ipo_name}: {exc}")
+                    continue
                 results["allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Allotted {credited_qty} shares of {ipo.name}")
             elif listing_date and today > (listing_date + timedelta(days=3)):
                 # ONLY infer NOT_ALLOTTED when broker confirmed demat holdings successfully (holdings is list, not None)
                 # and today is at least 3 days post-listing
-                await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
+                try:
+                    await order_service.process_allotment_result(db, ord.id, result="NOT_ALLOTTED")
+                except Exception as exc:
+                    await db.rollback()
+                    results["pending"] += 1
+                    results["details"].append(f"[{ord.account_name}] Could not release funds for {ipo_name}: {exc}")
+                    continue
                 results["not_allotted"] += 1
                 results["details"].append(f"[{ord.account_name}] Not allotted for {ipo.name} (Funds released)")
             else:
