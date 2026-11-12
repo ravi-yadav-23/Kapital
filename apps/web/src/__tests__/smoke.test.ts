@@ -1,38 +1,27 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeIpoStatus } from '../lib/formatters.ts';
-
-// Test core conviction verdict scoring rules
-function calculateConvictionVerdict(score: number): { label: string; action: string } {
-  if (score >= 80) return { label: 'STRONG APPLY', action: 'DEPLOY_MAX_RETAIL' };
-  if (score >= 65) return { label: 'APPLY', action: 'DEPLOY_1_LOT_PER_PAN' };
-  if (score >= 50) return { label: 'MODERATE APPLY', action: 'DEPLOY_1_LOT_SELECTED' };
-  return { label: 'AVOID', action: 'SKIP' };
-}
+import { computeIpoStatus, getScoreRecommendation } from '../lib/formatters.ts';
 
 describe('Kapitl Core Scoring & Verdict Engine', () => {
-  test('score >= 80 yields STRONG APPLY', () => {
-    const verdict = calculateConvictionVerdict(92);
-    assert.strictEqual(verdict.label, 'STRONG APPLY');
-    assert.strictEqual(verdict.action, 'DEPLOY_MAX_RETAIL');
+  // Thresholds must match the backend (orchestrator.get_recommendation): 80 / 62 / 45.
+  test('score >= 80 is STRONG_APPLY', () => {
+    assert.strictEqual(getScoreRecommendation(92), 'STRONG_APPLY');
+    assert.strictEqual(getScoreRecommendation(80), 'STRONG_APPLY');
   });
 
-  test('score between 65 and 79 yields APPLY', () => {
-    const verdict = calculateConvictionVerdict(75);
-    assert.strictEqual(verdict.label, 'APPLY');
-    assert.strictEqual(verdict.action, 'DEPLOY_1_LOT_PER_PAN');
+  test('75 is MODERATE_APPLY, as the backend reports it (not STRONG_APPLY)', () => {
+    assert.strictEqual(getScoreRecommendation(79), 'MODERATE_APPLY');
+    assert.strictEqual(getScoreRecommendation(62), 'MODERATE_APPLY');
   });
 
-  test('score between 50 and 64 yields MODERATE APPLY', () => {
-    const verdict = calculateConvictionVerdict(55);
-    assert.strictEqual(verdict.label, 'MODERATE APPLY');
-    assert.strictEqual(verdict.action, 'DEPLOY_1_LOT_SELECTED');
+  test('45-61 is WATCH', () => {
+    assert.strictEqual(getScoreRecommendation(61), 'WATCH');
+    assert.strictEqual(getScoreRecommendation(45), 'WATCH');
   });
 
-  test('score < 50 yields AVOID', () => {
-    const verdict = calculateConvictionVerdict(42);
-    assert.strictEqual(verdict.label, 'AVOID');
-    assert.strictEqual(verdict.action, 'SKIP');
+  test('below 45 is AVOID and a missing score is PENDING', () => {
+    assert.strictEqual(getScoreRecommendation(44), 'AVOID');
+    assert.strictEqual(getScoreRecommendation(undefined), 'PENDING');
   });
 
   test('canonical status computation & self-healing for active cross-month IPOs', () => {
