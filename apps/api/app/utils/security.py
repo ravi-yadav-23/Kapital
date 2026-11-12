@@ -62,8 +62,9 @@ def encrypt_credential(value: Optional[str]) -> Optional[str]:
         encrypted_bytes = cipher.encrypt(value.encode())
         return f"{ENC_PREFIX}{encrypted_bytes.decode()}"
     except Exception as e:
+        # Fail closed: never fall back to storing the secret in plaintext.
         logger.error(f"Encryption failed: {e}")
-        return value
+        raise ValueError("Could not encrypt credential; refusing to store it in plaintext.") from e
 
 
 def decrypt_credential(value: Optional[str]) -> Optional[str]:
