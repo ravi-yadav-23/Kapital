@@ -76,6 +76,17 @@ class Settings(BaseSettings):
         is_production = self.environment.lower() in ("production", "prod")
         is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
+        # Fail closed: a serverless runtime is always internet-facing. If ENVIRONMENT was forgotten it
+        # would default to "development" and sign JWTs with the public dev key from this repo.
+        if is_serverless and not is_production:
+            logger.warning(
+                "[SECURITY] Serverless runtime detected with ENVIRONMENT=%r. Treating as 'production'. "
+                "Set ENVIRONMENT=production explicitly in the project settings.",
+                self.environment,
+            )
+            self.environment = "production"
+            is_production = True
+
         # --- Security configuration & fail-safe defaults ---
         if is_production:
             if is_serverless:
