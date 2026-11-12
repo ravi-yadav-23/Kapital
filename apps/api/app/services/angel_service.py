@@ -241,15 +241,16 @@ class AngelOneSmartApiService:
             logger.error(f"[{client_id}] SmartAPI connection failed: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_rms_limits(self, client_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    async def get_rms_limits(self, client_id: str, api_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Fetches live RMS (Risk Management System) available cash balance and total demat balance.
         Endpoint: /rest/secure/angelbroking/user/v1/getRMS
+        Returns None when the broker could not be reached or refused (never fake zeros).
         """
         session = self.sessions.get(client_id)
         if not session or not session.get("jwtToken"):
-            logger.warning(f"No active session for {client_id}. Return default values.")
-            return {"net": 0.0, "availablecash": 0.0}
+            logger.warning(f"No active session for {client_id}. RMS balances unavailable.")
+            return None
 
         jwt_token = session["jwtToken"]
         key = api_key or session.get("api_key") or ""
@@ -274,10 +275,10 @@ class AngelOneSmartApiService:
                     }
                 else:
                     logger.warning(f"[{client_id}] RMS limit fetch returned: {data.get('message')}")
-                    return {"net": 0.0, "availablecash": 0.0, "available_cash": 0.0}
+                    return None
         except Exception as e:
             logger.error(f"[{client_id}] Failed to fetch RMS limits: {e}")
-            return {"net": 0.0, "availablecash": 0.0, "available_cash": 0.0}
+            return None
 
     # Backward-compatible alias
     get_rms_funds = get_rms_limits

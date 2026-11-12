@@ -3,7 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.account import FamilyAccount
 from app.schemas.account import AccountCreate, AccountUpdate, AccountResponse
+import logging
 import uuid
+
+logger = logging.getLogger("account_service")
 
 # ── Thin in-memory cache (populated from DB on startup, kept for fast reads) ──
 # This is NOT the source of truth — PostgreSQL is. This cache is refreshed
@@ -278,6 +281,10 @@ class AccountService:
             from app.utils.security import decrypt_credential
             real_key = decrypt_credential(acc.angel_api_key)
             rms = await angel_service.get_rms_limits(client_id=client_id, api_key=real_key)
+            if not rms:
+                # Broker unreachable / no session: keep the last known balances, never write zeros.
+                logger.warning(f"[{client_id}] RMS unavailable; keeping stored balances.")
+                return _model_to_response(acc)
             net = float(rms.get("net", 0.0))
             avail = float(rms.get("availablecash") or rms.get("available_cash") or rms.get("available_margin") or 0.0)
 
