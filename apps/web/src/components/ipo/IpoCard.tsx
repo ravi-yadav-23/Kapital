@@ -19,10 +19,11 @@ interface IpoCardProps {
 }
 
 export function IpoCard({ ipo }: IpoCardProps) {
-  const score = ipo.score || 50
-  const isHigh = score >= 70
-  const isMed = score >= 50 && score < 70
-  const rec = getScoreRecommendation(score)
+  const hasScore = ipo.score !== undefined && ipo.score !== null
+  const score = hasScore ? (ipo.score as number) : 0
+  const isHigh = hasScore && score >= 70
+  const isMed = hasScore && score >= 50 && score < 70
+  const rec = getScoreRecommendation(hasScore ? score : undefined)
   const recLabel = getRecommendationLabel(rec)
 
   const barColor = isHigh ? 'bg-accent' : isMed ? 'bg-ink-2' : 'bg-ink-3'
@@ -81,7 +82,7 @@ export function IpoCard({ ipo }: IpoCardProps) {
       {/* 3px Horizontal Score Gauge */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between font-mono text-xs">
-          <span className="text-ink text-sm font-medium">{score}</span>
+          <span className="text-ink text-sm font-medium">{hasScore ? score : "—"}</span>
           <span className="text-ink-3 text-2xs">100</span>
         </div>
         <div className="w-full h-[3px] bg-surface-raised rounded-full overflow-hidden">

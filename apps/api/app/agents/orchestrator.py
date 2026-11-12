@@ -278,6 +278,13 @@ class IpoDueDiligenceOrchestrator:
                 ipo_symbol=ipo.get("symbol"),
                 overall_score=preliminary_score,
                 is_audited=False,
+                audit_state="PRELIMINARY",
+                audit_note=(
+                    "No AI analysis was produced: "
+                    + ("no AI API key is configured." if "api key" in str(audit_reason).lower()
+                       else "the AI call failed or timed out.")
+                    + " Showing the preliminary market-signal view."
+                ),
                 drhp_status=drhp_status,
                 drhp_disclaimer=drhp_disclaimer,
                 missing_fields=missing_fields,
@@ -573,6 +580,11 @@ class IpoDueDiligenceOrchestrator:
             ipo_symbol=ipo.get("symbol"),
             overall_score=overall_score,
             is_audited=has_model_scores,
+            audit_state="AI_COMPLETE" if has_model_scores else "PRELIMINARY",
+            audit_note=(
+                None if has_model_scores
+                else "The AI returned no scores for the assessable areas, so only the preliminary market-signal view is shown."
+            ),
             data_sufficiency=data_sufficiency,
             drhp_status=drhp_status,
             drhp_disclaimer=drhp_disclaimer,

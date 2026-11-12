@@ -420,3 +420,8 @@ Each milestone follows the same rules as the audit: failing test first, small co
 - **Groq API key** -> GitHub secret `GROQ_API_KEY` (and keep the console limits page open while we measure tokens).
 - **Database URL** for the nightly job -> secret `DATABASE_URL` (the Postgres the app uses).
 - Approval for the **data-model changes** (new tables, append-only report versions, removing the cascade that would delete analyses).
+
+
+## 23. Progress log
+- **M1 done (2026-11-13):** single scoring module `app/utils/scoring.py`; "No score yet" instead of placeholder numbers (backend + frontend, removed the UI `|| 50` / `|| 70` defaults and the frontend's own copy of the formula); one `effective_rating` rule (audited report wins; stored stubs are not audits; live GMP cannot overwrite an audited score); list, report and optimizer agree (contract test); `score_history` table (append-only, no cascade) + Alembic migration `d2a91f6c7b10`; report API returns `audit_state` / `audit_note` and the audit toast now reflects what really happened; removed invented P/E 24.0 and hard-coded fake "PASS" gatekeeper texts in the frontend.
+- Next: **M0** (persistent Postgres; needs the database URL) then **M2** (source plug-ins).

@@ -30,7 +30,9 @@ export interface AiReport {
   ipo_name: string
   ipo_symbol: string
   score?: number
-  overall_score?: number
+  overall_score?: number | null   // null = no score yet
+  audit_state?: 'AI_COMPLETE' | 'PRELIMINARY' | 'CACHED' | 'NOT_RUN' | null
+  audit_note?: string | null
   recommendation: ScoreRecommendation
   generated_at?: string
   scored_at?: string

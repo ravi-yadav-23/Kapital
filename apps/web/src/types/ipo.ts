@@ -80,7 +80,7 @@ export interface Ipo {
   risks:       string[]
 
   // AI scoring (populated after scoring pipeline runs)
-  score?:              number               // 0–100
+  score?:              number | null        // 0–100; null/undefined = no score yet (no market data)
   score_breakdown?:    ScoreBreakdown
   recommendation?:     ScoreRecommendation
   red_flags:           RedFlag[]

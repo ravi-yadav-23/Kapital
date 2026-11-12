@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeIpoStatus, getScoreRecommendation } from '../lib/formatters.ts';
+import { computeIpoStatus, getScoreRecommendation, formatScore } from '../lib/formatters.ts';
 
 describe('Kapitl Core Scoring & Verdict Engine', () => {
   // Thresholds must match the backend (orchestrator.get_recommendation): 80 / 62 / 45.
@@ -57,3 +57,14 @@ describe('Kapitl Core Scoring & Verdict Engine', () => {
   });
 });
 
+describe('score display (M1): never invent a number', () => {
+  test('missing score is shown as "No score yet"', () => {
+    assert.strictEqual(formatScore(null), 'No score yet');
+    assert.strictEqual(formatScore(undefined), 'No score yet');
+  });
+
+  test('a real score, including 0, is shown as is', () => {
+    assert.strictEqual(formatScore(56), '56');
+    assert.strictEqual(formatScore(0), '0');
+  });
+});

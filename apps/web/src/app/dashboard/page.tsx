@@ -80,7 +80,7 @@ export default function DashboardPage() {
     attentionItems.push({
       id: `closing-${ipo.id}`,
       status: 'closing_today',
-      sentence: `${ipo.name} closes today at 5:00 PM with GMP ${formatPercent(ipo.gmp_percent)} and AI Score ${ipo.score || 70}/100.`,
+      sentence: `${ipo.name} closes today at 5:00 PM with GMP ${formatPercent(ipo.gmp_percent)}${ipo.score != null ? ` and market score ${ipo.score}/100` : ''}.`,
       dateText: 'Closes today',
       actionLabel: 'Review & bid',
       actionHref: `/ipos/${ipo.id}`,
@@ -111,7 +111,7 @@ export default function DashboardPage() {
       attentionItems.push({
         id: `open-${ipo.id}`,
         status: 'open',
-        sentence: `${ipo.name} open for bidding with GMP ${formatPercent(ipo.gmp_percent)} and AI Score ${ipo.score || 70}/100.`,
+        sentence: `${ipo.name} open for bidding with GMP ${formatPercent(ipo.gmp_percent)}${ipo.score != null ? ` and market score ${ipo.score}/100` : ''}.`,
         dateText: formatRelativeDate(ipo.issue_close_date),
         actionLabel: 'Review & bid',
         actionHref: `/ipos/${ipo.id}`,
@@ -414,7 +414,7 @@ export default function DashboardPage() {
             <tbody>
               {displayIssues.length > 0 ? (
                 displayIssues.map((ipo) => {
-                  const score = ipo.score || 50
+                  const score = ipo.score ?? undefined
                   const status = ipo.computedStatus
                   const avatar = getCompanyAvatarProps(ipo.name)
 
@@ -482,12 +482,12 @@ export default function DashboardPage() {
                       <td>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[13px] text-ink font-medium w-6">
-                            {score}
+                            {score ?? '—'}
                           </span>
                           <div className="w-14 h-[6px] bg-surface-raised rounded-full overflow-hidden border border-line">
                             <div
-                              className={`h-full ${getScoreBarColor(score)} transition-all`}
-                              style={{ width: `${score}%` }}
+                              className={`h-full ${getScoreBarColor(score ?? 0)} transition-all`}
+                              style={{ width: `${score ?? 0}%` }}
                             />
                           </div>
                         </div>

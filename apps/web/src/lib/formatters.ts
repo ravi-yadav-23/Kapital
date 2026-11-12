@@ -385,3 +385,9 @@ export function maskPrivacyName(name: string, relation?: string, isPrivacyActive
   return relation ? `${initials} (${relation})` : initials
 }
 
+
+
+/** Display text for a score: the number, or an honest "No score yet". Never a made-up default. */
+export function formatScore(score?: number | null): string {
+  return score === undefined || score === null ? 'No score yet' : String(score)
+}
