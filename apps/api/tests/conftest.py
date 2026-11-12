@@ -57,6 +57,19 @@ async def override_get_db(test_engine):
     app.dependency_overrides.pop(get_db, None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The in-memory rate limiter is process-wide; clear it so test volume never causes 429s."""
+    from app.middleware.rate_limit import RateLimitMiddleware
+    node = getattr(app, "middleware_stack", None)
+    while node is not None:
+        if isinstance(node, RateLimitMiddleware):
+            node.client_records.clear()
+            break
+        node = getattr(node, "app", None)
+    yield
+
+
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
