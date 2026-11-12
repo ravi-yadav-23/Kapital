@@ -19,16 +19,16 @@ async def acquire_job_lock(job_name: str, timeout_seconds: int = 120) -> bool:
     Falls back to single-process in-memory lock if Redis is unreachable.
     """
     lock_key = f"kapitl:scheduler:lock:{job_name}"
-    redis_url = getattr(settings, "REDIS_URL", None)
+    redis_url = getattr(settings, "redis_url", None)
     if redis_url:
         try:
             import redis.asyncio as aioredis
-            r = aioredis.from_url(redis_url, decode_responses=True)
+            r = aioredis.from_url(redis_url, decode_responses=True, socket_connect_timeout=3.0, socket_timeout=3.0)
             acquired = await r.set(lock_key, "locked", nx=True, ex=timeout_seconds)
             await r.aclose()
             return bool(acquired)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Redis job lock unavailable ({exc}); using per-process lock for '{job_name}'.")
 
     now = time.time()
     last_run = _in_memory_job_locks.get(job_name, 0)

@@ -21,6 +21,11 @@ async def staged(test_engine, monkeypatch):
     monkeypatch.setattr("app.db.database.AsyncSessionLocal", maker)
     monkeypatch.setattr(scheduler, "_in_memory_job_locks", {})
     monkeypatch.setattr(angel_service, "sessions", {})
+
+    def _no_redis(*a, **k):
+        raise ConnectionError("redis disabled in unit test")
+
+    monkeypatch.setattr("redis.asyncio.from_url", _no_redis)
     async with maker() as s:
         s.add(FamilyAccount(id="rec-acc", name="Rec", relation="Self", angel_client_id="RECCLIENT1"))
         s.add(Ipo(id="rec-ipo", symbol="RECO", name="Reco Ltd", slug="reco", type="EQ", status="listed",
