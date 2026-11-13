@@ -1,5 +1,6 @@
 'use client'
 
+import { ListingGainPanel } from '@/components/reports/ListingGainPanel'
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -675,6 +676,9 @@ export default function ReportsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Listing-gain analysis: signals + reasons, Apply/Avoid badge in the corner */}
+                <ListingGainPanel ipoId={currentIpo.id} />
 
                 {/* Verdict & 6px Score Bar */}
                 <div className="p-4 rounded-sm bg-surface-raised border border-line space-y-3">

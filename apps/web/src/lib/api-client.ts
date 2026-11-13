@@ -22,6 +22,8 @@ import {
   MOCK_APP_SETTINGS,
 } from './mock-data'
 import { mockAllowed, listOrMock, requireMutationOk } from './data-policy'
+import type { Analysis, AuditResponse } from './analysis-view'
+import { auditErrorMessage } from './analysis-view'
 
 function getApiBaseUrl(): string {
   // 1. Runtime service binding injected by Vercel for server functions
@@ -821,6 +823,25 @@ export const apiClient = {
       rep = await fetchRep(symbol)
     }
     return rep || mockRep
+  },
+
+  // ── Listing-gain analysis (precomputed nightly; "Run audit" only queues, it never calls a model) ──
+  async getAnalysis(ipoId: string): Promise<Analysis | null> {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/analysis/${encodeURIComponent(ipoId)}`)
+      if (res.ok) return (await res.json()) as Analysis
+    } catch {}
+    return null
+  },
+
+  async requestAudit(ipoId: string): Promise<AuditResponse> {
+    const res = await authFetch(`${API_BASE_URL}/analysis/${encodeURIComponent(ipoId)}/request`, { method: 'POST' })
+    if (res.ok) return (await res.json()) as AuditResponse
+    let detail: string | undefined
+    try {
+      detail = (await res.json())?.detail
+    } catch {}
+    throw new Error(auditErrorMessage(res.status, detail))
   },
 
   async generateReport(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport> {

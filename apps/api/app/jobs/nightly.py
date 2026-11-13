@@ -18,6 +18,8 @@ from app.documents.extract import chunk_pages, pdf_to_pages
 from app.documents.facts import company_score_from_facts, merge_facts
 from app.documents.store import analyse_pending_chunks, store_document
 from app.models.analysis import AnalysisChunk, AnalysisResult, AnalysisVersion
+from app.models.audit_queue import AuditRequest
+from app.models.base import get_utc_now
 from app.models.ipo import Ipo
 from app.utils.listing_gain import listing_gain_engine
 from app.utils.red_flags import detect_red_flags
@@ -28,13 +30,22 @@ OPEN_STATUSES = ("open", "closing_today")
 
 
 async def _candidates(db: AsyncSession, max_ipos: int) -> List[Ipo]:
+    requested = (await db.execute(
+        select(Ipo).join(AuditRequest, AuditRequest.ipo_id == Ipo.id)
+        .where(AuditRequest.status == "queued").order_by(AuditRequest.created_at.asc())
+    )).scalars().all()
     open_ = (await db.execute(
         select(Ipo).where(Ipo.status.in_(OPEN_STATUSES)).order_by(Ipo.issue_close_date.asc())
     )).scalars().all()
     upcoming = (await db.execute(
         select(Ipo).where(Ipo.status == "upcoming").order_by(Ipo.issue_open_date.asc())
     )).scalars().all()
-    return (list(open_) + list(upcoming))[:max_ipos]
+    ordered, seen = [], set()
+    for ipo in list(requested) + list(open_) + list(upcoming):  # guest-requested audits jump the queue
+        if ipo.id not in seen:
+            seen.add(ipo.id)
+            ordered.append(ipo)
+    return ordered[:max_ipos]
 
 
 async def _latest_version(db: AsyncSession, ipo_id: str, kind: Optional[str] = None) -> Optional[AnalysisVersion]:
@@ -73,6 +84,15 @@ async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> boo
                           red_flags=flags, facts=facts, inputs=inputs))
     await db.commit()
     return True
+
+
+async def _complete_requests(db: AsyncSession, ipo_id: str) -> None:
+    rows = (await db.execute(select(AuditRequest).where(
+        AuditRequest.ipo_id == ipo_id, AuditRequest.status == "queued"))).scalars().all()
+    for r in rows:
+        r.status, r.completed_at = "done", get_utc_now()
+    if rows:
+        await db.commit()
 
 
 def _choose(ipo: Ipo):
@@ -130,6 +150,7 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
                 continue
         if await _write_result(db, ipo, ver):
             summary["analysed"] += 1
+            await _complete_requests(db, ipo.id)
         else:
             summary["incomplete"] += 1
     return summary
