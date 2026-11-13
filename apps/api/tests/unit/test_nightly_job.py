@@ -88,7 +88,7 @@ class Recorder:
 @pytest.mark.asyncio
 async def test_open_ipos_are_analysed_before_upcoming_and_results_are_stored(db):
     db.add_all([
-        _ipo("NGT1", "upcoming", issue_open_date=date.today() + timedelta(days=5), drhp_url="https://www.sebi.gov.in/a.pdf"),
+        _ipo("NGT1", "upcoming", issue_open_date=date.today() + timedelta(days=5), issue_close_date=date.today() + timedelta(days=7), drhp_url="https://www.sebi.gov.in/a.pdf"),
         _ipo("NGT2", "open", rhp_url="https://www.sebi.gov.in/b.pdf"),
     ])
     await db.commit()

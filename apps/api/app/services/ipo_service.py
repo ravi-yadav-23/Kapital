@@ -38,6 +38,26 @@ def effective_rating(ipo, report=None):
     return score, recommendation_for(score), False
 
 
+async def refresh_statuses(db: AsyncSession) -> int:
+    """Recompute every IPO's status from its dates. Returns how many rows changed.
+
+    Statuses are written when a source reports an IPO; an IPO a source stopped listing kept its old status
+    forever (found live: nine rows still 'open' that closed in September). Rows without both dates are left alone.
+    """
+    changed = 0
+    rows = (await db.execute(select(Ipo).where(Ipo.issue_open_date.isnot(None), Ipo.issue_close_date.isnot(None)))).scalars().all()
+    for ipo in rows:
+        correct = compute_ipo_status(ipo.issue_open_date, ipo.issue_close_date)
+        if ipo.allotment_date and date.today() >= ipo.allotment_date:
+            correct = "closed"
+        if ipo.status != correct:
+            ipo.status = correct
+            changed += 1
+    if changed:
+        await db.commit()
+    return changed
+
+
 def _apply_document_url(ipo, ipo_dict, status) -> None:
     """Keep the offer-document link a feed supplies: a draft (DRHP) before the issue, the RHP once it opens."""
     url = ipo_dict.get("prospectus_url") or ipo_dict.get("document_url")

@@ -150,7 +150,8 @@ export const DOC_PAGES: DocPage[] = [
         ['Groww', 'Open, upcoming and closed IPOs, lot sizes, SEBI filing link, listing results', 'Read from the page’s embedded data.'],
         ['IPO Watch', 'Dates, price band, grey-market premium', 'Read from the JSON the site itself loads.'],
         ['ipoalerts', 'Open IPOs and NSE subscription', 'Free plan: open IPOs only, one per request, 25 requests a day. The app uses at most 20.'],
-        ['SEBI, NSE, BSE', 'Offer documents (DRHP / RHP)', 'Only these hosts, over https, are ever downloaded.'],
+        ['SEBI, NSE, BSE', 'Offer documents (DRHP / RHP)', 'Regulator and exchange hosts, over https.'],
+        ['Issuer websites', 'The company’s own RHP PDF, found through Groww’s IPO page', 'Used only when there is no SEBI link. https only; the host must resolve to public addresses and the size is capped.'],
       ] },
       { type: 'h2', text: 'When a source fails' },
       { type: 'ul', items: [
@@ -168,7 +169,7 @@ export const DOC_PAGES: DocPage[] = [
     title: 'The nightly run and Run audit',
     description: 'When analysis happens, and what the Run audit button does.',
     blocks: [
-      { type: 'p', text: 'A scheduled GitHub Actions job runs at about 02:00 IST. It refreshes the sources and then analyses offer documents with the free Groq tier. Open IPOs come first, then upcoming ones.' },
+      { type: 'p', text: 'A scheduled GitHub Actions job runs at about 02:00 IST. It refreshes the sources and then analyses offer documents with the free Groq tier. Open IPOs come first, then upcoming ones. Within a long document the most relevant parts (financial statements, promoter holding, litigation) are read first, and reading stops once the core numbers are known.' },
       { type: 'ul', items: [
         'A limited number of document chunks is analysed each night. Every finished chunk is saved immediately.',
         'If the model provider asks us to slow down, the run stops cleanly and continues the next night from where it stopped.',

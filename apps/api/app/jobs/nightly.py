@@ -17,6 +17,7 @@ from app.documents.errors import DocumentError
 from app.documents.extract import chunk_pages, pdf_to_pages
 from app.documents.facts import company_score_from_facts, facts_sufficient, merge_facts
 from app.documents.store import analyse_pending_chunks, store_document
+from app.services.ipo_service import _apply_document_url, refresh_statuses
 from app.models.analysis import AnalysisChunk, AnalysisResult, AnalysisVersion
 from app.models.audit_queue import AuditRequest
 from app.models.base import get_utc_now
@@ -28,6 +29,7 @@ logger = logging.getLogger("job.nightly")
 
 OPEN_STATUSES = ("open", "closing_today")
 MIN_CHUNKS_FOR_RESULT = 12   # read at least this many chunks (most relevant first) before an early result
+MAX_DISCOVERY = 10           # document-link look-ups per night
 BATCH = 4                    # analyse this many chunks, then check whether the core facts are already known
 
 
@@ -121,13 +123,31 @@ def _choose(ipo: Ipo):
 async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[Dict[str, Any]]],
                       fetcher: Optional[Callable[[str], Awaitable[bytes]]] = None, max_chunks: int = 60,
                       max_ipos: int = 15, chunk_chars: int = 6000, chunk_overlap: int = 300,
-                      model: Optional[str] = None) -> Dict[str, Any]:
+                      model: Optional[str] = None,
+                      link_finder: Optional[Callable[[Ipo], Awaitable[Optional[str]]]] = None) -> Dict[str, Any]:
     if fetcher is None:
-        from app.documents.fetch import fetch_document as fetcher  # type: ignore[assignment]
+        from app.documents.fetch import fetch_document
+
+        async def fetcher(url):  # issuer-hosted PDFs are allowed, behind the public-address checks
+            return await fetch_document(url, public_ok=True)
+    discovered = 0
+    summary_statuses = await refresh_statuses(db)  # stale 'open'/'upcoming' rows must not be analysed first
     summary: Dict[str, Any] = {"analysed": 0, "skipped_no_document": 0, "document_errors": 0,
                                "incomplete": 0, "deferred": 0, "rate_limited": False, "chunks_used": 0, "details": []}
+    summary["statuses_fixed"] = summary_statuses
     for ipo in await _candidates(db, max_ipos):
         kind, url = _choose(ipo)
+        if url is None and link_finder is not None and discovered < MAX_DISCOVERY:
+            discovered += 1
+            found = await link_finder(ipo)
+            if found:
+                if "drhp" in found.lower():       # the link is the draft, whatever the issue's status
+                    if not ipo.drhp_url:
+                        ipo.drhp_url = found
+                else:
+                    _apply_document_url(ipo, {"document_url": found}, ipo.status)
+                await db.commit()
+                kind, url = _choose(ipo)
         ver = await _latest_version(db, ipo.id, kind) if kind else await _latest_version(db, ipo.id)
         try:
             if ver is None:
@@ -178,6 +198,16 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
     return summary
 
 
+async def _link_finder(ipo: Ipo) -> Optional[str]:
+    """IPO Watch pages (slug ends with -ipo-details) link the NSE filing; otherwise try Groww's IPO page."""
+    from app.sources import groww, ipowatch
+    if (ipo.slug or "").endswith("-ipo-details"):
+        found = await ipowatch.fetch_document_link(ipo.slug)
+        if found:
+            return found
+    return await groww.fetch_document_link(ipo.slug)
+
+
 def _env_int(name: str, default: int) -> int:
     """Optional override from the environment (e.g. NIGHTLY_MAX_CHUNKS=6 for a small manual run)."""
     import os
@@ -206,7 +236,7 @@ async def main() -> int:
             print(f"source sync failed: {type(exc).__name__}: {str(exc)[:200]}")
         extractor = make_groq_extractor(settings.groq_api_key, settings.default_ai_model)
         summary = await run_nightly(
-            db, extractor=extractor, model=settings.default_ai_model,
+            db, extractor=extractor, model=settings.default_ai_model, link_finder=_link_finder,
             max_chunks=_env_int("NIGHTLY_MAX_CHUNKS", 60), max_ipos=_env_int("NIGHTLY_MAX_IPOS", 15))
     for k, v in summary.items():
         if k != "details":

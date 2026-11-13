@@ -147,7 +147,7 @@ async def test_request_never_calls_an_llm(db):
 @pytest.mark.asyncio
 async def test_nightly_job_serves_requested_ipos_first_and_marks_them_done(db):
     db.add_all([_ipo("AQN1", issue_close_date=date.today() + timedelta(days=1), rhp_url="https://www.sebi.gov.in/a.pdf"),
-                _ipo("AQN2", "upcoming", issue_open_date=date.today() + timedelta(days=9), drhp_url="https://www.sebi.gov.in/b.pdf")])
+                _ipo("AQN2", "upcoming", issue_open_date=date.today() + timedelta(days=9), issue_close_date=date.today() + timedelta(days=11), drhp_url="https://www.sebi.gov.in/b.pdf")])
     await db.commit()
     async with _client() as c:
         assert (await c.post("/api/analysis/id-AQN2/request")).json()["state"] == "queued"

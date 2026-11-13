@@ -144,3 +144,31 @@ class IpoWatchSource(Source):
         if not records and problems and "unexpected response" in problems[0]:
             return SourceResult(error=problems[0], requests_used=1)
         return SourceResult(records=records, requests_used=1, warnings=problems)
+
+
+def parse_ipowatch_detail(html: str) -> Optional[str]:
+    """The offer-document PDF an IPO Watch IPO page links to, only on regulator/exchange hosts.
+    The final RHP is preferred over the draft (DRHP) when both are linked."""
+    from bs4 import BeautifulSoup
+    from app.documents.fetch import is_allowed_url
+    links = [a.get("href") for a in BeautifulSoup(html or "", "html.parser").find_all("a") if a.get("href")]
+    pdfs = [u for u in links if ".pdf" in u.lower() and is_allowed_url(u)]
+    final = [u for u in pdfs if "rhp" in u.lower() and "drhp" not in u.lower()]
+    return (final or pdfs or [None])[0]
+
+
+async def fetch_document_link(slug: str, client: Optional[httpx.AsyncClient] = None) -> Optional[str]:
+    """Look up an IPO's offer-document link on its IPO Watch page. Any problem means 'not found'."""
+    if not re.fullmatch(r"[a-z0-9-]{3,120}", slug or ""):
+        return None
+    own = client is None
+    client = client or httpx.AsyncClient(follow_redirects=True, timeout=20.0, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"})
+    try:
+        resp = await client.get(f"https://ipowatch.in/ipo/{slug}")
+        return parse_ipowatch_detail(resp.text) if resp.status_code == 200 else None
+    except httpx.HTTPError:
+        return None
+    finally:
+        if own:
+            await client.aclose()
