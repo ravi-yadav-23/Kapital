@@ -17,6 +17,7 @@ import logging
 from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone, date as DateType
 
+from app.utils.allotment_odds import expected_value_per_rupee
 from app.schemas.fund import AllocationPlanResponse, AllocationEntrySchema, UpcomingConflictSchema, SkippedIpoSchema, UPI_IPO_LIMIT  # noqa: F401
 
 logger = logging.getLogger("optimizer_service")
@@ -339,15 +340,12 @@ class AllocationOptimizer:
                 i_id = ipo["id"]
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(ipo)
                 score = ipo.get("score", 50) or 50
-                # Cap GMP at 80% to guard objective function against grey-market pump manipulation
-                gmp_pct = min(float(ipo.get("gmp_percent", 15.0) or 15.0), 80.0)
-
-                # Weight = expected capital gain (amount × gmp%) × score confidence
-                retail_weight = (min_inv * (gmp_pct / 100.0) * (score / 100.0)) * 0.35
-                shni_capital = shni_lots * lot_cost
-                shni_weight = (shni_capital * (gmp_pct / 100.0) * (score / 100.0)) * 0.25
-                bhni_capital = bhni_lots * lot_cost
-                bhni_weight = (bhni_capital * (gmp_pct / 100.0) * (score / 100.0)) * 0.40
+                # Expected value = P(allotment in that category) x expected listing gain (GMP capped at 80%),
+                # so a hot but heavily oversubscribed issue no longer beats a modest one you will actually get.
+                confidence = score / 100.0
+                retail_weight = min_inv * expected_value_per_rupee("RETAIL", ipo) * confidence
+                shni_weight = shni_lots * lot_cost * expected_value_per_rupee("sHNI", ipo) * confidence
+                bhni_weight = bhni_lots * lot_cost * expected_value_per_rupee("bHNI", ipo) * confidence
 
                 objective_terms.append(retail_weight * decision_vars[(a_id, i_id, "RETAIL")])
                 objective_terms.append(shni_weight * decision_vars[(a_id, i_id, "sHNI")])
