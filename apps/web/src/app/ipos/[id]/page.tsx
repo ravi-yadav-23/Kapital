@@ -12,6 +12,8 @@ import { ApplyModal } from '@/components/ipo/ApplyModal'
 import {
   formatDate,
   formatINR,
+  formatPriceBand,
+  formatKnownAmount,
   formatPercent,
   computeIpoStatus,
   getCompanyAvatarProps,
@@ -365,19 +367,19 @@ export default function IpoDetailPage() {
                 <div className="flex justify-between py-1.5">
                   <span className="text-[var(--ink-3)]">Price Band</span>
                   <span className="font-mono text-[var(--ink-1)] tabular-nums">
-                    ₹{ipo.price_band_min} – ₹{ipo.price_band_max}
+                    {formatPriceBand(ipo.price_band_min, ipo.price_band_max)}
                   </span>
                 </div>
 
                 <div className="flex justify-between py-1.5">
                   <span className="text-[var(--ink-3)]">Lot Size</span>
-                  <span className="font-mono text-[var(--ink-1)] tabular-nums">{ipo.lot_size} shares</span>
+                  <span className="font-mono text-[var(--ink-1)] tabular-nums">{ipo.lot_size && ipo.lot_size > 0 ? `${ipo.lot_size} shares` : 'TBA'}</span>
                 </div>
 
                 <div className="flex justify-between py-1.5">
                   <span className="text-[var(--ink-3)]">Min Retail Investment</span>
                   <span className="font-mono text-[var(--ink-1)] font-medium tabular-nums">
-                    {formatINR(ipo.min_investment)}
+                    {formatKnownAmount(ipo.min_investment, formatINR)}
                   </span>
                 </div>
 

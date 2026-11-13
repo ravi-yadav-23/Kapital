@@ -38,6 +38,16 @@ def effective_rating(ipo, report=None):
     return score, recommendation_for(score), False
 
 
+def _apply_document_url(ipo, ipo_dict, status) -> None:
+    """Keep the offer-document link a feed supplies: a draft (DRHP) before the issue, the RHP once it opens."""
+    url = ipo_dict.get("prospectus_url") or ipo_dict.get("document_url")
+    if not url:
+        return
+    target = "rhp_url" if status in ("open", "closing_today", "closed") else "drhp_url"
+    if not getattr(ipo, target):
+        setattr(ipo, target, url)
+
+
 def _momentum_reason(ipo) -> str:
     parts = []
     if gmp_known(ipo.gmp_percent):
@@ -256,15 +266,6 @@ class IpoService:
         result = await db.execute(stmt)
         ipos = result.scalars().all()
 
-        if not ipos:
-            from sqlalchemy import func
-            total_ipos = await db.scalar(select(func.count(Ipo.id)))
-            if not total_ipos:
-                from app.tasks.ipo_tasks import sync_ipos_pipeline
-                await sync_ipos_pipeline(db)
-                result = await db.execute(stmt)
-                ipos = result.scalars().all()
-
         responses = [_model_to_response(i) for i in ipos]
         if status and status != "all":
             responses = [r for r in responses if r.status == status]
@@ -294,15 +295,6 @@ class IpoService:
                 ipo = res_alias.scalars().first()
             except Exception:
                 pass
-
-        if not ipo:
-            from sqlalchemy import func
-            total_ipos = await db.scalar(select(func.count(Ipo.id)))
-            if not total_ipos:
-                from app.tasks.ipo_tasks import sync_ipos_pipeline
-                await sync_ipos_pipeline(db)
-                result = await db.execute(stmt)
-                ipo = result.scalar_one_or_none()
 
         return _model_to_response(ipo) if ipo else None
 
@@ -487,6 +479,8 @@ class IpoService:
             if ipo_dict.get("gmp_percent") is not None and float(ipo_dict.get("gmp_percent")) > 0:
                 existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
 
+            _apply_document_url(existing, ipo_dict, computed_status)
+
             # Single rule for the stored score/verdict (+ history row when it changes). An audited
             # report keeps its score; live GMP can no longer overwrite it.
             await refresh_stored_score(db, existing)
@@ -568,6 +562,7 @@ class IpoService:
         )
         db.add(ipo_obj)
         await db.flush()
+        _apply_document_url(ipo_obj, ipo_dict, computed_status)
         await refresh_stored_score(db, ipo_obj)  # feed-supplied scores are ignored: one formula only
 
         # Register primary alias in Tier 2

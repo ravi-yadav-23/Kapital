@@ -1,0 +1,48 @@
+{
+ "status": 1,
+ "data": [
+  {
+   "id": 9001,
+   "slug": "synthetic-open-industries-ipo-details",
+   "name": "Synthetic Open Industries",
+   "abbr": "SYNOPEN",
+   "type": "Mainboard",
+   "issueStatus": "Open",
+   "sector": "Test",
+   "issuePrice": 0.0,
+   "estPrice": 287.3,
+   "premiumPct": 30.0,
+   "priceBand": "₹210 - ₹221",
+   "lotSize": "67 shares",
+   "issueSize": 450.0,
+   "openDate": "13 Nov 2026",
+   "closeDate": "17 Nov 2026",
+   "allotmentDate": "18 Nov 2026",
+   "listingDate": "20 Nov 2026",
+   "dates": "13 Nov 2026 – 17 Nov 2026",
+   "gmp": 66.3,
+   "gmpGL": "gain",
+   "minLots": 1,
+   "gmpDisplay": "₹66.30",
+   "subscription": 3.4,
+   "subDisplay": "3.40x"
+  },
+  {
+   "id": 9002,
+   "slug": "synthetic-sme-ipo-details",
+   "name": "Synthetic SME Ltd",
+   "type": "SME",
+   "issueStatus": "Open",
+   "priceBand": "₹94",
+   "lotSize": "1200 shares",
+   "minLots": 2,
+   "issueSize": 30.0,
+   "openDate": "13 Nov 2026",
+   "closeDate": "17 Nov 2026",
+   "listingDate": "20 Nov 2026",
+   "gmp": -4,
+   "premiumPct": -4.26,
+   "subscription": 0
+  }
+ ]
+}

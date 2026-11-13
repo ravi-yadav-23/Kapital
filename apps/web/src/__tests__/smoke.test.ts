@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeIpoStatus, getScoreRecommendation, formatScore } from '../lib/formatters.ts';
+import { computeIpoStatus, getScoreRecommendation, formatScore, formatPriceBand, hasKnownTerms, formatKnownAmount } from '../lib/formatters.ts';
 
 describe('Kapitl Core Scoring & Verdict Engine', () => {
   // Thresholds must match the backend (orchestrator.get_recommendation): 80 / 62 / 45.
@@ -66,5 +66,29 @@ describe('score display (M1): never invent a number', () => {
   test('a real score, including 0, is shown as is', () => {
     assert.strictEqual(formatScore(56), '56');
     assert.strictEqual(formatScore(0), '0');
+  });
+});
+
+describe('unknown IPO terms (M2b): TBA, never a made-up number', () => {
+  test('price band is TBA until published', () => {
+    assert.strictEqual(formatPriceBand(0, 0), 'TBA');
+    assert.strictEqual(formatPriceBand(undefined, null), 'TBA');
+  });
+
+  test('known price band formats as a single price or a range', () => {
+    assert.strictEqual(formatPriceBand(94, 94), '₹94');
+    assert.strictEqual(formatPriceBand(210, 221), '₹210 - ₹221');
+    assert.strictEqual(formatPriceBand(0, 221), '₹221');
+  });
+
+  test('a bid needs both a price and a lot size', () => {
+    assert.strictEqual(hasKnownTerms({ price_band_max: 221, lot_size: 67 }), true);
+    assert.strictEqual(hasKnownTerms({ price_band_max: 0, lot_size: 67 }), false);
+    assert.strictEqual(hasKnownTerms({ price_band_max: 221, lot_size: 0 }), false);
+  });
+
+  test('unknown amounts are TBA', () => {
+    assert.strictEqual(formatKnownAmount(0, (v) => `Rs${v}`), 'TBA');
+    assert.strictEqual(formatKnownAmount(14807, (v) => `Rs${v}`), 'Rs14807');
   });
 });

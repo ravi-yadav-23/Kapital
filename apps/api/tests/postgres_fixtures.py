@@ -28,10 +28,13 @@ def server_url():
         )
         yield _sync(url)
         return
+    if not os.environ.get("USE_PGSERVER"):
+        pytest.skip("Postgres tests are opt-in locally: set USE_PGSERVER=1 (embedded pgserver) "
+                    "or MIGRATION_TEST_DATABASE_URL (CI provides one)")
     try:
         import pgserver
     except ImportError:
-        pytest.skip("no PostgreSQL available (set MIGRATION_TEST_DATABASE_URL or pip install pgserver)")
+        pytest.skip("pip install pgserver (see requirements-dev.txt) to run the Postgres tests locally")
     with tempfile.TemporaryDirectory(prefix="kapitl_pg_") as d:
         srv = pgserver.get_server(Path(d))
         try:
