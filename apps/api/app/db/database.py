@@ -24,7 +24,11 @@ def _build_engine(url: str):
                 url,
                 echo=False,
                 pool_pre_ping=True,
-                connect_args={"statement_cache_size": 0, "command_timeout": 15.0, "timeout": 15.0},
+                # Serverless requests must fail fast; the nightly job runs many statements over a remote
+                # pooler and a 15 s limit made single slow statements fail (seen live), so it gets more time.
+                connect_args={"statement_cache_size": 0,
+                              "command_timeout": 15.0 if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else 60.0,
+                              "timeout": 15.0},
             )
         elif url.startswith("sqlite"):
             if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):

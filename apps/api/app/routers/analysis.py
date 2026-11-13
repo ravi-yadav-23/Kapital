@@ -85,6 +85,19 @@ async def _take_click(db: AsyncSession, cap: int) -> bool:
     return bool(res.rowcount)
 
 
+@router.get("")
+async def list_analysis_summaries(db: AsyncSession = Depends(get_db)):
+    """Latest badge and score per analysed IPO (one row each), for list views."""
+    rows = (await db.execute(
+        select(AnalysisResult).order_by(AnalysisResult.created_at.desc(), AnalysisResult.id.desc())
+    )).scalars().all()
+    latest: Dict[str, AnalysisResult] = {}
+    for r in rows:
+        latest.setdefault(r.ipo_id, r)
+    return [{"ipo_id": r.ipo_id, "badge": badge_for(r.verdict), "score": r.score, "confidence": r.confidence,
+             "as_of": r.created_at.isoformat() if r.created_at else None} for r in latest.values()]
+
+
 @router.get("/{ipo_id}")
 async def get_analysis(ipo_id: str, db: AsyncSession = Depends(get_db)):
     ipo = await _find_ipo(db, ipo_id)

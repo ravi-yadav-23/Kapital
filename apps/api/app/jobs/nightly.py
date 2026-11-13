@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.documents.errors import DocumentError
 from app.documents.extract import chunk_pages, pdf_to_pages
-from app.documents.facts import company_score_from_facts, merge_facts
+from app.documents.facts import company_score_from_facts, facts_sufficient, merge_facts
 from app.documents.store import analyse_pending_chunks, store_document
 from app.models.analysis import AnalysisChunk, AnalysisResult, AnalysisVersion
 from app.models.audit_queue import AuditRequest
@@ -27,6 +27,8 @@ from app.utils.red_flags import detect_red_flags
 logger = logging.getLogger("job.nightly")
 
 OPEN_STATUSES = ("open", "closing_today")
+MIN_CHUNKS_FOR_RESULT = 12   # read at least this many chunks (most relevant first) before an early result
+BATCH = 4                    # analyse this many chunks, then check whether the core facts are already known
 
 
 async def _candidates(db: AsyncSession, max_ipos: int) -> List[Ipo]:
@@ -58,6 +60,18 @@ async def _latest_version(db: AsyncSession, ipo_id: str, kind: Optional[str] = N
 async def _pending(db: AsyncSession, version_id: str) -> int:
     return int((await db.execute(select(func.count()).select_from(AnalysisChunk).where(
         AnalysisChunk.version_id == version_id, AnalysisChunk.status == "pending"))).scalar_one())
+
+
+async def _done_state(db: AsyncSession, version_id: str):
+    """(merged facts so far, chunks done, chunks pending)."""
+    rows = (await db.execute(select(AnalysisChunk).where(AnalysisChunk.version_id == version_id))).scalars().all()
+    done = [r for r in rows if r.status == "done"]
+    pending = sum(1 for r in rows if r.status == "pending")
+    return merge_facts([r.facts or {} for r in done]), len(done), pending
+
+
+def _enough(facts, done: int, pending: int) -> bool:
+    return pending == 0 or (facts_sufficient(facts) and done >= min(MIN_CHUNKS_FOR_RESULT, done + pending))
 
 
 async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> bool:
@@ -134,26 +148,44 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             summary["details"].append(f"{ipo.symbol}: {exc}")
             continue
 
-        if await _pending(db, ver.id):
+        facts, done, pending = await _done_state(db, ver.id)
+        rate_limited = False
+        while not _enough(facts, done, pending):
             budget = max_chunks - summary["chunks_used"]
             if budget <= 0:
-                summary["deferred"] += 1
-                continue
-            res = await analyse_pending_chunks(db, ver.id, extractor, max_chunks=budget)
+                break
+            step = BATCH if done >= MIN_CHUNKS_FOR_RESULT else max(1, min(BATCH, MIN_CHUNKS_FOR_RESULT - done))
+            res = await analyse_pending_chunks(db, ver.id, extractor, max_chunks=min(step, budget))
             summary["chunks_used"] += res["done"] + res["failed"]
             if res.get("rate_limited"):
-                summary["rate_limited"] = True
-                summary["details"].append(f"{ipo.symbol}: provider rate limit reached; will resume next run")
+                rate_limited = True
                 break
-            if res["remaining"]:
-                summary["incomplete"] += 1
-                continue
+            if res["done"] + res["failed"] == 0:
+                break
+            facts, done, pending = await _done_state(db, ver.id)
+        if rate_limited:
+            summary["rate_limited"] = True
+            summary["details"].append(f"{ipo.symbol}: provider rate limit reached; will resume next run")
+            break
+        if not _enough(facts, done, pending):
+            summary["deferred" if summary["chunks_used"] >= max_chunks else "incomplete"] += 1
+            continue
         if await _write_result(db, ipo, ver):
             summary["analysed"] += 1
             await _complete_requests(db, ipo.id)
         else:
             summary["incomplete"] += 1
     return summary
+
+
+def _env_int(name: str, default: int) -> int:
+    """Optional override from the environment (e.g. NIGHTLY_MAX_CHUNKS=6 for a small manual run)."""
+    import os
+    try:
+        value = int(os.environ.get(name, ""))
+        return value if value > 0 else default
+    except ValueError:
+        return default
 
 
 async def main() -> int:
@@ -166,11 +198,16 @@ async def main() -> int:
         print("GROQ_API_KEY is not set; nothing to do")
         return 2
     async with AsyncSessionLocal() as db:
-        reports = await run_sources(db)
-        for r in reports:
-            print(f"source {r.name}: {r.status} ({r.upserted}/{r.records} stored)")
+        try:
+            for r in await run_sources(db):
+                print(f"source {r.name}: {r.status} ({r.upserted}/{r.records} stored)")
+        except Exception as exc:  # documents can still be analysed from what is already stored
+            await db.rollback()
+            print(f"source sync failed: {type(exc).__name__}: {str(exc)[:200]}")
         extractor = make_groq_extractor(settings.groq_api_key, settings.default_ai_model)
-        summary = await run_nightly(db, extractor=extractor, model=settings.default_ai_model)
+        summary = await run_nightly(
+            db, extractor=extractor, model=settings.default_ai_model,
+            max_chunks=_env_int("NIGHTLY_MAX_CHUNKS", 60), max_ipos=_env_int("NIGHTLY_MAX_IPOS", 15))
     for k, v in summary.items():
         if k != "details":
             print(f"{k}: {v}")

@@ -22,7 +22,7 @@ import {
   MOCK_APP_SETTINGS,
 } from './mock-data'
 import { mockAllowed, listOrMock, requireMutationOk } from './data-policy'
-import type { Analysis, AuditResponse } from './analysis-view'
+import type { Analysis, AnalysisBadge, AuditResponse } from './analysis-view'
 import { auditErrorMessage } from './analysis-view'
 
 function getApiBaseUrl(): string {
@@ -832,6 +832,17 @@ export const apiClient = {
       if (res.ok) return (await res.json()) as Analysis
     } catch {}
     return null
+  },
+
+  async getAnalysisSummaries(): Promise<Record<string, { badge: AnalysisBadge; score: number | null }>> {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/analysis`)
+      if (res.ok) {
+        const rows = (await res.json()) as { ipo_id: string; badge: AnalysisBadge; score: number | null }[]
+        return Object.fromEntries(rows.map((r) => [r.ipo_id, { badge: r.badge, score: r.score }]))
+      }
+    } catch {}
+    return {}
   },
 
   async requestAudit(ipoId: string): Promise<AuditResponse> {

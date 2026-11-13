@@ -15,12 +15,16 @@ import {
   getRecommendationLabel,
 } from '@/lib/formatters'
 import { ArrowRight } from 'lucide-react'
+import { AnalysisBadge, badgeStyle } from '@/lib/analysis-view'
 
 interface IpoCardProps {
   ipo: Ipo
+  /** Listing-gain verdict from the nightly analysis, shown as a small corner badge. */
+  analysisBadge?: AnalysisBadge
 }
 
-export function IpoCard({ ipo }: IpoCardProps) {
+export function IpoCard({ ipo, analysisBadge }: IpoCardProps) {
+  const badge = badgeStyle(analysisBadge)
   const hasScore = ipo.score !== undefined && ipo.score !== null
   const score = hasScore ? (ipo.score as number) : 0
   const isHigh = hasScore && score >= 70
@@ -93,8 +97,18 @@ export function IpoCard({ ipo }: IpoCardProps) {
             style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
           />
         </div>
-        <div className={`text-[11px] font-medium tracking-wide uppercase ${textColor}`}>
-          {recLabel}
+        <div className="flex items-center justify-between">
+          <div className={`text-[11px] font-medium tracking-wide uppercase ${textColor}`}>
+            {recLabel}
+          </div>
+          {badge && (
+            <span
+              title="Listing-gain verdict from the nightly analysis"
+              className={`px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide border rounded-sm ${badge.className}`}
+            >
+              {badge.label}
+            </span>
+          )}
         </div>
       </div>
 

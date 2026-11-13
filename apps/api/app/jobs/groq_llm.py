@@ -20,7 +20,10 @@ def make_groq_extractor(api_key: str, model: str) -> Callable[[str], Awaitable[D
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.0,
-                max_tokens=600,
+                # gpt-oss models "think" before answering and the thinking counts against the limit: a small
+                # limit cut the JSON off mid-way (seen live as json_validate_failed).
+                max_completion_tokens=3000,
+                reasoning_effort="low",
             )
         except RateLimitError as exc:
             raise RateLimited(str(exc)) from exc

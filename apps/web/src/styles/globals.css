@@ -417,3 +417,13 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Keyboard focus must stay visible on links and buttons even where a utility class (outline-none)
+   removed the default ring (audit F36). Inputs keep their own border highlight. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}

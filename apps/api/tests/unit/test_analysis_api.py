@@ -164,3 +164,16 @@ async def test_nightly_job_serves_requested_ipos_first_and_marks_them_done(db):
     assert urls[0] == "https://www.sebi.gov.in/b.pdf"            # the requested upcoming IPO jumps the queue
     req = (await db.execute(select(AuditRequest).where(AuditRequest.ipo_id == "id-AQN2"))).scalar_one()
     assert req.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_summary_list_has_one_latest_row_per_ipo(db):
+    db.add_all([_ipo("AQL1"), _ipo("AQL2"), _result("id-AQL1", 30, "AVOID", day_offset=2),
+                _result("id-AQL1", 85, "STRONG_APPLY", day_offset=0), _result("id-AQL2", 50, "WATCH")])
+    await db.commit()
+    async with _client() as c:
+        rows = (await c.get("/api/analysis")).json()
+    mine = {r["ipo_id"]: r for r in rows if r["ipo_id"] in ("id-AQL1", "id-AQL2")}
+    assert mine["id-AQL1"]["badge"] == "APPLY" and mine["id-AQL1"]["score"] == 85   # newest wins
+    assert mine["id-AQL2"]["badge"] == "WATCH"
+    assert len([r for r in rows if r["ipo_id"] == "id-AQL1"]) == 1

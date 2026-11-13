@@ -4,6 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { Ipo, FamilyAccount } from '@/types'
 import { IpoCard } from './IpoCard'
+import { apiClient } from '@/lib/api-client'
+import type { AnalysisBadge } from '@/lib/analysis-view'
 import {
   formatINR,
   formatPriceBand,
@@ -46,6 +48,14 @@ export function IpoBoard({
   showViewAll = false,
   showFilters = true,
 }: IpoBoardProps) {
+  // Listing-gain verdicts from the nightly analysis (badge in each card's corner); empty until loaded.
+  const [badges, setBadges] = useState<Record<string, { badge: AnalysisBadge; score: number | null }>>({})
+  useEffect(() => {
+    let alive = true
+    apiClient.getAnalysisSummaries().then((m) => { if (alive) setBadges(m) })
+    return () => { alive = false }
+  }, [])
+
   // Canonical status computation across all IPO items
   const canonicalIpos = useMemo(
     () =>
@@ -422,7 +432,7 @@ export function IpoBoard({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {displayList.map((ipo) => (
-            <IpoCard key={ipo.id} ipo={ipo} />
+            <IpoCard key={ipo.id} ipo={ipo} analysisBadge={badges[ipo.id]?.badge} />
           ))}
         </div>
       )}

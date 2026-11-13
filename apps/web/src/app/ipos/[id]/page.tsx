@@ -8,6 +8,7 @@ import { apiClient, canShowMockData } from '@/lib/api-client'
 import { Ipo, FamilyAccount, AiReport } from '@/types'
 import { MOCK_IPOS, MOCK_ACCOUNTS } from '@/lib/mock-data'
 import { IpoSchedule } from '@/components/ipo/IpoSchedule'
+import { ListingGainPanel } from '@/components/reports/ListingGainPanel'
 import { ApplyModal } from '@/components/ipo/ApplyModal'
 import {
   formatDate,
@@ -425,6 +426,9 @@ export default function IpoDetailPage() {
                 View Allocation in Fund Manager
               </Link>
             </div>
+
+            {/* Listing-gain analysis (signals + reasons, Apply/Watch/Avoid badge, Run audit) */}
+            <ListingGainPanel ipoId={ipo.id} />
 
             {/* Schedule */}
             {ipo.schedule && ipo.schedule.length > 0 && (

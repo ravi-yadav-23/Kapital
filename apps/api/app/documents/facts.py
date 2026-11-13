@@ -83,3 +83,25 @@ EXTRACTION_SYSTEM_PROMPT = (
     "Use null for anything the excerpt does not state explicitly. Booleans are true only if the excerpt "
     "explicitly states it. Do not guess and do not add other keys."
 )
+
+
+# ---- which chunks of a long offer document are worth reading first ----
+RELEVANCE_TERMS = {
+    "restated": 3, "summary of financial": 3, "revenue from operations": 3, "profit after tax": 3,
+    "profit for the year": 2, "cash flow": 2, "net cash": 2, "debt to equity": 3, "borrowings": 1,
+    "promoter": 2, "shareholding": 2, "post-issue": 2, "post issue": 2, "offer for sale": 2,
+    "litigation": 3, "regulatory action": 3, "auditor": 2, "qualified": 1,
+    "price to earnings": 2, "p/e": 2, "return on net worth": 1,
+}
+SCORING_FACTS = ("net_profit_cr", "revenue_growth_pct", "debt_to_equity", "operating_cash_flow_cr", "promoter_holding_post_pct")
+
+
+def chunk_relevance(text: str) -> int:
+    """Higher = more likely to contain the facts we extract (financials, promoter holding, litigation)."""
+    lower = (text or "").lower()
+    return sum(weight * min(lower.count(term), 3) for term, weight in RELEVANCE_TERMS.items())
+
+
+def facts_sufficient(facts: Dict[str, Any]) -> bool:
+    """Enough hard numbers to score the company (four of the five core facts)."""
+    return sum(1 for k in SCORING_FACTS if k in facts) >= 4

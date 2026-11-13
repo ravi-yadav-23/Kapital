@@ -119,20 +119,26 @@ async def run_sources(db: AsyncSession, sources: Optional[List[Source]] = None) 
             logger.exception(f"[{src.name}] fetch crashed")
             result = SourceResult(error=f"{type(exc).__name__}: {exc}")
         health.requests_today = (health.requests_today or 0) + (result.requests_used or 0)
+        await db.commit()  # keep the attempt / budget use even if storing records goes wrong
 
         upserted = record_errors = 0
         notes: List[str] = []
         for rec in result.records:
+            # One record per transaction: a database hiccup (timeout, dropped connection, constraint error)
+            # loses only that record, never the ones already stored. (Seen live: one timed-out statement
+            # used to poison the whole session and crash the job.)
             try:
                 clean, rec_notes = sanitize_record(rec)
+                ipo = await ipo_service.upsert_ipo(db, clean)
+                await capture_snapshots(db, ipo, clean, src.name)
+                await db.commit()
                 notes.extend(rec_notes)
-                async with db.begin_nested():
-                    ipo = await ipo_service.upsert_ipo(db, clean)
-                    await capture_snapshots(db, ipo, clean, src.name)
                 upserted += 1
             except Exception as exc:
                 record_errors += 1
-                logger.warning(f"[{src.name}] could not store {rec.get('symbol')}: {exc}")
+                await db.rollback()
+                logger.warning(f"[{src.name}] could not store {rec.get('symbol')}: {type(exc).__name__}: {str(exc)[:200]}")
+        health = await _health_row(db, src.name)  # a rollback expires the row; load it again
 
         if result.error:
             status, message = "failed", result.error

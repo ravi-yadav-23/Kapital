@@ -158,3 +158,55 @@ def test_workflow_runs_at_2am_ist_with_secrets_only():
         assert f"secrets.{name}" in text
     assert not re.search(r"(echo|print)[^\n]*\$\{\{\s*secrets", text)          # secrets are never echoed
     assert "timeout-minutes" in text and "concurrency" in text
+
+
+# ---- relevance ordering and early stop (a real DRHP has hundreds of chunks; the nightly budget is small) ----
+from app.documents.facts import chunk_relevance, facts_sufficient  # noqa: E402
+
+
+def test_financial_and_risk_sections_rank_above_boilerplate():
+    cover = "THIS DRAFT RED HERRING PROSPECTUS IS NOT AN OFFER. Definitions and abbreviations. Table of contents."
+    money = "Restated summary of financial information: revenue from operations, profit after tax and net cash from operating activities."
+    risk = "Outstanding litigation against our promoter and regulatory action; auditor qualification."
+    assert chunk_relevance(money) > chunk_relevance(cover) and chunk_relevance(risk) > chunk_relevance(cover)
+    assert chunk_relevance("") == 0
+
+
+def test_facts_sufficient_needs_four_of_the_five_scoring_facts():
+    four = dict(net_profit_cr=1.0, revenue_growth_pct=2.0, debt_to_equity=0.5, promoter_holding_post_pct=60.0)
+    assert facts_sufficient(four) and not facts_sufficient({"net_profit_cr": 1.0, "pe_ratio": 9.0})
+
+
+@pytest.mark.asyncio
+async def test_most_relevant_chunks_are_analysed_first(db):
+    from app.documents.extract import chunk_pages
+    from app.documents.store import store_document, analyse_pending_chunks
+    pages = ["Definitions and abbreviations " * 3, "Restated profit after tax and revenue from operations cash flow", "More boilerplate text " * 3]
+    chunks = chunk_pages(pages, max_chars=60, overlap=0)
+    v = await store_document(db, "ipo-rel", "RHP", "https://www.sebi.gov.in/r.pdf", "sha-rel", chunks)
+    seen = []
+
+    async def llm(text):
+        seen.append(text)
+        return {}
+
+    await analyse_pending_chunks(db, v.id, llm, max_chunks=1)
+    assert "profit after tax" in seen[0].lower() or "restated" in seen[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_run_stops_analysing_once_core_facts_are_found(db, monkeypatch):
+    import app.jobs.nightly as nightly
+    monkeypatch.setattr(nightly, "MIN_CHUNKS_FOR_RESULT", 2)
+    db.add(_ipo("NGT8", "open", rhp_url="https://www.sebi.gov.in/e.pdf"))
+    await db.commit()
+    rec = Recorder()
+
+    async def extractor(text):
+        rec.chunks += 1
+        return {"net_profit_cr": 50.0, "revenue_growth_pct": 20.0, "debt_to_equity": 0.5, "promoter_holding_post_pct": 70.0}
+
+    out = await run_nightly(db, extractor=extractor, fetcher=rec.fetcher, max_chunks=50, **CH)
+    total = len((await db.execute(select(AnalysisChunk).where(AnalysisChunk.ipo_id == "id-NGT8"))).scalars().all())
+    assert total > 2 and rec.chunks == 2                         # stopped early, budget saved for other IPOs
+    assert (await db.execute(select(AnalysisResult).where(AnalysisResult.ipo_id == "id-NGT8"))).scalar_one().facts["net_profit_cr"] == 50.0

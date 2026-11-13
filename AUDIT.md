@@ -315,7 +315,7 @@ New findings during fixes:
 |---|---|
 | F26 Alembic catch-up migration, F27 safe `init_db` on PostgreSQL, F28 unique index on active orders | D7: data-model/DDL changes, need a Postgres to test on; recommend doing them together |
 | F18 settings still not wired (thresholds, allocation cap, buffer, default UPI, notifications) | D5: relabelled only |
-| F19 optimizer has no allotment-probability model | D6: claims reworded only |
+| F19 optimizer has no allotment-probability model | **resolved in M5**: bids are weighted by chance of allotment x expected listing gain |
 | F10 no broker-side cancel | endpoint unverified |
 | F33 Angel One IPO-apply endpoint/payload unverified | disabled by default (`ENABLE_LIVE_IPO_APPLY=false`) |
 | F13 no DRHP ingestion | D1: wording only |
@@ -347,3 +347,9 @@ New findings during fixes:
 - Database (Supabase) is at `c2a7d9e45f61`. **Not yet applied:** `d3b8e0f56a72` (audit queue). Apply with the dry-run first.
 - **Not verified:** the nightly job has never run against the real Groq API or real SEBI filings beyond one fetch test; the engine's thresholds are not calibrated (needs weeks of snapshots); the full flow on the deployed site has not been exercised.
 - Still to do by you: GitHub secrets `DATABASE_URL` (session pooler, 5432), `GROQ_API_KEY`, `IPOALERTS_API_KEY`; Vercel env; rotate exposed keys (see list above).
+
+## Follow-up (2026-11-13, autonomous pass)
+- Database now at `d3b8e0f56a72`; `e4c9a1b73d58` (ipos dates nullable) pending until verified.
+- **Found by the first live run:** (1) the Groq model needs `max_completion_tokens` and `reasoning_effort="low"` (a 600-token cap cut the JSON off: `json_validate_failed`) - fixed with a regression test; (2) the real database still had `ipos.issue_open_date` / `issue_close_date` NOT NULL (initial schema), so upcoming IPOs without dates could not be stored - migration `e4c9a1b73d58`; (3) my earlier "no structural differences" check ignored nullability - both the dry-run script and the model/migration test now flag `modify_nullable`.
+- F36: keyboard focus ring restored for links and buttons (global rule). Landing-page light theme still unchecked (needs rendering).
+- Docs section rebuilt (`/docs`, 13 pages from `apps/web/src/lib/docs-content.ts`); README updated.
