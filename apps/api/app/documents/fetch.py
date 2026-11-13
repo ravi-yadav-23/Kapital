@@ -97,7 +97,13 @@ async def fetch_document(url: str, *, client: Optional[httpx.AsyncClient] = None
     own = client is None
     client = client or httpx.AsyncClient(timeout=60.0, follow_redirects=False)
     try:
-        final_url, body, ctype = await _get(client, url, max_bytes, public_ok)
+        for attempt in (1, 2):  # one retry: SEBI/NSE/issuer servers drop connections or time out now and then
+            try:
+                final_url, body, ctype = await _get(client, url, max_bytes, public_ok)
+                break
+            except httpx.TransportError:
+                if attempt == 2:
+                    raise
         if body[:4] == b"%PDF":
             return body
         if "html" in ctype.lower() and _depth == 0:

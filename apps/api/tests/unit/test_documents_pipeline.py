@@ -167,3 +167,26 @@ async def test_budget_limits_chunks_and_next_run_resumes(db):
     assert first == {"done": 2, "failed": 0, "remaining": 3}
     second = await analyse_pending_chunks(db, v.id, llm, max_chunks=10)
     assert second == {"done": 3, "failed": 0, "remaining": 0}
+
+
+@pytest.mark.asyncio
+async def test_a_transient_network_error_is_retried_once():
+    pdf = make_pdf(["hello"])
+    calls = {"n": 0}
+
+    def handler(req):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ReadTimeout("slow", request=req)
+        return httpx.Response(200, content=pdf, headers={"content-type": "application/pdf"})
+
+    async with _client(handler) as c:
+        assert await fetch_document("https://www.sebi.gov.in/a.pdf", client=c) == pdf
+    assert calls["n"] == 2
+
+    async def always_fail(req):
+        raise httpx.ReadTimeout("slow", request=req)
+
+    async with _client(always_fail) as c:
+        with pytest.raises(DocumentError):
+            await fetch_document("https://www.sebi.gov.in/a.pdf", client=c)
