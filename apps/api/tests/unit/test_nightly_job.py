@@ -112,8 +112,7 @@ async def test_missing_link_and_broken_document_do_not_stop_the_run(db):
     await db.commit()
     rec = Recorder()
     summary = await run_nightly(db, extractor=rec.extractor, fetcher=rec.fetcher, max_chunks=50, **CH)
-    details = "
-".join(summary["details"])
+    details = " | ".join(summary["details"])
     assert "NGT3: no document link" in details and "NGT4: HTTP 404" in details
     analysed = {r.ipo_id for r in (await db.execute(select(AnalysisResult))).scalars().all()}
     assert analysed == {"id-NGT5"}
