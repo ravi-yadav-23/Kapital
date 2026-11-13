@@ -125,7 +125,7 @@ def _choose(ipo: Ipo):
 async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[Dict[str, Any]]],
                       fetcher: Optional[Callable[[str], Awaitable[bytes]]] = None, max_chunks: int = 60,
                       max_ipos: int = 15, chunk_chars: int = 6000, chunk_overlap: int = 300,
-                      model: Optional[str] = None,
+                      model: Optional[str] = None, max_tokens: Optional[int] = None,
                       link_finder: Optional[Callable[[Ipo], Awaitable[Optional[str]]]] = None) -> Dict[str, Any]:
     if fetcher is None:
         from app.documents.fetch import fetch_document
@@ -133,9 +133,13 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
         async def fetcher(url):  # issuer-hosted PDFs are allowed, behind the public-address checks
             return await fetch_document(url, public_ok=True)
     discovered = 0
+
+    def out_of_tokens() -> bool:
+        return max_tokens is not None and getattr(extractor, "tokens_used", 0) >= max_tokens
     summary_statuses = await refresh_statuses(db)  # stale 'open'/'upcoming' rows must not be analysed first
     summary: Dict[str, Any] = {"analysed": 0, "skipped_no_document": 0, "document_errors": 0,
-                               "incomplete": 0, "deferred": 0, "rate_limited": False, "chunks_used": 0, "details": []}
+                               "incomplete": 0, "deferred": 0, "rate_limited": False, "token_budget_reached": False, "tokens_used": 0, "chunks_used": 0,
+                               "details": []}
     summary["statuses_fixed"] = summary_statuses
     for ipo in await _candidates(db, max_ipos):
         kind, url = _choose(ipo)
@@ -176,15 +180,24 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             budget = max_chunks - summary["chunks_used"]
             if budget <= 0:
                 break
+            if out_of_tokens():
+                summary["token_budget_reached"] = True
+                break
             step = BATCH if done >= MIN_CHUNKS_FOR_RESULT else max(1, min(BATCH, MIN_CHUNKS_FOR_RESULT - done))
-            res = await analyse_pending_chunks(db, ver.id, extractor, max_chunks=min(step, budget))
+            res = await analyse_pending_chunks(db, ver.id, extractor, max_chunks=min(step, budget), stop_check=out_of_tokens)
             summary["chunks_used"] += res["done"] + res["failed"]
+            if res.get("stopped"):
+                summary["token_budget_reached"] = True
+                break
             if res.get("rate_limited"):
                 rate_limited = True
                 break
             if res["done"] + res["failed"] == 0:
                 break
             facts, done, pending = await _done_state(db, ver.id)
+        if summary["token_budget_reached"]:
+            summary["details"].append(f"{ipo.symbol}: token budget used up; will resume next run")
+            break
         if rate_limited:
             summary["rate_limited"] = True
             summary["details"].append(f"{ipo.symbol}: provider rate limit reached; will resume next run")
@@ -197,6 +210,7 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             await _complete_requests(db, ipo.id)
         else:
             summary["incomplete"] += 1
+    summary["tokens_used"] = int(getattr(extractor, "tokens_used", 0) or 0)
     return summary
 
 
@@ -226,6 +240,18 @@ async def _link_finder(ipo: Ipo) -> Optional[str]:
     return await groww.fetch_document_link(ipo.slug)
 
 
+def alerts_for(reports) -> List[str]:
+    """One line per source that failed or warned. Failures make the job exit non-zero, so the GitHub Actions run
+    shows as failed and GitHub's own notification reaches the repository owner."""
+    out = []
+    for r in reports:
+        if r.status == "failed":
+            out.append(f"ALERT source {r.name} failed: {r.error or 'no detail'}")
+        elif r.status == "warning":
+            out.append(f"WARNING source {r.name}: {r.error or 'no detail'}")
+    return out
+
+
 def _env_int(name: str, default: int) -> int:
     """Optional override from the environment (e.g. NIGHTLY_MAX_CHUNKS=6 for a small manual run)."""
     import os
@@ -245,23 +271,29 @@ async def main() -> int:
     if not settings.groq_api_key:
         print("GROQ_API_KEY is not set; nothing to do")
         return 2
+    alerts: List[str] = []
     async with AsyncSessionLocal() as db:
         try:
-            for r in await run_sources(db):
+            reports = await run_sources(db)
+            for r in reports:
                 print(f"source {r.name}: {r.status} ({r.upserted}/{r.records} stored)")
+            alerts = alerts_for(reports)
         except Exception as exc:  # documents can still be analysed from what is already stored
             await db.rollback()
-            print(f"source sync failed: {type(exc).__name__}: {str(exc)[:200]}")
+            alerts = [f"ALERT source sync crashed: {type(exc).__name__}: {str(exc)[:200]}"]
         extractor = make_groq_extractor(settings.groq_api_key, settings.default_ai_model)
         summary = await run_nightly(
             db, extractor=extractor, model=settings.default_ai_model, link_finder=_link_finder,
-            max_chunks=_env_int("NIGHTLY_MAX_CHUNKS", 60), max_ipos=_env_int("NIGHTLY_MAX_IPOS", 15))
+            max_chunks=_env_int("NIGHTLY_MAX_CHUNKS", 60), max_ipos=_env_int("NIGHTLY_MAX_IPOS", 15),
+            max_tokens=_env_int("NIGHTLY_MAX_TOKENS", 150000))
     for k, v in summary.items():
         if k != "details":
             print(f"{k}: {v}")
     for line in summary["details"]:
         print(" -", line)
-    return 0
+    for line in alerts:
+        print(line)
+    return 1 if any(a.startswith("ALERT") for a in alerts) else 0
 
 
 if __name__ == "__main__":

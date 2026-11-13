@@ -106,7 +106,7 @@ export const DOC_PAGES: DocPage[] = [
     blocks: [
       { type: 'p', text: 'Red flags are fixed rules applied to facts extracted from the offer document. A fact that could not be found never raises a flag: unknown is not treated as bad.' },
       { type: 'table', head: ['Rule', 'Severity', 'Triggers when'], rows: [
-        ['Regulatory action', 'Critical', 'The document discloses enforcement action against a promoter or the company.'],
+        ['Regulatory action', 'Critical', 'The document discloses enforcement action against a promoter or the company and a quote from the document backs it up. Without a verifiable quote it is shown as a High flag and never vetoes.'],
         ['Auditor qualification', 'High', 'The auditor qualified or flagged the financial statements.'],
         ['Loss-making', 'High', 'Net profit is negative.'],
         ['Rich valuation', 'High', 'P/E is more than double the sector P/E.'],
@@ -123,7 +123,7 @@ export const DOC_PAGES: DocPage[] = [
         'Medium: two of the three are available.',
         'Low: only one is available. The verdict is tentative and the page says so.',
       ] },
-      { type: 'p', text: 'The language model only extracts facts from each chunk of the document. Its answer is filtered to a fixed list of fields with sensible ranges, so text hidden inside a document cannot change a verdict.' },
+      { type: 'p', text: 'The language model only extracts facts from each chunk of the document. For regulatory action and auditor qualification it must also give an exact quote; the quote is checked against the text and a claim whose quote is not found is discarded. Its answer is filtered to a fixed list of fields with sensible ranges, so text hidden inside a document cannot change a verdict.' },
     ],
   },
   {
@@ -173,6 +173,8 @@ export const DOC_PAGES: DocPage[] = [
       { type: 'p', text: 'A scheduled GitHub Actions job runs at about 02:00 IST. It refreshes the sources and then analyses offer documents with the free Groq tier. Open IPOs come first, then upcoming ones. Within a long document the most relevant parts (financial statements, promoter holding, litigation) are read first, and reading stops once the core numbers are known.' },
       { type: 'ul', items: [
         'A limited number of document chunks is analysed each night. Every finished chunk is saved immediately.',
+        'A token budget (150,000 by default) also limits the night’s model use. When it is used up the run stops cleanly and resumes the next night.',
+        'If a data source fails, the job finishes with an error so that GitHub marks the run as failed and notifies the repository owner.',
         'If the model provider asks us to slow down, the run stops cleanly and continues the next night from where it stopped.',
         'A document that is already fully analysed is not downloaded again, but its score is refreshed with that night’s market data.',
       ] },

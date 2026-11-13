@@ -37,7 +37,8 @@ async def store_document(db: AsyncSession, ipo_id: str, kind: str, url: str, sha
 
 async def analyse_pending_chunks(db: AsyncSession, version_id: str,
                                  llm: Callable[[str], Awaitable[Dict[str, Any]]],
-                                 max_chunks: Optional[int] = None) -> Dict[str, int]:
+                                 max_chunks: Optional[int] = None,
+                                 stop_check: Optional[Callable[[], bool]] = None) -> Dict[str, int]:
     """Run `llm` on pending chunks (at most `max_chunks`), saving each result as soon as it is finished.
 
     A failing chunk is marked failed and the run continues; an unfinished run resumes with what is pending.
@@ -52,7 +53,11 @@ async def analyse_pending_chunks(db: AsyncSession, version_id: str,
         pending = pending[:max_chunks]
     done = failed = 0
     rate_limited = False
+    stopped = False
     for chunk in pending:
+        if stop_check is not None and stop_check():  # e.g. the nightly token budget is used up
+            stopped = True
+            break
         try:
             chunk.facts = await llm(chunk.text)
             chunk.status, chunk.error = "done", None
@@ -72,4 +77,6 @@ async def analyse_pending_chunks(db: AsyncSession, version_id: str,
     result = {"done": done, "failed": failed, "remaining": int(remaining)}
     if rate_limited:
         result["rate_limited"] = True
+    if stopped:
+        result["stopped"] = True
     return result

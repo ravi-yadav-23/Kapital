@@ -149,3 +149,13 @@ async def seed_data(test_engine):
             await db_session.commit()
             return {"account": acc, "ipo": ipo, "report": report}
         return {}
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _dispose_app_engine_at_session_end():
+    """Code under test sometimes opens a connection through the application's own engine (AsyncSessionLocal).
+    An aiosqlite connection that is never closed leaves a non-daemon worker thread, so the pytest process would not
+    exit after the tests had passed. Dispose of it when the session ends."""
+    yield
+    from app.db.database import engine as app_engine
+    await app_engine.dispose()

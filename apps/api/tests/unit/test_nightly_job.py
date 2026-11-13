@@ -210,3 +210,41 @@ async def test_run_stops_analysing_once_core_facts_are_found(db, monkeypatch):
     total = len((await db.execute(select(AnalysisChunk).where(AnalysisChunk.ipo_id == "id-NGT8"))).scalars().all())
     assert total > 2 and rec.chunks == 2                         # stopped early, budget saved for other IPOs
     assert (await db.execute(select(AnalysisResult).where(AnalysisResult.ipo_id == "id-NGT8"))).scalar_one().facts["net_profit_cr"] == 50.0
+
+
+# ---- token budget and failure alerts ----
+@pytest.mark.asyncio
+async def test_the_run_stops_cleanly_when_the_token_budget_is_used_up(db):
+    db.add(_ipo("NGT9", "open", rhp_url="https://www.sebi.gov.in/t.pdf"))
+    await db.commit()
+    rec = Recorder()
+
+    async def extractor(text):
+        rec.chunks += 1
+        extractor.tokens_used += 1000
+        return {}
+
+    extractor.tokens_used = 0
+    out = await run_nightly(db, extractor=extractor, fetcher=rec.fetcher, max_chunks=50, max_tokens=2500, **CH)
+    assert out["token_budget_reached"] is True and out["tokens_used"] >= 2500
+    assert rec.chunks == 3                                       # 1000 + 1000 + 1000 crosses 2500, then it stops
+    rec2 = Recorder()
+
+    async def extractor2(text):
+        rec2.chunks += 1
+        extractor2.tokens_used += 1
+        return {"net_profit_cr": 50.0, "revenue_growth_pct": 20.0, "debt_to_equity": 0.5, "promoter_holding_post_pct": 70.0}
+
+    extractor2.tokens_used = 0
+    again = await run_nightly(db, extractor=extractor2, fetcher=rec2.fetcher, max_chunks=50, max_tokens=2500, **CH)
+    assert again["token_budget_reached"] is False and rec2.chunks > 0   # a fresh budget resumes the stored chunks
+
+
+def test_failed_sources_raise_an_alert_and_a_failing_exit_code():
+    from app.jobs.nightly import alerts_for
+    from app.sources.runner import SourceReport
+    ok = SourceReport("groww", "ok", 55, 55)
+    assert alerts_for([ok, SourceReport("ipoalerts", "disabled"), SourceReport("ipowatch", "skipped_budget")]) == []
+    alerts = alerts_for([ok, SourceReport("ipowatch", "failed", 0, 0, 0, "HTTP 403 from ipowatch.in"),
+                         SourceReport("x", "warning", 0, 0, 0, "WARNING: 0 records parsed")])
+    assert len(alerts) == 2 and "ipowatch" in alerts[0] and "403" in alerts[0] and "WARNING" in alerts[1]

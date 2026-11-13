@@ -110,3 +110,20 @@ pytest tests/unit tests/integration -v
 cd apps/web
 npm run build
 ```
+
+
+## Nightly analysis (GitHub Actions)
+
+The workflow `.github/workflows/nightly-analysis.yml` runs at 02:00 IST (20:30 UTC). It syncs the IPO sources and then analyses offer documents with the free Groq tier, open IPOs first.
+
+Repository secrets (Settings > Secrets and variables > Actions):
+
+| Secret | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase **session pooler** URL (port 5432). The port is part of the URL; the transaction pooler (6543) also works. |
+| `GROQ_API_KEY` | Groq free-tier key |
+| `IPOALERTS_API_KEY` | ipoalerts key (optional) |
+
+Run it by hand from the Actions tab (Run workflow). The optional inputs `max_chunks`, `max_ipos` and `max_tokens` keep a test run small, for example 8 / 3 / 40000. The job exits with an error when a data source fails, so GitHub shows the run as failed and emails the repository owner.
+
+Apply database migrations (`alembic upgrade head`, after `python scripts/db_dry_run.py`) before the first run, otherwise the new tables do not exist.

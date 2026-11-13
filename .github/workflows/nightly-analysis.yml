@@ -24,6 +24,10 @@ on:
         description: "Maximum IPOs to analyse (default 15)"
         required: false
         default: "15"
+      max_tokens:
+        description: "Model token budget for this run (default 150000)"
+        required: false
+        default: "150000"
 
 permissions:
   contents: read
@@ -56,4 +60,5 @@ jobs:
           SOURCE_IPOALERTS_ENABLED: "true"
           NIGHTLY_MAX_CHUNKS: ${{ inputs.max_chunks }}
           NIGHTLY_MAX_IPOS: ${{ inputs.max_ipos }}
+          NIGHTLY_MAX_TOKENS: ${{ inputs.max_tokens }}
         run: python -m app.jobs.nightly

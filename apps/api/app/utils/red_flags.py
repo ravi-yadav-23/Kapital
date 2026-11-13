@@ -18,9 +18,19 @@ def _flag(code: str, severity: str, reason: str) -> Dict[str, str]:
 def detect_red_flags(facts: Dict[str, Any]) -> List[Dict[str, str]]:
     flags: List[Dict[str, str]] = []
     if facts.get("regulatory_action_against_promoter") is True:
-        flags.append(_flag("promoter_regulatory_action", "critical", "Regulatory / enforcement action against a promoter or the company."))
+        quote = (facts.get("regulatory_action_evidence") or "").strip()
+        if quote:   # only a quote taken from the document can veto an IPO
+            flags.append(_flag("promoter_regulatory_action", "critical",
+                               f"Regulatory / enforcement action against a promoter or the company. Document says: \u201c{quote}\u201d"))
+        else:
+            flags.append(_flag("promoter_regulatory_action", "high",
+                               "A regulatory / enforcement action against a promoter or the company was reported but could not "
+                               "be backed with a quote from the document (unverified)."))
     if facts.get("auditor_qualification") is True:
-        flags.append(_flag("auditor_qualification", "high", "Auditor has qualified or flagged the financial statements."))
+        quote = (facts.get("auditor_qualification_evidence") or "").strip()
+        flags.append(_flag("auditor_qualification", "high",
+                           "Auditor has qualified or flagged the financial statements."
+                           + (f" Document says: \u201c{quote}\u201d" if quote else " (unverified)")))
 
     profit = _num(facts, "net_profit_cr")
     if profit is not None and profit < 0:
