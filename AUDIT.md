@@ -340,3 +340,10 @@ New findings during fixes:
 - `alembic upgrade head` used to **crash** on that database (`system_settings already exists`) and on any fresh database that the app had started first. Both fixed and tested.
 - **Near miss during testing:** the Supabase pooler ignores the `options=-c search_path=...` startup parameter, so a "scratch schema" test would have run in `public`. Nothing changed (the attempts rolled back), but destructive tests must never target the hosted database. Tests now use a throw-away local/CI Postgres and refuse hosted hosts.
 - `python scripts/db_dry_run.py` (and the manual `db-migrate.yml` workflow, mode dry-run) applies the whole upgrade in one transaction, compares with the models and rolls back. Result on the real DB: `c13dc79076eb -> e5c3a9d41b27`, no remaining differences, row counts unchanged.
+
+
+## Redesign milestones M3-M10 (2026-11-13)
+- Built and tested: snapshots/outcomes (M3), Listing-Gain Engine + backtest (M4), allotment-odds optimizer (M5), offer-document pipeline (M6), red-flag rules (M7), nightly analysis job + workflow (M8), guest analysis API with a DB-enforced 50/day "Run audit" cap and report-page panel (M9). Details in `docs/plans/2026-11-12-ai-reports-redesign.md` section 23.
+- Database (Supabase) is at `c2a7d9e45f61`. **Not yet applied:** `d3b8e0f56a72` (audit queue). Apply with the dry-run first.
+- **Not verified:** the nightly job has never run against the real Groq API or real SEBI filings beyond one fetch test; the engine's thresholds are not calibrated (needs weeks of snapshots); the full flow on the deployed site has not been exercised.
+- Still to do by you: GitHub secrets `DATABASE_URL` (session pooler, 5432), `GROQ_API_KEY`, `IPOALERTS_API_KEY`; Vercel env; rotate exposed keys (see list above).
