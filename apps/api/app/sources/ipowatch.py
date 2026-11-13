@@ -151,8 +151,12 @@ def parse_ipowatch_detail(html: str) -> Optional[str]:
     The final RHP is preferred over the draft (DRHP) when both are linked."""
     from bs4 import BeautifulSoup
     from app.documents.fetch import is_allowed_url
-    links = [a.get("href") for a in BeautifulSoup(html or "", "html.parser").find_all("a") if a.get("href")]
-    pdfs = [u for u in links if ".pdf" in u.lower() and is_allowed_url(u)]
+    text = html or ""
+    links = [a.get("href") for a in BeautifulSoup(text, "html.parser").find_all("a") if a.get("href")]
+    # the page is script-rendered, so the link may only appear inside embedded JSON (with backslash-escaped slashes)
+    unescaped = text.replace("\\/", "/")
+    links += re.findall(r"https?://[^\s\"'<>\\]+?\.pdf", unescaped, flags=re.I)
+    pdfs = list(dict.fromkeys(u for u in links if ".pdf" in u.lower() and is_allowed_url(u)))
     final = [u for u in pdfs if "rhp" in u.lower() and "drhp" not in u.lower()]
     return (final or pdfs or [None])[0]
 

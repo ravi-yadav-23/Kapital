@@ -158,3 +158,9 @@ def test_ipowatch_slug_candidates_come_from_the_stored_slug_and_the_company_name
     assert got[0] == "watrana-rentals-ipo-details"
     assert "watrana-rentals-limited-ipo-details" in got
     assert _ipowatch_slugs(NS(slug="x", name="")) == []
+
+
+def test_ipowatch_links_embedded_in_page_scripts_are_found_too():
+    html = ('<script>window.__DATA__ = {"drhp":"https:\/\/nsearchives.nseindia.com\/emerge\/corporates\/content\/Registration_DRHPWRL.pdf",'
+            '"other":"https:\/\/evil.example.com\/x.pdf"}</script>')
+    assert parse_ipowatch_detail(html) == "https://nsearchives.nseindia.com/emerge/corporates/content/Registration_DRHPWRL.pdf"
