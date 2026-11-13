@@ -10,7 +10,7 @@ from app.models.pnl import RealizedPnl
 from app.models.score_history import ScoreHistory
 from app.models.source_health import SourceHealth
 from app.models.snapshots import GmpSnapshot, SubscriptionSnapshot, IpoOutcome
-from app.models.analysis import AnalysisVersion, AnalysisChunk
+from app.models.analysis import AnalysisVersion, AnalysisChunk, AnalysisResult
 
 __all__ = [
     "Base",
@@ -33,4 +33,5 @@ __all__ = [
     "IpoOutcome",
     "AnalysisVersion",
     "AnalysisChunk",
+    "AnalysisResult",
 ]

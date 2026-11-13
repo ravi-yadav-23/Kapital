@@ -10,6 +10,10 @@ from app.models.analysis import AnalysisChunk, AnalysisVersion
 logger = logging.getLogger("documents.store")
 
 
+class RateLimited(Exception):
+    """The model provider asked us to slow down; stop the run and resume next time."""
+
+
 async def store_document(db: AsyncSession, ipo_id: str, kind: str, url: str, sha256: str,
                          chunks: List[Dict[str, Any]], model: Optional[str] = None) -> AnalysisVersion:
     """Save a document as a new version, unless the latest stored version of that kind is identical."""
@@ -44,11 +48,15 @@ async def analyse_pending_chunks(db: AsyncSession, version_id: str,
     if max_chunks is not None:
         pending = pending[:max_chunks]
     done = failed = 0
+    rate_limited = False
     for chunk in pending:
         try:
             chunk.facts = await llm(chunk.text)
             chunk.status, chunk.error = "done", None
             done += 1
+        except RateLimited:
+            rate_limited = True  # not the chunk's fault: leave it pending and stop for tonight
+            break
         except Exception as exc:
             chunk.status, chunk.error = "failed", f"{type(exc).__name__}: {exc}"[:300]
             failed += 1
@@ -58,4 +66,7 @@ async def analyse_pending_chunks(db: AsyncSession, version_id: str,
         select(func.count()).select_from(AnalysisChunk).where(
             AnalysisChunk.version_id == version_id, AnalysisChunk.status == "pending")
     )).scalar_one()
-    return {"done": done, "failed": failed, "remaining": int(remaining)}
+    result = {"done": done, "failed": failed, "remaining": int(remaining)}
+    if rate_limited:
+        result["rate_limited"] = True
+    return result

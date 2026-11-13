@@ -17,6 +17,22 @@ class AnalysisVersion(BaseModel):
     model = Column(String(80), nullable=True)
 
 
+class AnalysisResult(BaseModel):
+    """Listing-gain engine output for one IPO on one night (append-only history; latest row is current)."""
+    __tablename__ = "analysis_results"
+
+    ipo_id = Column(String(36), nullable=False, index=True)
+    version_id = Column(String(36), nullable=False, index=True)
+    score = Column(Integer, nullable=True)
+    verdict = Column(String(30), nullable=False)
+    confidence = Column(String(10), nullable=False)
+    components = Column(JSON, nullable=True)
+    signals = Column(JSON, nullable=True)
+    red_flags = Column(JSON, nullable=True)
+    facts = Column(JSON, nullable=True)
+    inputs = Column(JSON, nullable=True)       # the GMP / subscription numbers used that night
+
+
 class AnalysisChunk(BaseModel):
     """One chunk of a document version and what the model extracted from it."""
     __tablename__ = "analysis_chunks"
