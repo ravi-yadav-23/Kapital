@@ -147,3 +147,14 @@ async def test_a_draft_link_found_for_an_open_ipo_is_stored_as_a_draft(db):
     await run_nightly(db, extractor=extractor, fetcher=fetcher, link_finder=finder, max_chunks=5)
     ipo = (await db.execute(select(Ipo).where(Ipo.symbol == "DSC2"))).scalar_one()
     assert ipo.drhp_url and "DRHPDSC2" in ipo.drhp_url and not ipo.rhp_url
+
+
+def test_ipowatch_slug_candidates_come_from_the_stored_slug_and_the_company_name():
+    from app.jobs.nightly import _ipowatch_slugs
+    from types import SimpleNamespace as NS
+    stored = _ipowatch_slugs(NS(slug="watrana-rentals-ipo-details", name="Watrana Rentals Limited"))
+    assert stored[0] == "watrana-rentals-ipo-details" and len(stored) == len(set(stored))   # stored slug first, no duplicates
+    got = _ipowatch_slugs(NS(slug="watrana-rentals", name="Watrana Rentals Limited"))
+    assert got[0] == "watrana-rentals-ipo-details"
+    assert "watrana-rentals-limited-ipo-details" in got
+    assert _ipowatch_slugs(NS(slug="x", name="")) == []

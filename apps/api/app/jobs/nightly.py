@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.documents.errors import DocumentError
 from app.documents.extract import chunk_pages, pdf_to_pages
-from app.documents.facts import company_score_from_facts, facts_sufficient, merge_facts
+from app.documents.facts import company_score_from_facts, facts_sufficient, looks_like_lender, merge_facts
 from app.documents.store import analyse_pending_chunks, store_document
 from app.services.ipo_service import _apply_document_url, refresh_statuses
 from app.models.analysis import AnalysisChunk, AnalysisResult, AnalysisVersion
@@ -82,6 +82,8 @@ async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> boo
     if not rows:
         return False
     facts = merge_facts([r.facts or {} for r in rows])
+    if looks_like_lender(ipo.name):   # back-up for the model's own is_lender flag
+        facts["is_lender"] = True
     flags = detect_red_flags(facts)
     inputs = {"gmp_percent": ipo.gmp_percent, "subscription_total": ipo.subscription_total,
               "subscription_qib": ipo.subscription_qib, "subscription_retail": ipo.subscription_retail,
@@ -198,11 +200,27 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
     return summary
 
 
+def _ipowatch_slugs(ipo) -> List[str]:
+    """IPO Watch page slugs to try: the stored one if it already looks like theirs, else ones built from the name."""
+    import re
+    out: List[str] = []
+    slug = (ipo.slug or "")
+    if slug.endswith("-ipo-details"):
+        out.append(slug)
+    base = re.sub(r"[^a-z0-9]+", "-", (ipo.name or "").lower()).strip("-")
+    if base:
+        for variant in (re.sub(r"-(limited|ltd)$", "", base), base):
+            cand = f"{variant}-ipo-details"
+            if cand not in out:
+                out.append(cand)
+    return out
+
+
 async def _link_finder(ipo: Ipo) -> Optional[str]:
-    """IPO Watch pages (slug ends with -ipo-details) link the NSE filing; otherwise try Groww's IPO page."""
+    """Look for the offer-document link on the IPO's IPO Watch page (NSE filing), then on its Groww page."""
     from app.sources import groww, ipowatch
-    if (ipo.slug or "").endswith("-ipo-details"):
-        found = await ipowatch.fetch_document_link(ipo.slug)
+    for slug in _ipowatch_slugs(ipo):
+        found = await ipowatch.fetch_document_link(slug)
         if found:
             return found
     return await groww.fetch_document_link(ipo.slug)

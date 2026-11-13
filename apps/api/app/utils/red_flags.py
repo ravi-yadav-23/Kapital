@@ -25,8 +25,9 @@ def detect_red_flags(facts: Dict[str, Any]) -> List[Dict[str, str]]:
     profit = _num(facts, "net_profit_cr")
     if profit is not None and profit < 0:
         flags.append(_flag("loss_making", "high", f"Company is loss-making (net profit Rs {profit:.0f} cr)."))
+    lender = facts.get("is_lender") is True  # for a lender, loan disbursements make operating cash flow negative and debt is its raw material
     ocf = _num(facts, "operating_cash_flow_cr")
-    if ocf is not None and ocf < 0:
+    if ocf is not None and ocf < 0 and not lender:
         flags.append(_flag("negative_operating_cash_flow", "medium", f"Operating cash flow is negative (Rs {ocf:.0f} cr)."))
 
     ofs = _num(facts, "ofs_share_pct")
@@ -40,7 +41,7 @@ def detect_red_flags(facts: Dict[str, Any]) -> List[Dict[str, str]]:
     if pe is not None and sector and sector > 0 and pe > 2 * sector:
         flags.append(_flag("rich_valuation", "high", f"P/E of {pe:.0f} is more than double the sector P/E of {sector:.0f}."))
     de = _num(facts, "debt_to_equity")
-    if de is not None and de > 2.5:
+    if de is not None and de > 2.5 and not lender:
         flags.append(_flag("high_leverage", "high", f"Debt-to-equity of {de:.1f} is high."))
     if facts.get("material_litigation") is True:
         flags.append(_flag("material_litigation", "medium", "Material litigation is disclosed in the offer document."))

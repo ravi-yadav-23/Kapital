@@ -116,6 +116,7 @@ export const DOC_PAGES: DocPage[] = [
         ['Low promoter holding', 'Medium', 'Promoter holding after the issue is below 25%.'],
         ['Material litigation', 'Medium', 'Material litigation is disclosed.'],
       ] },
+      { type: 'callout', tone: 'note', title: 'Banks and lenders', text: 'For banks, NBFCs and housing-finance companies the leverage and operating-cash-flow rules are skipped, and so are those two inputs in the company score. A lender borrows to lend, and its loan disbursements show up as negative operating cash flow, so those numbers do not mean what they mean for other businesses.' },
       { type: 'h2', text: 'Confidence' },
       { type: 'ul', items: [
         'High: company quality, demand and grey-market data are all available.',
