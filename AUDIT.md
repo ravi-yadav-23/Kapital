@@ -353,3 +353,9 @@ New findings during fixes:
 - **Found by the first live run:** (1) the Groq model needs `max_completion_tokens` and `reasoning_effort="low"` (a 600-token cap cut the JSON off: `json_validate_failed`) - fixed with a regression test; (2) the real database still had `ipos.issue_open_date` / `issue_close_date` NOT NULL (initial schema), so upcoming IPOs without dates could not be stored - migration `e4c9a1b73d58`; (3) my earlier "no structural differences" check ignored nullability - both the dry-run script and the model/migration test now flag `modify_nullable`.
 - F36: keyboard focus ring restored for links and buttons (global rule). Landing-page light theme still unchecked (needs rendering).
 - Docs section rebuilt (`/docs`, 13 pages from `apps/web/src/lib/docs-content.ts`); README updated.
+
+## Second follow-up (2026-11-13)
+- Critical red flags now need a verbatim quote that is found in the document excerpt; unverified claims are shown as high flags and cannot veto (found because a real run vetoed Hero Fincorp on one unchecked model answer).
+- Nightly job: token budget, stop check before each chunk, exit code 1 when a source fails (GitHub notifies the owner).
+- Test infrastructure: the pytest process did not exit after the tests passed (an aiosqlite connection opened through the application's own engine was never closed). Fixed in `tests/conftest.py`; CI would have hung on it.
+- Smoke check of the built web app: `/`, `/dashboard`, `/ipos`, `/reports`, `/settings` and all `/docs/*` pages return 200, unknown docs pages 404. Not looked at in a browser.
