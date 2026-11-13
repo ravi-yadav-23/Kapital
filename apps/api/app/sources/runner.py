@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.source_health import SourceHealth
+from app.services.snapshots import capture_snapshots
 from app.sources.base import Source, SourceResult
 
 logger = logging.getLogger("source.runner")
@@ -126,7 +127,8 @@ async def run_sources(db: AsyncSession, sources: Optional[List[Source]] = None) 
                 clean, rec_notes = sanitize_record(rec)
                 notes.extend(rec_notes)
                 async with db.begin_nested():
-                    await ipo_service.upsert_ipo(db, clean)
+                    ipo = await ipo_service.upsert_ipo(db, clean)
+                    await capture_snapshots(db, ipo, clean, src.name)
                 upserted += 1
             except Exception as exc:
                 record_errors += 1

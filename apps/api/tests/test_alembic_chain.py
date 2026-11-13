@@ -26,3 +26,9 @@ def test_chain_is_linear_with_a_single_head():
 
 def test_score_history_migration_exists():
     assert any("create_table(\n        'score_history'" in text for _, text in _revs().values())
+
+
+def test_snapshot_tables_have_a_migration():
+    text = "\n".join(t for _, t in _revs().values())
+    for table in ("gmp_snapshots", "subscription_snapshots", "ipo_outcomes"):
+        assert f"'{table}'" in text, table
