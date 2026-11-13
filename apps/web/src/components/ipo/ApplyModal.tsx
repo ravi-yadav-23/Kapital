@@ -51,8 +51,9 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
   const isUpcoming = ipo.status === 'upcoming'
   const isClosed = ipo.status === 'closed' || ipo.status === 'allotted' || ipo.status === 'listed'
 
-  const cutoffPrice = ipo.price_band_max || 100
-  const lotSize = ipo.lot_size || 1
+  const cutoffPrice = ipo.price_band_max || ipo.price_band_min || 0
+  const lotSize = ipo.lot_size || 0
+  const termsKnown = cutoffPrice > 0 && lotSize > 0  // price band / lot size not published yet -> cannot bid
   const singleLotCost = lotSize * cutoffPrice
   const isSme = ipo.type === 'SME' || (ipo.name && ipo.name.includes('SME')) || (lotSize >= 100 && singleLotCost >= 40000)
   const minSmeRetailLots = isSme && singleLotCost < 200000 ? Math.max(2, Math.ceil(200000 / singleLotCost)) : 1
@@ -512,7 +513,7 @@ export function ApplyModal({ ipo, accounts, isOpen, onClose }: ApplyModalProps) 
               <button
                 type="button"
                 onClick={handleApply}
-                disabled={selectedAccountIds.length === 0 || isSubmitting || !isBiddingOpen || hasCategoryViolation}
+                disabled={selectedAccountIds.length === 0 || isSubmitting || !isBiddingOpen || hasCategoryViolation || !termsKnown}
                 className={`btn flex-1 justify-center gap-2 ${
                   !isBiddingOpen || hasCategoryViolation
                     ? 'btn-ghost opacity-60 cursor-not-allowed text-text-muted'

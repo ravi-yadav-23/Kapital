@@ -338,14 +338,16 @@ export function getStatusLabel(status: string): string {
 }
 
 /**
- * Format price band, cleanly rendering single price if min === max (e.g. ₹66 instead of ₹66 - ₹66)
+ * Format price band: "TBA" until published (0 / missing), a single price if min === max, else a range.
+ * Never shows a made-up number.
  */
 export function formatPriceBand(min?: number | null, max?: number | null): string {
-  if (!min && !max) return 'TBD'
-  const minVal = Math.round(min || 0)
-  const maxVal = Math.round(max || minVal)
-  if (minVal === maxVal || !maxVal) return `₹${minVal}`
-  return `₹${minVal} - ₹${maxVal}`
+  const lo = min && min > 0 ? min : 0
+  const hi = max && max > 0 ? max : 0
+  if (!lo && !hi) return 'TBA'
+  const a = Math.round((lo || hi) * 100) / 100
+  const b = Math.round((hi || lo) * 100) / 100
+  return a === b ? `₹${a}` : `₹${a} - ₹${b}`
 }
 
 /**
@@ -390,4 +392,15 @@ export function maskPrivacyName(name: string, relation?: string, isPrivacyActive
 /** Display text for a score: the number, or an honest "No score yet". Never a made-up default. */
 export function formatScore(score?: number | null): string {
   return score === undefined || score === null ? 'No score yet' : String(score)
+}
+
+
+/** True when both the price band and lot size are known, i.e. a bid can actually be computed. */
+export function hasKnownTerms(ipo: { price_band_max?: number | null; price_band_min?: number | null; lot_size?: number | null }): boolean {
+  return Boolean((ipo.price_band_max || ipo.price_band_min) && (ipo.price_band_max || ipo.price_band_min || 0) > 0 && (ipo.lot_size || 0) > 0)
+}
+
+/** Amount text with "TBA" for an unknown (0) amount. */
+export function formatKnownAmount(n: number | null | undefined, format: (v: number) => string): string {
+  return n && n > 0 ? format(n) : 'TBA'
 }

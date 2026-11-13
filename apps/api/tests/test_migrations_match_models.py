@@ -2,7 +2,7 @@
 
 Needs a real PostgreSQL (the migrations alter constraints, which SQLite cannot do). Sources, in order:
   1. MIGRATION_TEST_DATABASE_URL  (CI provides a throw-away Postgres service),
-  2. an embedded Postgres from the optional `pgserver` package (local runs),
+  2. an embedded Postgres from the optional `pgserver` package when USE_PGSERVER=1 (local runs),
 else the tests are skipped.
 
 Each test creates and drops its own database. For safety the tests REFUSE to run against hosted databases

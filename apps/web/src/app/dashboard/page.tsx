@@ -7,6 +7,8 @@ import { Ipo, FundSummary, PnlSummary, IpoOrder, Allotment } from '@/types'
 import { useAuth } from '@/lib/auth-context'
 import {
   formatINR,
+  formatPriceBand,
+  formatKnownAmount,
   formatCompactINR,
   formatPercent,
   formatRelativeDate,
@@ -465,12 +467,12 @@ export default function DashboardPage() {
 
                       {/* Price Band */}
                       <td className="td-num">
-                        ₹{ipo.price_band_min} - ₹{ipo.price_band_max}
+                        {formatPriceBand(ipo.price_band_min, ipo.price_band_max)}
                       </td>
 
                       {/* Min Investment */}
                       <td className="td-num font-mono">
-                        {formatINR(ipo.min_investment)}
+                        {formatKnownAmount(ipo.min_investment, formatINR)}
                       </td>
 
                       {/* GMP */}

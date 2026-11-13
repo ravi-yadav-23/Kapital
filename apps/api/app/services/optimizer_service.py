@@ -17,7 +17,7 @@ import logging
 from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta, timezone, date as DateType
 
-from app.schemas.fund import AllocationPlanResponse, AllocationEntrySchema, UpcomingConflictSchema, UPI_IPO_LIMIT  # noqa: F401
+from app.schemas.fund import AllocationPlanResponse, AllocationEntrySchema, UpcomingConflictSchema, SkippedIpoSchema, UPI_IPO_LIMIT  # noqa: F401
 
 logger = logging.getLogger("optimizer_service")
 
@@ -96,7 +96,17 @@ class AllocationOptimizer:
                 return False
             return True
 
+        def _terms_known(ipo: Dict[str, Any]) -> bool:
+            price = float(ipo.get("price_band_max") or ipo.get("price_band_min") or 0.0)
+            return price > 0 and int(ipo.get("lot_size") or 0) > 0
+
         open_ipos = [ipo for ipo in ipos if _is_active_open(ipo)]
+        # An open issue whose price band / lot size is not known yet cannot be allocated: never guess them.
+        skipped_unknown = [
+            SkippedIpoSchema(ipo_id=str(i.get("id")), reason="Price band or lot size is not known yet; no allocation computed.")
+            for i in open_ipos if not _terms_known(i)
+        ]
+        open_ipos = [i for i in open_ipos if _terms_known(i)]
         # Bidding optimizer must strictly allocate capital to active open issues only
         active_ipos = open_ipos
 
@@ -238,6 +248,7 @@ class AllocationOptimizer:
                 asba_lock_overlaps_detected=asba_conflicts,
                 warnings=warnings,
                 upcoming_conflicts=upcoming_conflicts,
+                skipped_ipos=skipped_unknown,
             )
 
         # ── 6. Run optimizer ───────────────────────────────────────────────────
@@ -255,6 +266,7 @@ class AllocationOptimizer:
         plan.asba_lock_overlaps_detected = asba_conflicts
         plan.warnings = warnings + plan.warnings
         plan.upcoming_conflicts = upcoming_conflicts
+        plan.skipped_ipos = skipped_unknown
         return plan
 
     @staticmethod

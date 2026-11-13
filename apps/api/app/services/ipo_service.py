@@ -38,6 +38,16 @@ def effective_rating(ipo, report=None):
     return score, recommendation_for(score), False
 
 
+def _apply_document_url(ipo, ipo_dict, status) -> None:
+    """Keep the offer-document link a feed supplies: a draft (DRHP) before the issue, the RHP once it opens."""
+    url = ipo_dict.get("prospectus_url") or ipo_dict.get("document_url")
+    if not url:
+        return
+    target = "rhp_url" if status in ("open", "closing_today", "closed") else "drhp_url"
+    if not getattr(ipo, target):
+        setattr(ipo, target, url)
+
+
 def _momentum_reason(ipo) -> str:
     parts = []
     if gmp_known(ipo.gmp_percent):
@@ -469,11 +479,7 @@ class IpoService:
             if ipo_dict.get("gmp_percent") is not None and float(ipo_dict.get("gmp_percent")) > 0:
                 existing.gmp_percent = float(ipo_dict.get("gmp_percent"))
 
-            if ipo_dict.get("prospectus_url"):
-                # an RHP is final; for upcoming issues the document is the draft (DRHP)
-                target = "rhp_url" if computed_status in ("open", "closing_today", "closed") else "drhp_url"
-                if not getattr(existing, target):
-                    setattr(existing, target, ipo_dict["prospectus_url"])
+            _apply_document_url(existing, ipo_dict, computed_status)
 
             # Single rule for the stored score/verdict (+ history row when it changes). An audited
             # report keeps its score; live GMP can no longer overwrite it.
@@ -556,6 +562,7 @@ class IpoService:
         )
         db.add(ipo_obj)
         await db.flush()
+        _apply_document_url(ipo_obj, ipo_dict, computed_status)
         await refresh_stored_score(db, ipo_obj)  # feed-supplied scores are ignored: one formula only
 
         # Register primary alias in Tier 2

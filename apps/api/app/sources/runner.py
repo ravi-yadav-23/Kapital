@@ -26,7 +26,8 @@ class SourceReport:
 def default_sources() -> List[Source]:
     """Order matters: later sources enrich/override earlier ones in the merge."""
     from app.sources.ipoalerts import IpoAlertsSource
-    from app.sources.legacy import GrowwSource, IpoWatchSource
+    from app.sources.groww import GrowwSource
+    from app.sources.ipowatch import IpoWatchSource
     return [GrowwSource(), IpoAlertsSource(), IpoWatchSource()]
 
 

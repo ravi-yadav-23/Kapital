@@ -232,10 +232,10 @@ async def run_pulp_optimization(
                 "allotment_date": str(ipo.allotment_date) if ipo.allotment_date else None,
                 "refund_date": str(ipo.refund_date) if ipo.refund_date else None,
                 "listing_date": str(ipo.listing_date) if ipo.listing_date else None,
-                "lot_size": ipo.lot_size or 1,
-                "price_band_min": ipo.price_band_min or 100.0,
-                "price_band_max": ipo.price_band_max or 100.0,
-                "min_investment": ipo.min_investment or ((ipo.lot_size or 1) * (ipo.price_band_max or 100.0)),
+                "lot_size": ipo.lot_size or 0,  # 0 = not known yet
+                "price_band_min": ipo.price_band_min or 0.0,
+                "price_band_max": ipo.price_band_max or 0.0,
+                "min_investment": ipo.min_investment or ((ipo.lot_size or 0) * (ipo.price_band_max or 0.0)),
                 "gmp_percent": min(float(ipo.gmp_percent or 0.0), 80.0),  # Cap at 80%
                 "score": ipo.score,  # None = no score yet; the optimizer treats it as neutral internally
             }

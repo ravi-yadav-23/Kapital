@@ -6,6 +6,8 @@ import { Ipo, FamilyAccount } from '@/types'
 import { IpoCard } from './IpoCard'
 import {
   formatINR,
+  formatPriceBand,
+  formatKnownAmount,
   formatPercent,
   formatRelativeDate,
   computeIpoStatus,
@@ -378,12 +380,10 @@ export function IpoBoard({
                       {windowText}
                     </td>
                     <td className="td-num whitespace-nowrap">
-                      {ipo.price_band_min === ipo.price_band_max || !ipo.price_band_max
-                        ? `₹${ipo.price_band_min}`
-                        : `₹${ipo.price_band_min} - ₹${ipo.price_band_max}`}
+                      {formatPriceBand(ipo.price_band_min, ipo.price_band_max)}
                     </td>
                     <td className="td-num whitespace-nowrap" suppressHydrationWarning>
-                      {formatINR(ipo.min_investment)}
+                      {formatKnownAmount(ipo.min_investment, formatINR)}
                     </td>
                     <td className={`td-num whitespace-nowrap ${(ipo.gmp_percent || 0) > 0 ? 'text-emerald-400' : 'text-ink-3'}`}>
                       {(ipo.gmp_percent || 0) > 0 ? `↑ ${formatPercent(ipo.gmp_percent)}` : '0.0%'}

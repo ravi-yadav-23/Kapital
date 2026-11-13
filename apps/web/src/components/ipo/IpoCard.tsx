@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Ipo } from '@/types'
 import {
   formatINR,
+  formatPriceBand,
+  formatKnownAmount,
   formatPercent,
   formatRelativeDate,
   getStatusDotClass,
@@ -100,19 +102,19 @@ export function IpoCard({ ipo }: IpoCardProps) {
       <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-xs">
         <div>
           <span className="text-ink font-medium block">
-            ₹{ipo.price_band_max || ipo.price_band_min}
+            {formatPriceBand(ipo.price_band_min, ipo.price_band_max)}
           </span>
           <span className="text-[11px] text-ink-3 font-sans block mt-0.5">Price</span>
         </div>
         <div>
           <span className="text-ink font-medium block" suppressHydrationWarning>
-            {formatINR(ipo.min_investment)}
+            {formatKnownAmount(ipo.min_investment, formatINR)}
           </span>
           <span className="text-[11px] text-ink-3 font-sans block mt-0.5">Min invest</span>
         </div>
         <div>
           <span className="text-ink font-medium block">
-            {ipo.lot_size} sh
+            {ipo.lot_size && ipo.lot_size > 0 ? `${ipo.lot_size} sh` : 'TBA'}
           </span>
           <span className="text-[11px] text-ink-3 font-sans block mt-0.5">Lot size</span>
         </div>
