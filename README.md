@@ -45,8 +45,8 @@ Every year, millions of Indian retail investors participate in IPOs using manual
 └─────────────────────────┘    └──────────────────────────┘    └─────────────────────────┘
 ```
 
-1. **AI-assisted IPO scoring**: an LLM (Groq `openai/gpt-oss-120b` by default; Anthropic Claude or Google Gemini can be selected in Settings, one provider at a time) summarises the IPO's feed metadata (price band, lot size, GMP, subscription, listed strengths and risks). Market-signal components (GMP, subscription) are computed deterministically. Anything the model cannot be given - restated financials, peer multiples, OFS split, litigation - is shown as **not assessed**; prospectus (DRHP/RHP) parsing is not implemented.
-2. **Heuristic capital allocation (PuLP MILP)**: given family balances across demat accounts, ranks bids across SEBI Retail (≤₹2L), sHNI (₹2L–₹10L) and bHNI (>₹10L) by a GMP × score weighting, with per-account budgets, one bid per PAN within a plan, a reservation of capital for high-score upcoming IPOs, and UPI-vs-net-banking tagging (UPI is capped at ₹5L per bid). The objective is a ranking heuristic, **not** expected profit: it has no allotment-probability model, so it makes no profit or allotment guarantee.
+1. **Listing-gain analysis (nightly, free tier)**: a GitHub Actions job at about 02:00 IST refreshes the data sources (Groww, IPO Watch, ipoalerts), downloads the SEBI/NSE/BSE offer document (DRHP/RHP) for open IPOs first and then upcoming ones, splits it into chunks and has a model (Groq `openai/gpt-oss-120b` by default) extract a few hard facts from each chunk (profit, debt, promoter holding, litigation...). The **Listing-Gain Engine** then combines company quality (30%), subscription demand (30%), grey-market premium (20%, discounted when demand does not back it), issue size (10%) and market mood (10%), applies deterministic red-flag rules (a critical flag is a veto) and reports a score with its reasons. Anything unknown is left out, never guessed. The score weights are a reasoned starting point and are **not yet calibrated** against enough real outcomes.
+2. **Allotment-odds capital allocation (PuLP MILP)**: given family balances across demat accounts, values each possible bid across SEBI Retail (≤₹2L), sHNI (₹2L–₹10L) and bHNI (>₹10L) as *chance of allotment × expected listing gain*, with per-account budgets, one bid per PAN within a plan, a reservation of capital for high-score upcoming IPOs, and UPI-vs-net-banking tagging (UPI is capped at ₹5L per bid). IPOs whose price band or lot size is not known yet are skipped. It is a heuristic and makes no profit or allotment guarantee.
 3. **Listing-day sell staging (self-hosted scheduler or GitHub Actions cron)**: holdings credited in the demat are detected via Angel One SmartAPI (exact ISIN/symbol matching) and the sell limit price you stage is submitted around 09:00 IST on listing day, with a 10:05 reconciliation that books P&L only from real broker fills. Timing is best-effort, and the broker calls have not been verified against a live account.
 
 ---
@@ -181,9 +181,17 @@ GET    /api/funds/accounts             # Registered Demat accounts (masked PAN);
 POST   /api/funds/optimize             # Trigger PuLP MILP solver to generate optimal lot distribution
 GET    /api/allotments                 # Active Demat holdings and historical listing sales
 POST   /api/allotments/{id}/stage-sell # Stage 09:00:00 AM IST pre-market limit sell mandate
-GET    /api/reports/{id}               # Full forensic multi-agent due diligence audit report
+GET    /api/reports/{id}               # Stored due-diligence report
+GET    /api/analysis/{id}              # Latest listing-gain analysis: score, Apply/Watch/Avoid badge, signals with reasons
+POST   /api/analysis/{id}/request      # "Run audit": returns the stored analysis or queues the IPO for tonight (global limit 50/day; never calls a model)
 WS     /api/ws                         # Live market telemetry, allotment updates & order events
 ```
+
+---
+
+## 📚 Documentation
+
+Full documentation (how the score works, data sources, the nightly run, security, API reference, deployment) lives in the app at `/docs` and is generated from `apps/web/src/lib/docs-content.ts`. Planning notes are in `docs/plans/` and the audit history in `AUDIT.md`.
 
 ---
 

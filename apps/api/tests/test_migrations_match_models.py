@@ -35,7 +35,10 @@ def _structural_diffs(engine):
     for d in diffs:
         for op in (d if isinstance(d, list) else [d]):
             kind = op[0]
-            if kind in ("add_table", "remove_table", "add_column", "remove_column"):
+            if kind == "modify_nullable":
+                # (kind, schema, table, column, kw, existing, modified): a NOT NULL / NULL mismatch breaks inserts
+                out.append(f"modify_nullable: {op[2]}.{op[3]}")
+            elif kind in ("add_table", "remove_table", "add_column", "remove_column"):
                 if kind.endswith("table"):
                     out.append(f"{kind}: {getattr(op[1], 'name', op[1])}")
                 else:

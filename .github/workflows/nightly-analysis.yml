@@ -14,7 +14,20 @@ name: Nightly IPO analysis
 on:
   schedule:
     - cron: "30 20 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      max_chunks:
+        description: "Chunk budget for this run (default 60)"
+        required: false
+        default: "60"
+      max_ipos:
+        description: "Maximum IPOs to analyse (default 15)"
+        required: false
+        default: "15"
+      max_tokens:
+        description: "Model token budget for this run (default 150000)"
+        required: false
+        default: "150000"
 
 permissions:
   contents: read
@@ -45,4 +58,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           IPOALERTS_API_KEY: ${{ secrets.IPOALERTS_API_KEY }}
           SOURCE_IPOALERTS_ENABLED: "true"
+          NIGHTLY_MAX_CHUNKS: ${{ inputs.max_chunks }}
+          NIGHTLY_MAX_IPOS: ${{ inputs.max_ipos }}
+          NIGHTLY_MAX_TOKENS: ${{ inputs.max_tokens }}
         run: python -m app.jobs.nightly

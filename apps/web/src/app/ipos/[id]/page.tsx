@@ -4,10 +4,11 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { apiClient, canShowMockData } from '@/lib/api-client'
+import { apiClient, canShowMockData, canShowMockIpos } from '@/lib/api-client'
 import { Ipo, FamilyAccount, AiReport } from '@/types'
 import { MOCK_IPOS, MOCK_ACCOUNTS } from '@/lib/mock-data'
 import { IpoSchedule } from '@/components/ipo/IpoSchedule'
+import { ListingGainPanel } from '@/components/reports/ListingGainPanel'
 import { ApplyModal } from '@/components/ipo/ApplyModal'
 import {
   formatDate,
@@ -34,7 +35,7 @@ export default function IpoDetailPage() {
   const params = useParams()
   const id = (params?.id as string) || ''
   const [ipo, setIpo] = useState<Ipo | null>(() => {
-    if (!canShowMockData()) return null
+    if (!canShowMockIpos()) return null
     return MOCK_IPOS.find((i) => i.id === id || i.slug === id || i.symbol?.toLowerCase() === id.toLowerCase()) || null
   })
   const [report, setReport] = useState<AiReport | null>(null)
@@ -425,6 +426,9 @@ export default function IpoDetailPage() {
                 View Allocation in Fund Manager
               </Link>
             </div>
+
+            {/* Listing-gain analysis (signals + reasons, Apply/Watch/Avoid badge, Run audit) */}
+            <ListingGainPanel ipoId={ipo.id} />
 
             {/* Schedule */}
             {ipo.schedule && ipo.schedule.length > 0 && (

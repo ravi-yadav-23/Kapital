@@ -315,7 +315,7 @@ New findings during fixes:
 |---|---|
 | F26 Alembic catch-up migration, F27 safe `init_db` on PostgreSQL, F28 unique index on active orders | D7: data-model/DDL changes, need a Postgres to test on; recommend doing them together |
 | F18 settings still not wired (thresholds, allocation cap, buffer, default UPI, notifications) | D5: relabelled only |
-| F19 optimizer has no allotment-probability model | D6: claims reworded only |
+| F19 optimizer has no allotment-probability model | **resolved in M5**: bids are weighted by chance of allotment x expected listing gain |
 | F10 no broker-side cancel | endpoint unverified |
 | F33 Angel One IPO-apply endpoint/payload unverified | disabled by default (`ENABLE_LIVE_IPO_APPLY=false`) |
 | F13 no DRHP ingestion | D1: wording only |
@@ -340,3 +340,27 @@ New findings during fixes:
 - `alembic upgrade head` used to **crash** on that database (`system_settings already exists`) and on any fresh database that the app had started first. Both fixed and tested.
 - **Near miss during testing:** the Supabase pooler ignores the `options=-c search_path=...` startup parameter, so a "scratch schema" test would have run in `public`. Nothing changed (the attempts rolled back), but destructive tests must never target the hosted database. Tests now use a throw-away local/CI Postgres and refuse hosted hosts.
 - `python scripts/db_dry_run.py` (and the manual `db-migrate.yml` workflow, mode dry-run) applies the whole upgrade in one transaction, compares with the models and rolls back. Result on the real DB: `c13dc79076eb -> e5c3a9d41b27`, no remaining differences, row counts unchanged.
+
+
+## Redesign milestones M3-M10 (2026-11-13)
+- Built and tested: snapshots/outcomes (M3), Listing-Gain Engine + backtest (M4), allotment-odds optimizer (M5), offer-document pipeline (M6), red-flag rules (M7), nightly analysis job + workflow (M8), guest analysis API with a DB-enforced 50/day "Run audit" cap and report-page panel (M9). Details in `docs/plans/2026-11-12-ai-reports-redesign.md` section 23.
+- Database (Supabase) is at `c2a7d9e45f61`. **Not yet applied:** `d3b8e0f56a72` (audit queue). Apply with the dry-run first.
+- **Not verified:** the nightly job has never run against the real Groq API or real SEBI filings beyond one fetch test; the engine's thresholds are not calibrated (needs weeks of snapshots); the full flow on the deployed site has not been exercised.
+- Still to do by you: GitHub secrets `DATABASE_URL` (session pooler, 5432), `GROQ_API_KEY`, `IPOALERTS_API_KEY`; Vercel env; rotate exposed keys (see list above).
+
+## Follow-up (2026-11-13, autonomous pass)
+- Database now at `d3b8e0f56a72`; `e4c9a1b73d58` (ipos dates nullable) pending until verified.
+- **Found by the first live run:** (1) the Groq model needs `max_completion_tokens` and `reasoning_effort="low"` (a 600-token cap cut the JSON off: `json_validate_failed`) - fixed with a regression test; (2) the real database still had `ipos.issue_open_date` / `issue_close_date` NOT NULL (initial schema), so upcoming IPOs without dates could not be stored - migration `e4c9a1b73d58`; (3) my earlier "no structural differences" check ignored nullability - both the dry-run script and the model/migration test now flag `modify_nullable`.
+- F36: keyboard focus ring restored for links and buttons (global rule). Landing-page light theme still unchecked (needs rendering).
+- Docs section rebuilt (`/docs`, 13 pages from `apps/web/src/lib/docs-content.ts`); README updated.
+
+## Second follow-up (2026-11-13)
+- Critical red flags now need a verbatim quote that is found in the document excerpt; unverified claims are shown as high flags and cannot veto (found because a real run vetoed Hero Fincorp on one unchecked model answer).
+- Nightly job: token budget, stop check before each chunk, exit code 1 when a source fails (GitHub notifies the owner).
+- Test infrastructure: the pytest process did not exit after the tests passed (an aiosqlite connection opened through the application's own engine was never closed). Fixed in `tests/conftest.py`; CI would have hung on it.
+- Smoke check of the built web app: `/`, `/dashboard`, `/ipos`, `/reports`, `/settings` and all `/docs/*` pages return 200, unknown docs pages 404. Not looked at in a browser.
+
+## Single score, cleanup, guest data (2026-11-14)
+- **One score:** `app/services/rating.py` is the only place a score is computed (Listing-Gain Engine on live market data + stored document facts). `effective_rating`, the report endpoints, the optimizer input, the badges and the analysis endpoint all use it. An old audited AI report no longer decides the score (it keeps its factor breakdown). The nightly job recomputes every stored score. Several tests encoded the old rule ("an audited report wins", the old 60/40 formula) and were changed deliberately to the new decision; the contract test (same score on every endpoint, stale stored score ignored) still holds and now covers the new rule.
+- **Removed:** `.ai/`, `.cursor/rules/`, the 2026-11-01 production-readiness plan, `apps/api/run_live_pipeline_dryrun.py`, four empty placeholder docs. Valid rules moved to `CONTRIBUTING.md`; two stale docs rewritten.
+- **Guests:** IPO and report data is real for everyone; sample data only for accounts, funds, orders, allotments and P&L.

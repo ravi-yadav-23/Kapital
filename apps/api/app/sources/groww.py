@@ -142,6 +142,35 @@ def parse_groww_page(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
     return records, problems
 
 
+def parse_groww_detail(html: str) -> Optional[str]:
+    """The offer-document link on a Groww IPO page (`ipoData.documentUrl`), only if it is a plain https URL."""
+    tag = BeautifulSoup(html or "", "html.parser").find("script", id="__NEXT_DATA__")
+    if not tag or not tag.string:
+        return None
+    try:
+        url = json.loads(tag.string)["props"]["pageProps"]["ipoData"].get("documentUrl")
+    except (ValueError, KeyError, AttributeError, TypeError):
+        return None
+    return url if isinstance(url, str) and url.startswith("https://") else None
+
+
+async def fetch_document_link(slug: str, client: Optional[httpx.AsyncClient] = None) -> Optional[str]:
+    """Look up an IPO's offer-document link on its Groww page. Any problem means 'not found'."""
+    if not re.fullmatch(r"[a-z0-9-]{3,120}", slug or ""):
+        return None
+    own = client is None
+    client = client or httpx.AsyncClient(follow_redirects=True, timeout=20.0, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"})
+    try:
+        resp = await client.get(f"https://groww.in/ipo/{slug}")
+        return parse_groww_detail(resp.text) if resp.status_code == 200 else None
+    except httpx.HTTPError:
+        return None
+    finally:
+        if own:
+            await client.aclose()
+
+
 class GrowwSource(Source):
     name = "groww"
 

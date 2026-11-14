@@ -15,8 +15,9 @@ from app.agents.allocation_agent import allocation_agent
 from app.agents.tools import get_ipo_full_profile
 from app.utils.scoring import (
     gmp_known, subscription_known, gmp_strength as _gmp_strength,
-    subscription_momentum as _sub_momentum, momentum_score,
+    subscription_momentum as _sub_momentum,
 )
+from app.services.rating import rate
 
 logger = logging.getLogger("agent.orchestrator")
 
@@ -163,7 +164,7 @@ class IpoDueDiligenceOrchestrator:
             overall_score = self.compute_weighted_score(fin, ind, sub_m, val, gmp_s, gov, penalties)
         else:
             # Same preliminary formula the stored-report endpoint uses, so both always agree.
-            overall_score = momentum_score(ipo.get("gmp_percent"), qib_sub, sub_total_in)
+            overall_score = rate({**ipo, "subscription_qib": qib_sub, "subscription_total": sub_total_in})["score"]
 
         price_max = float(ipo.get("price_band_max") or 100.0)
         est_listing_price = round(price_max * (1 + (gmp_pct / 100.0)), 2)
@@ -218,7 +219,7 @@ class IpoDueDiligenceOrchestrator:
         if is_analysis_failed:
             # Return an HONEST preliminary response — never fabricate or mark as audited.
             # Score only from live market signals (GMP + subscription).
-            preliminary_score = momentum_score(ipo.get("gmp_percent"), qib_sub, sub_total_in)
+            preliminary_score = rate({**ipo, "subscription_qib": qib_sub, "subscription_total": sub_total_in})["score"]
             audit_reason = (
                 analysis_res.get("error") or news_res.get("error") or "the AI analysis did not complete"
             )
@@ -567,6 +568,7 @@ class IpoDueDiligenceOrchestrator:
             await db.flush()
             from app.services.ipo_service import refresh_stored_score
             await refresh_stored_score(db, db_ipo)
+            overall_score = db_ipo.score  # one score everywhere: the stored engine score, not the report's own weighting
 
         await db.commit()
         await db.refresh(report_row)

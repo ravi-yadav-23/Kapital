@@ -9,7 +9,6 @@ from app.schemas.ipo import IpoResponse, IpoScheduleSchema
 from app.schemas.report import ScoreBreakdownSchema, RedFlagSchema
 from app.utils.text_utils import clean_text, clean_text_list
 from app.utils.scoring import (
-    momentum_score,
     recommendation_for,
     gmp_known,
     subscription_known,
@@ -24,18 +23,37 @@ import re
 
 import difflib
 
-def effective_rating(ipo, report=None):
-    """The ONE rule for an IPO's current score, verdict and audited flag.
+def effective_rating(ipo, report=None, facts=None):
+    """The ONE rule for an IPO's current score and verdict: the Listing-Gain Engine (app.services.rating) on live
+    market data plus the stored document analysis, if any. An old AI report no longer decides the score.
 
-    - an audited report decides (stable: live GMP does not rewrite it);
-    - a stored preliminary stub is NOT an audit;
-    - otherwise the market-momentum score from live GMP/subscription, or None ("No score yet").
-    Returns (score or None, recommendation, is_audited).
+    Returns (score or None, recommendation, has_audited_report). The last value only says whether an old AI report
+    with its own factor breakdown exists; it never changes the score.
     """
-    if report is not None and getattr(report, "is_audited", False) and getattr(report, "overall_score", None) is not None:
-        return report.overall_score, report.recommendation, True
-    score = momentum_score(ipo.gmp_percent, ipo.subscription_qib, ipo.subscription_total)
-    return score, recommendation_for(score), False
+    from app.services.rating import rate
+    res = rate(ipo, facts)
+    audited_report = bool(report is not None and getattr(report, "is_audited", False))
+    return res["score"], res["verdict"], audited_report
+
+
+async def refresh_statuses(db: AsyncSession) -> int:
+    """Recompute every IPO's status from its dates. Returns how many rows changed.
+
+    Statuses are written when a source reports an IPO; an IPO a source stopped listing kept its old status
+    forever (found live: nine rows still 'open' that closed in September). Rows without both dates are left alone.
+    """
+    changed = 0
+    rows = (await db.execute(select(Ipo).where(Ipo.issue_open_date.isnot(None), Ipo.issue_close_date.isnot(None)))).scalars().all()
+    for ipo in rows:
+        correct = compute_ipo_status(ipo.issue_open_date, ipo.issue_close_date)
+        if ipo.allotment_date and date.today() >= ipo.allotment_date:
+            correct = "closed"
+        if ipo.status != correct:
+            ipo.status = correct
+            changed += 1
+    if changed:
+        await db.commit()
+    return changed
 
 
 def _apply_document_url(ipo, ipo_dict, status) -> None:
@@ -58,21 +76,39 @@ def _momentum_reason(ipo) -> str:
 
 
 async def refresh_stored_score(db, ipo) -> None:
-    """Keep the stored Ipo.score/recommendation equal to the effective rating and log changes."""
+    """Keep the stored Ipo.score/recommendation equal to the current rating and log changes."""
     from sqlalchemy import select as _select
     from app.models.report import AiReport as _AiReport
+    from app.services.rating import latest_facts_map
     from app.services.score_history import record_score
 
     rep = (await db.execute(_select(_AiReport).where(_AiReport.ipo_id == ipo.id))).scalar_one_or_none()
-    score, rec, audited = effective_rating(ipo, rep)
+    facts = (await latest_facts_map(db, [ipo.id])).get(ipo.id)
+    score, rec, _ = effective_rating(ipo, rep, facts)
     ipo.score = score
     ipo.recommendation = rec
     await record_score(
-        db, ipo.id, "overall" if audited else "momentum", score, rec,
-        "AI report score" if audited else _momentum_reason(ipo),
+        db, ipo.id, "overall" if facts else "momentum", score, rec,
+        ("engine score with document analysis; " if facts else "engine score from market data only; ") + _momentum_reason(ipo),
         {"gmp_percent": ipo.gmp_percent, "subscription_qib": ipo.subscription_qib,
-         "subscription_total": ipo.subscription_total, "audited": audited},
+         "subscription_total": ipo.subscription_total, "documents_analysed": bool(facts)},
     )
+
+
+async def refresh_all_scores(db) -> int:
+    """Recompute the stored score of every IPO (rules or stored facts may have changed). Returns rows changed."""
+    from app.services.rating import latest_facts_map
+    ipos = (await db.execute(select(Ipo))).scalars().all()
+    facts = await latest_facts_map(db, [i.id for i in ipos])
+    changed = 0
+    for ipo in ipos:
+        score, rec, _ = effective_rating(ipo, None, facts.get(ipo.id))
+        if ipo.score != score or ipo.recommendation != rec:
+            ipo.score, ipo.recommendation = score, rec
+            changed += 1
+    if changed:
+        await db.commit()
+    return changed
 
 
 # Standard stop words and legal entities for financial markets
@@ -159,7 +195,7 @@ def _model_to_response(ipo: Ipo) -> IpoResponse:
 
     # Score: One single source of truth across Dashboard, IPO Board, and Reports
     _rep = getattr(ipo, "report", None)
-    _score, _rec, has_audit = effective_rating(ipo, _rep)
+    _score, _rec, has_audit = effective_rating(ipo, _rep, getattr(ipo, 'analysis_facts', None))
     if has_audit:
         rep = ipo.report
         score = _score
@@ -266,6 +302,8 @@ class IpoService:
         result = await db.execute(stmt)
         ipos = result.scalars().all()
 
+        from app.services.rating import attach_facts
+        await attach_facts(db, ipos)
         responses = [_model_to_response(i) for i in ipos]
         if status and status != "all":
             responses = [r for r in responses if r.status == status]
@@ -296,6 +334,9 @@ class IpoService:
             except Exception:
                 pass
 
+        if ipo:
+            from app.services.rating import attach_facts
+            await attach_facts(db, [ipo])
         return _model_to_response(ipo) if ipo else None
 
 

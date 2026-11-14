@@ -12,6 +12,7 @@ from app.models.report import AiReport
 from app.models.score_history import ScoreHistory
 from app.services.ipo_service import effective_rating, ipo_service
 from app.services.score_history import record_score
+from app.utils.scoring import recommendation_for
 
 
 def _ipo(**kw):
@@ -20,16 +21,30 @@ def _ipo(**kw):
     return SimpleNamespace(**base)
 
 
-def test_audited_report_wins_and_is_stable():
+def test_an_audited_report_no_longer_decides_the_score():
+    """Decision: one engine score everywhere. The old report keeps its factor breakdown (third value) only."""
     rep = SimpleNamespace(is_audited=True, overall_score=71, recommendation="MODERATE_APPLY")
-    assert effective_rating(_ipo(gmp_percent=90.0), rep) == (71, "MODERATE_APPLY", True)
+    score, rec, has_report = effective_rating(_ipo(gmp_percent=90.0), rep)
+    assert has_report is True
+    assert score != 71 and score == effective_rating(_ipo(gmp_percent=90.0), None)[0]   # same with or without the report
+    assert rec == recommendation_for(score)
 
 
-def test_preliminary_stub_is_not_an_audit():
+def test_stub_report_and_no_report_give_the_same_engine_score():
     stub = SimpleNamespace(is_audited=False, overall_score=33, recommendation="PENDING")
-    score, rec, audited = effective_rating(_ipo(), stub)
-    assert (score, audited) == (56, False)
-    assert rec == "WATCH"
+    score, rec, has_report = effective_rating(_ipo(), stub)
+    assert (score, has_report) == (51, False)           # engine: GMP 20% + demand 3x (QIB 1x), no documents yet
+    assert rec == "WATCH" == recommendation_for(51)
+    assert effective_rating(_ipo(), None)[0] == 51
+
+
+def test_document_facts_move_the_score_and_a_verified_critical_flag_vetoes():
+    good = dict(net_profit_cr=80.0, revenue_growth_pct=30.0, debt_to_equity=0.4, promoter_holding_post_pct=70.0)
+    base = effective_rating(_ipo(name="Plain Ltd"), None)[0]
+    assert effective_rating(_ipo(name="Plain Ltd"), None, good)[0] > base
+    vetoed = dict(good, regulatory_action_against_promoter=True,
+                  regulatory_action_evidence="SEBI passed an order against our Promoter imposing a penalty.")
+    assert effective_rating(_ipo(name="Plain Ltd"), None, vetoed)[0] <= 35
 
 
 def test_no_data_no_report_is_no_score():

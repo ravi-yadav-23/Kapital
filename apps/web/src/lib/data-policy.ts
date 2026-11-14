@@ -7,6 +7,16 @@ export function mockAllowed(opts: { useMockEnv: boolean; isGuest: boolean }): bo
 }
 
 /**
+ * IPO and report data is public market data, so guests see the real thing. Sample IPOs exist only for an explicit
+ * mock build (development without an API); a guest session never gets invented IPO names or scores.
+ * Accounts, funds, orders, allotments and P&L are personal, so guests still see clearly labelled sample data
+ * for those (see mockAllowed).
+ */
+export function ipoMockAllowed(opts: { useMockEnv: boolean }): boolean {
+  return opts.useMockEnv
+}
+
+/**
  * Pick what a list view should show.
  * - `real` is the API result: an array (possibly empty) or null when the request failed.
  * - Real sessions get exactly what the API returned (empty stays empty, failure becomes empty).

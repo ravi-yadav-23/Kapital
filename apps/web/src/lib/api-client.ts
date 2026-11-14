@@ -21,7 +21,9 @@ import {
   MOCK_REPORTS,
   MOCK_APP_SETTINGS,
 } from './mock-data'
-import { mockAllowed, listOrMock, requireMutationOk } from './data-policy'
+import { mockAllowed, ipoMockAllowed, listOrMock, requireMutationOk } from './data-policy'
+import type { Analysis, AnalysisBadge, AuditResponse } from './analysis-view'
+import { auditErrorMessage } from './analysis-view'
 
 function getApiBaseUrl(): string {
   // 1. Runtime service binding injected by Vercel for server functions
@@ -62,6 +64,11 @@ function isGuestSession(): boolean {
 /** Sample data is only ever shown to guest sessions or explicit mock builds - never to a real session. */
 export function canShowMockData(): boolean {
   return mockAllowed({ useMockEnv: USE_MOCK_DATA, isGuest: isGuestSession() })
+}
+
+/** Sample IPOs / reports only in an explicit mock build; guests see the real public IPO data. */
+export function canShowMockIpos(): boolean {
+  return ipoMockAllowed({ useMockEnv: USE_MOCK_DATA })
 }
 
 function unavailablePlan(): AllocationPlan {
@@ -279,13 +286,13 @@ export const apiClient = {
       }
     } catch {}
 
-    const result = listOrMock(cached, MOCK_IPOS, canShowMockData())
+    const result = listOrMock(cached, MOCK_IPOS, canShowMockIpos())
     setCached(cacheKey, result)
     return result
   },
 
   async getIpoById(id: string): Promise<Ipo | null> {
-    const mockFallback = !canShowMockData()
+    const mockFallback = !canShowMockIpos()
       ? null
       : MOCK_IPOS.find(
           (ipo) =>
@@ -788,14 +795,14 @@ export const apiClient = {
       const res = await authFetch(`${API_BASE_URL}/reports`)
       if (res.ok) {
         const data = await res.json()
-        if (Array.isArray(data)) return listOrMock(data, MOCK_REPORTS, canShowMockData())
+        if (Array.isArray(data)) return listOrMock(data, MOCK_REPORTS, canShowMockIpos())
       }
     } catch {}
-    return listOrMock(null, MOCK_REPORTS, canShowMockData())
+    return listOrMock(null, MOCK_REPORTS, canShowMockIpos())
   },
 
   async getReportById(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport | null> {
-    const mockRep = canShowMockData() ? MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null : null
+    const mockRep = canShowMockIpos() ? MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null : null
     if (USE_MOCK_DATA) {
       return mockRep
     }
@@ -821,6 +828,36 @@ export const apiClient = {
       rep = await fetchRep(symbol)
     }
     return rep || mockRep
+  },
+
+  // ── Listing-gain analysis (precomputed nightly; "Run audit" only queues, it never calls a model) ──
+  async getAnalysis(ipoId: string): Promise<Analysis | null> {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/analysis/${encodeURIComponent(ipoId)}`)
+      if (res.ok) return (await res.json()) as Analysis
+    } catch {}
+    return null
+  },
+
+  async getAnalysisSummaries(): Promise<Record<string, { badge: AnalysisBadge; score: number | null }>> {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/analysis`)
+      if (res.ok) {
+        const rows = (await res.json()) as { ipo_id: string; badge: AnalysisBadge; score: number | null }[]
+        return Object.fromEntries(rows.map((r) => [r.ipo_id, { badge: r.badge, score: r.score }]))
+      }
+    } catch {}
+    return {}
+  },
+
+  async requestAudit(ipoId: string): Promise<AuditResponse> {
+    const res = await authFetch(`${API_BASE_URL}/analysis/${encodeURIComponent(ipoId)}/request`, { method: 'POST' })
+    if (res.ok) return (await res.json()) as AuditResponse
+    let detail: string | undefined
+    try {
+      detail = (await res.json())?.detail
+    } catch {}
+    throw new Error(auditErrorMessage(res.status, detail))
   },
 
   async generateReport(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport> {

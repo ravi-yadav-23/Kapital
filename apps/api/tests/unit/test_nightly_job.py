@@ -88,7 +88,7 @@ class Recorder:
 @pytest.mark.asyncio
 async def test_open_ipos_are_analysed_before_upcoming_and_results_are_stored(db):
     db.add_all([
-        _ipo("NGT1", "upcoming", issue_open_date=date.today() + timedelta(days=5), drhp_url="https://www.sebi.gov.in/a.pdf"),
+        _ipo("NGT1", "upcoming", issue_open_date=date.today() + timedelta(days=5), issue_close_date=date.today() + timedelta(days=7), drhp_url="https://www.sebi.gov.in/a.pdf"),
         _ipo("NGT2", "open", rhp_url="https://www.sebi.gov.in/b.pdf"),
     ])
     await db.commit()
@@ -158,3 +158,93 @@ def test_workflow_runs_at_2am_ist_with_secrets_only():
         assert f"secrets.{name}" in text
     assert not re.search(r"(echo|print)[^\n]*\$\{\{\s*secrets", text)          # secrets are never echoed
     assert "timeout-minutes" in text and "concurrency" in text
+
+
+# ---- relevance ordering and early stop (a real DRHP has hundreds of chunks; the nightly budget is small) ----
+from app.documents.facts import chunk_relevance, facts_sufficient  # noqa: E402
+
+
+def test_financial_and_risk_sections_rank_above_boilerplate():
+    cover = "THIS DRAFT RED HERRING PROSPECTUS IS NOT AN OFFER. Definitions and abbreviations. Table of contents."
+    money = "Restated summary of financial information: revenue from operations, profit after tax and net cash from operating activities."
+    risk = "Outstanding litigation against our promoter and regulatory action; auditor qualification."
+    assert chunk_relevance(money) > chunk_relevance(cover) and chunk_relevance(risk) > chunk_relevance(cover)
+    assert chunk_relevance("") == 0
+
+
+def test_facts_sufficient_needs_four_of_the_five_scoring_facts():
+    four = dict(net_profit_cr=1.0, revenue_growth_pct=2.0, debt_to_equity=0.5, promoter_holding_post_pct=60.0)
+    assert facts_sufficient(four) and not facts_sufficient({"net_profit_cr": 1.0, "pe_ratio": 9.0})
+
+
+@pytest.mark.asyncio
+async def test_most_relevant_chunks_are_analysed_first(db):
+    from app.documents.extract import chunk_pages
+    from app.documents.store import store_document, analyse_pending_chunks
+    pages = ["Definitions and abbreviations " * 3, "Restated profit after tax and revenue from operations cash flow", "More boilerplate text " * 3]
+    chunks = chunk_pages(pages, max_chars=60, overlap=0)
+    v = await store_document(db, "ipo-rel", "RHP", "https://www.sebi.gov.in/r.pdf", "sha-rel", chunks)
+    seen = []
+
+    async def llm(text):
+        seen.append(text)
+        return {}
+
+    await analyse_pending_chunks(db, v.id, llm, max_chunks=1)
+    assert "profit after tax" in seen[0].lower() or "restated" in seen[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_run_stops_analysing_once_core_facts_are_found(db, monkeypatch):
+    import app.jobs.nightly as nightly
+    monkeypatch.setattr(nightly, "MIN_CHUNKS_FOR_RESULT", 2)
+    db.add(_ipo("NGT8", "open", rhp_url="https://www.sebi.gov.in/e.pdf"))
+    await db.commit()
+    rec = Recorder()
+
+    async def extractor(text):
+        rec.chunks += 1
+        return {"net_profit_cr": 50.0, "revenue_growth_pct": 20.0, "debt_to_equity": 0.5, "promoter_holding_post_pct": 70.0}
+
+    out = await run_nightly(db, extractor=extractor, fetcher=rec.fetcher, max_chunks=50, **CH)
+    total = len((await db.execute(select(AnalysisChunk).where(AnalysisChunk.ipo_id == "id-NGT8"))).scalars().all())
+    assert total > 2 and rec.chunks == 2                         # stopped early, budget saved for other IPOs
+    assert (await db.execute(select(AnalysisResult).where(AnalysisResult.ipo_id == "id-NGT8"))).scalar_one().facts["net_profit_cr"] == 50.0
+
+
+# ---- token budget and failure alerts ----
+@pytest.mark.asyncio
+async def test_the_run_stops_cleanly_when_the_token_budget_is_used_up(db):
+    db.add(_ipo("NGT9", "open", rhp_url="https://www.sebi.gov.in/t.pdf"))
+    await db.commit()
+    rec = Recorder()
+
+    async def extractor(text):
+        rec.chunks += 1
+        extractor.tokens_used += 1000
+        return {}
+
+    extractor.tokens_used = 0
+    out = await run_nightly(db, extractor=extractor, fetcher=rec.fetcher, max_chunks=50, max_tokens=2500, **CH)
+    assert out["token_budget_reached"] is True and out["tokens_used"] >= 2500
+    assert rec.chunks == 3                                       # 1000 + 1000 + 1000 crosses 2500, then it stops
+    rec2 = Recorder()
+
+    async def extractor2(text):
+        rec2.chunks += 1
+        extractor2.tokens_used += 1
+        return {"net_profit_cr": 50.0, "revenue_growth_pct": 20.0, "debt_to_equity": 0.5, "promoter_holding_post_pct": 70.0}
+
+    extractor2.tokens_used = 0
+    again = await run_nightly(db, extractor=extractor2, fetcher=rec2.fetcher, max_chunks=50, max_tokens=2500, **CH)
+    assert again["token_budget_reached"] is False and rec2.chunks > 0   # a fresh budget resumes the stored chunks
+
+
+def test_failed_sources_raise_an_alert_and_a_failing_exit_code():
+    from app.jobs.nightly import alerts_for
+    from app.sources.runner import SourceReport
+    ok = SourceReport("groww", "ok", 55, 55)
+    assert alerts_for([ok, SourceReport("ipoalerts", "disabled"), SourceReport("ipowatch", "skipped_budget")]) == []
+    alerts = alerts_for([ok, SourceReport("ipowatch", "failed", 0, 0, 0, "HTTP 403 from ipowatch.in"),
+                         SourceReport("x", "warning", 0, 0, 0, "WARNING: 0 records parsed")])
+    assert len(alerts) == 2 and "ipowatch" in alerts[0] and "403" in alerts[0] and "WARNING" in alerts[1]

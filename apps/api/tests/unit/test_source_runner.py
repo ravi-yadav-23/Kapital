@@ -140,3 +140,28 @@ async def test_a_record_without_a_name_is_rejected(db):
     src = FakeSource("t_noname", records=[{**_rec("RUNH"), "name": ""}])
     (rep,) = await run_sources(db, [src])
     assert rep.upserted == 0 and rep.record_errors == 1 and rep.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_a_database_failure_on_one_record_keeps_earlier_records_and_does_not_poison_the_rest(db):
+    """Seen live: one DB statement timed out, the session became unusable, every later record failed and the
+    final commit crashed the whole job. Each record is now committed on its own and a failure rolls back cleanly."""
+    from app.services.ipo_service import ipo_service
+    original = ipo_service.upsert_ipo
+
+    async def flaky(session, rec):
+        if rec["symbol"] == "RUNBAD":
+            await session.rollback()          # what a dropped / timed-out connection forces on the session
+            raise TimeoutError()
+        return await original(session, rec)
+
+    src = FakeSource("t_flaky", [_rec("RUNONE"), _rec("RUNBAD"), _rec("RUNTWO")])
+    with patch.object(ipo_service, "upsert_ipo", side_effect=flaky):
+        reports = await run_sources(db, [src])
+
+    r = reports[0]
+    assert r.status == "ok" and r.upserted == 2 and r.record_errors == 1
+    symbols = {i.symbol for i in (await db.execute(select(Ipo).where(Ipo.symbol.like("RUN%")))).scalars().all()}
+    assert {"RUNONE", "RUNTWO"} <= symbols and "RUNBAD" not in symbols
+    health = (await db.execute(select(SourceHealth).where(SourceHealth.source == "t_flaky"))).scalar_one()
+    assert health.last_record_count == 2 and health.consecutive_failures == 0

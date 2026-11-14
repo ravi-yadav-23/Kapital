@@ -55,12 +55,15 @@ def main() -> int:
                 f"{op[0]}: {getattr(op[1], 'name', op[1])}" if op[0].endswith("table")
                 else f"{op[0]}: {op[2]}.{getattr(op[3], 'name', op[3])}"
                 for d in diffs for op in (d if isinstance(d, list) else [d])
-                if op[0] in ("add_table", "remove_table", "add_column", "remove_column")
+                if op[0] in ("add_table", "remove_table", "add_column", "remove_column", "modify_nullable")
             ]
             after = counts()
             print(f"alembic_version inside the transaction: {version_before} -> {version_after}")
             print("remaining structural differences vs models:", structural or "none")
-            print("row counts unchanged:", before == {k: after[k] for k in before})
+            changed = {k: (before[k], after[k]) for k in before if before[k] != after[k]}
+            print("row counts unchanged:", not changed)
+            if changed:
+                print("tables whose count differs (before, after) - other writers can cause this:", changed)
         finally:
             trans.rollback()
         print("ROLLED BACK - the database was not changed.")

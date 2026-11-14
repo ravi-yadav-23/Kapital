@@ -5,6 +5,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.documents.facts import chunk_relevance
 from app.models.analysis import AnalysisChunk, AnalysisVersion
 
 logger = logging.getLogger("documents.store")
@@ -36,7 +37,8 @@ async def store_document(db: AsyncSession, ipo_id: str, kind: str, url: str, sha
 
 async def analyse_pending_chunks(db: AsyncSession, version_id: str,
                                  llm: Callable[[str], Awaitable[Dict[str, Any]]],
-                                 max_chunks: Optional[int] = None) -> Dict[str, int]:
+                                 max_chunks: Optional[int] = None,
+                                 stop_check: Optional[Callable[[], bool]] = None) -> Dict[str, int]:
     """Run `llm` on pending chunks (at most `max_chunks`), saving each result as soon as it is finished.
 
     A failing chunk is marked failed and the run continues; an unfinished run resumes with what is pending.
@@ -45,11 +47,17 @@ async def analyse_pending_chunks(db: AsyncSession, version_id: str,
         select(AnalysisChunk).where(AnalysisChunk.version_id == version_id, AnalysisChunk.status == "pending")
         .order_by(AnalysisChunk.chunk_index)
     )).scalars().all()
+    # financial / promoter / litigation sections first; ties keep document order
+    pending = sorted(pending, key=lambda c: (-chunk_relevance(c.text), c.chunk_index))
     if max_chunks is not None:
         pending = pending[:max_chunks]
     done = failed = 0
     rate_limited = False
+    stopped = False
     for chunk in pending:
+        if stop_check is not None and stop_check():  # e.g. the nightly token budget is used up
+            stopped = True
+            break
         try:
             chunk.facts = await llm(chunk.text)
             chunk.status, chunk.error = "done", None
@@ -69,4 +77,6 @@ async def analyse_pending_chunks(db: AsyncSession, version_id: str,
     result = {"done": done, "failed": failed, "remaining": int(remaining)}
     if rate_limited:
         result["rate_limited"] = True
+    if stopped:
+        result["stopped"] = True
     return result

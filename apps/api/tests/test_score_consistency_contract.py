@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from app.main import app
 from app.models.ipo import Ipo
 from app.models.report import AiReport
-from app.utils.scoring import momentum_score, recommendation_for
+from app.services.rating import rate
+from app.utils.scoring import recommendation_for
 
 IDS = ["sc-a", "sc-b", "sc-c"]
 
@@ -57,8 +58,8 @@ async def test_every_endpoint_agrees_on_score_and_verdict(seeded):
         reports = {r["ipo_id"]: r for r in (await c.get("/api/reports")).json()}
         single = {i: (await c.get(f"/api/reports/{i}")).json() for i in IDS}
 
-    expected_a = momentum_score(20.0, 1.0, 3.0)
-    assert expected_a == 56
+    expected_a = rate(dict(gmp_percent=20.0, subscription_qib=1.0, subscription_total=3.0, name="Alpha Contract Ltd"))["score"]
+    assert expected_a == 51     # engine: GMP 20% + demand 3x / QIB 1x (the old formula gave 56)
     for source in (
         ipos["sc-a"]["score"], reports["sc-a"]["overall_score"], single["sc-a"]["overall_score"]
     ):
@@ -72,9 +73,11 @@ async def test_every_endpoint_agrees_on_score_and_verdict(seeded):
     for rec in (ipos["sc-b"]["recommendation"], reports["sc-b"]["recommendation"], single["sc-b"]["recommendation"]):
         assert rec == "PENDING"
 
-    # C: audited score is stable and identical everywhere
+    # C: an old audited report (71) no longer decides: the engine score is identical everywhere
+    expected_c = rate(dict(gmp_percent=40.0, subscription_qib=5.0, subscription_total=6.0, name="Charlie Contract Ltd"))["score"]
+    assert expected_c != 71
     for source in (ipos["sc-c"]["score"], reports["sc-c"]["overall_score"], single["sc-c"]["overall_score"]):
-        assert source == 71
+        assert source == expected_c
 
 
 @pytest.mark.asyncio
@@ -91,6 +94,7 @@ async def test_optimizer_receives_the_same_scores(seeded):
     with patch("app.routers.funds.AllocationOptimizer.solve_allocation", side_effect=fake_solve):
         async with _client() as c:
             assert (await c.post("/api/funds/optimize")).status_code == 200
-    assert captured["ipos"]["sc-a"]["score"] == 56
+    assert captured["ipos"]["sc-a"]["score"] == 51
     assert captured["ipos"]["sc-b"]["score"] is None
-    assert captured["ipos"]["sc-c"]["score"] == 71
+    expected_c = rate(dict(gmp_percent=40.0, subscription_qib=5.0, subscription_total=6.0, name="Charlie Contract Ltd"))["score"]
+    assert captured["ipos"]["sc-c"]["score"] == expected_c

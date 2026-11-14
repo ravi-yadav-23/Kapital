@@ -46,9 +46,20 @@ Please refer to [SETUP.md](./SETUP.md) for step-by-step local development setup 
 - Run tests before submitting pull requests:
   ```bash
   cd apps/api
-  pytest tests/unit tests/integration -v
+  python -m pytest tests
   ```
 - **Security Rule**: Never commit Angel One session tokens, API secrets, or TOTP files. Check `.gitignore`.
+
+### Architecture rules
+- **One score.** An IPO's score is computed only in `apps/api/app/services/rating.py` (Listing-Gain Engine). Do not add a second formula in a router, task or the frontend. The frontend shows the score the API returns.
+- **Never invent data.** An unknown price band, lot size, score or fact is `None` / "TBA" / "No score yet", not a default number. Optimizer inputs with unknown terms are skipped.
+- **Broker calls** go through `apps/api/app/services/angel_service.py`. Live IPO applications stay disabled unless `ENABLE_LIVE_IPO_APPLY=true`, and a failed broker call must never be reported as success.
+- **Allocation decisions** come from the solver in `apps/api/app/services/optimizer_service.py`; a language model only supplies facts, never decides money.
+- **Model output is untrusted.** Facts extracted from documents are filtered to a fixed list of keys and ranges; a critical flag needs a verifiable quote.
+- **History is append-only.** Score history, snapshots, outcomes, document versions and analysis results are never deleted or overwritten.
+- **Migrations** are idempotent Alembic revisions. Rehearse with `python scripts/db_dry_run.py` before `alembic upgrade head`. Tests never use the hosted database.
+- **Tests mock live services** (AI provider, broker, data sources). Use a throw-away database for Postgres tests.
+- **Prompts** live in `apps/api/app/agents/prompts.py` and `apps/api/app/documents/facts.py`, not inline in routers.
 
 ---
 
