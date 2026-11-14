@@ -259,14 +259,17 @@ async def daily_ipo_scraper_sync():
 
 async def daily_asba_and_reports_maintenance():
     """
-    Runs at 22:00:00 IST every day.
-    1. Sweeps and releases expired ASBA locks.
-    2. Runs batch multi-agent due diligence dossiers for newly added IPOs.
+    Runs at 22:00:00 IST every day (GitHub Actions webhook).
+    1. Scans broker holdings for allotments.
+    2. Sweeps and releases expired ASBA locks.
+
+    It no longer generates AI reports: that ran the language model inside the web server, took longer than the
+    webhook's 120 s limit and failed the scheduled job (2026-11-13). All model work is done by the nightly GitHub
+    Actions job (`python -m app.jobs.nightly`, 02:00 IST), never by a web request.
     """
-    logger.info("=== [10:00 PM IST] Running Daily ASBA Sweep & Batch AI Reports ===")
+    logger.info("=== [10:00 PM IST] Running Daily Allotment Scan & ASBA Sweep ===")
     from app.db.database import AsyncSessionLocal
     from app.tasks.order_tasks import sync_expired_asba_locks
-    from app.tasks.report_tasks import generate_nightly_ipo_dossiers
 
     async with AsyncSessionLocal() as db:
         try:
@@ -280,11 +283,6 @@ async def daily_asba_and_reports_maintenance():
             await sync_expired_asba_locks(db)
         except Exception as e:
             logger.error(f"Expired ASBA lock sweep error: {e}")
-
-        try:
-            await generate_nightly_ipo_dossiers(db)
-        except Exception as e:
-            logger.error(f"Nightly report generation error: {e}")
 
 
 async def intraday_subscription_sync():

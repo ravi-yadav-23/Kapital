@@ -7,6 +7,7 @@ saved at once, a rate limit stops the run cleanly, and the next night resumes. N
 """
 import asyncio
 import hashlib
+import json
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -75,12 +76,13 @@ def _enough(facts, done: int, pending: int) -> bool:
     return pending == 0 or (facts_sufficient(facts) and done >= min(MIN_CHUNKS_FOR_RESULT, done + pending))
 
 
-async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> bool:
-    rows = (await db.execute(select(AnalysisChunk).where(
-        AnalysisChunk.version_id == ver.id, AnalysisChunk.status == "done").order_by(AnalysisChunk.chunk_index))).scalars().all()
-    if not rows:
-        return False
-    facts = merge_facts([r.facts or {} for r in rows])
+async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion, facts: Optional[Dict[str, Any]] = None) -> bool:
+    if facts is None:
+        rows = (await db.execute(select(AnalysisChunk).where(
+            AnalysisChunk.version_id == ver.id, AnalysisChunk.status == "done").order_by(AnalysisChunk.chunk_index))).scalars().all()
+        if not rows:
+            return False
+        facts = merge_facts([r.facts or {} for r in rows])
     res = rate(ipo, facts)           # the one rating function every endpoint uses
     flags = res["red_flags"]
     facts = res["facts"]
@@ -98,6 +100,24 @@ async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> boo
     await refresh_stored_score(db, ipo)   # the stored score follows the new analysis
     await db.commit()
     return True
+
+
+async def _summary_fallback(db: AsyncSession, ipo: Ipo, summary_finder) -> bool:
+    """No readable offer document: score from the structured company financials of Groww's IPO page instead.
+    The facts carry `facts_basis = groww_summary`, so the score is capped and the reader is told what it rests on."""
+    if summary_finder is None:
+        return False
+    try:
+        found = await summary_finder(ipo)
+    except Exception as exc:   # a broken fallback must never stop the run
+        logger.warning(f"summary fallback for {ipo.symbol} failed: {type(exc).__name__}: {exc}")
+        return False
+    if not found or not found.get("facts"):
+        return False
+    facts = dict(found["facts"], facts_basis="groww_summary")
+    sha = hashlib.sha256(json.dumps(facts, sort_keys=True).encode("utf-8")).hexdigest()
+    ver = await store_document(db, ipo.id, "SUMMARY", found["url"], sha, [], model=None)
+    return await _write_result(db, ipo, ver, facts)
 
 
 async def _complete_requests(db: AsyncSession, ipo_id: str) -> None:
@@ -122,7 +142,8 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
                       fetcher: Optional[Callable[[str], Awaitable[bytes]]] = None, max_chunks: int = 60,
                       max_ipos: int = 15, chunk_chars: int = 6000, chunk_overlap: int = 300,
                       model: Optional[str] = None, max_tokens: Optional[int] = None,
-                      link_finder: Optional[Callable[[Ipo], Awaitable[Optional[str]]]] = None) -> Dict[str, Any]:
+                      link_finder: Optional[Callable[[Ipo], Awaitable[Optional[str]]]] = None,
+                      summary_finder: Optional[Callable[[Ipo], Awaitable[Optional[Dict[str, Any]]]]] = None) -> Dict[str, Any]:
     if fetcher is None:
         from app.documents.fetch import fetch_document
 
@@ -136,7 +157,7 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
     scores_refreshed = await refresh_all_scores(db)  # rules or stored facts may have changed since the last run
     summary: Dict[str, Any] = {"analysed": 0, "skipped_no_document": 0, "document_errors": 0,
                                "incomplete": 0, "deferred": 0, "rate_limited": False, "token_budget_reached": False, "tokens_used": 0, "chunks_used": 0,
-                               "details": []}
+                               "summary_fallbacks": 0, "details": []}
     summary["statuses_fixed"] = summary_statuses
     summary["scores_refreshed"] = scores_refreshed
     for ipo in await _candidates(db, max_ipos):
@@ -156,6 +177,12 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
         try:
             if ver is None:
                 if not url:
+                    if await _summary_fallback(db, ipo, summary_finder):
+                        summary["summary_fallbacks"] += 1
+                        summary["analysed"] += 1
+                        summary["details"].append(f"{ipo.symbol}: no offer document found; scored from Groww summary financials")
+                        await _complete_requests(db, ipo.id)
+                        continue
                     summary["skipped_no_document"] += 1
                     summary["details"].append(f"{ipo.symbol}: no document link yet")
                     continue
@@ -170,6 +197,10 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
         except DocumentError as exc:
             summary["document_errors"] += 1
             summary["details"].append(f"{ipo.symbol}: {exc}")
+            if await _summary_fallback(db, ipo, summary_finder):   # the document could not be read: use the summary
+                summary["summary_fallbacks"] += 1
+                summary["analysed"] += 1
+                await _complete_requests(db, ipo.id)
             continue
 
         facts, done, pending = await _done_state(db, ver.id)
@@ -228,6 +259,11 @@ def _ipowatch_slugs(ipo) -> List[str]:
     return out
 
 
+async def _summary_finder(ipo: Ipo) -> Optional[Dict[str, Any]]:
+    from app.sources import groww
+    return await groww.fetch_summary(ipo.slug)
+
+
 async def _link_finder(ipo: Ipo) -> Optional[str]:
     """Look for the offer-document link on the IPO's IPO Watch page (NSE filing), then on its Groww page."""
     from app.sources import groww, ipowatch
@@ -281,7 +317,7 @@ async def main() -> int:
             alerts = [f"ALERT source sync crashed: {type(exc).__name__}: {str(exc)[:200]}"]
         extractor = make_groq_extractor(settings.groq_api_key, settings.default_ai_model)
         summary = await run_nightly(
-            db, extractor=extractor, model=settings.default_ai_model, link_finder=_link_finder,
+            db, extractor=extractor, model=settings.default_ai_model, link_finder=_link_finder, summary_finder=_summary_finder,
             max_chunks=_env_int("NIGHTLY_MAX_CHUNKS", 60), max_ipos=_env_int("NIGHTLY_MAX_IPOS", 15),
             max_tokens=_env_int("NIGHTLY_MAX_TOKENS", 150000))
     for k, v in summary.items():

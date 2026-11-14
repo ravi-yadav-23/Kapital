@@ -153,8 +153,17 @@ export const DOC_PAGES: DocPage[] = [
         ['IPO Watch', 'Dates, price band, grey-market premium', 'Read from the JSON the site itself loads.'],
         ['ipoalerts', 'Open IPOs and NSE subscription', 'Free plan: open IPOs only, one per request, 25 requests a day. The app uses at most 20.'],
         ['SEBI, NSE, BSE', 'Offer documents (DRHP / RHP)', 'Regulator and exchange hosts, over https.'],
+        ['Groww company summary', 'Revenue and profit for recent years (the fallback when no offer document can be read)', 'Used only when the offer document is missing or cannot be downloaded. Read directly, without the language model.'],
         ['Issuer websites', 'The company’s own RHP PDF, found through Groww’s IPO page', 'Used only when there is no SEBI link. https only; the host must resolve to public addresses and the size is capped.'],
       ] },
+      { type: 'h2', text: 'If the offer document is missing' },
+      { type: 'p', text: 'Not every IPO has a document we can reach: the filing may not be published yet, or the exchange\u2019s server may be slow. The system then works down a ladder and always tells you which step the score rests on:' },
+      { type: 'ol', items: [
+        'The official offer document from SEBI, NSE or BSE, or the company\u2019s own PDF, read by the model. Company quality, red flags and litigation are checked.',
+        'Otherwise the company financials on Groww\u2019s IPO page (revenue and profit for the last two years). Debt, cash flow, promoter holding and litigation are not checked, so the company score is capped at 70 and the page says so.',
+        'Otherwise market data only: grey-market premium and subscription. The page says the company has not been analysed.',
+      ] },
+      { type: 'p', text: 'When the offer document becomes available later, it replaces the summary. The earlier results stay in the history.' },
       { type: 'h2', text: 'When a source fails' },
       { type: 'ul', items: [
         'Each source has a health record: last success, last error, consecutive failures and requests used today.',

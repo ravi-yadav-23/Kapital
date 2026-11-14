@@ -36,6 +36,8 @@ describe('listing-gain analysis view helpers (M9)', () => {
 
   test('a market-only score says its basis; an analysed or missing score needs no caveat', () => {
     assert.match(basisNote({ state: 'market_only', score: 55 }) ?? '', /market data only/i);
+    assert.match(basisNote({ state: 'summary_only', score: 60 }) ?? '', /summary/i);
+    assert.match(basisNote({ state: 'summary_only', score: 60 }) ?? '', /capped/i);
     assert.equal(basisNote({ state: 'ready', score: 70 }), null);
     assert.equal(basisNote({ state: 'market_only', score: null }), null);
     assert.equal(basisNote(null), null);

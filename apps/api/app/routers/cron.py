@@ -111,7 +111,7 @@ async def trigger_daily_scrape():
 
 @router.post("/nightly-maintenance")
 async def trigger_nightly_maintenance():
-    """Trigger 10:00 PM IST ASBA Sweep & Multi-Agent Due Diligence dossiers."""
+    """Trigger 10:00 PM IST allotment scan and expired-ASBA-lock sweep (no AI model is run here)."""
     from app.tasks.scheduler import daily_asba_and_reports_maintenance
     logger.info("[Cron Webhook] Received trigger: daily_asba_and_reports_maintenance")
     await daily_asba_and_reports_maintenance()

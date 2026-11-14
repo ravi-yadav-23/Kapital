@@ -154,6 +154,62 @@ def parse_groww_detail(html: str) -> Optional[str]:
     return url if isinstance(url, str) and url.startswith("https://") else None
 
 
+def parse_groww_summary(html: str) -> Optional[Dict[str, Any]]:
+    """Company facts from the structured `financials` block of a Groww IPO page (revenue / profit / total assets
+    per year, in Rs crore). Used only when the offer document itself cannot be read. Derived, never guessed:
+    returns None unless two years of revenue and profit are present."""
+    from app.documents.facts import clean_facts
+    tag = BeautifulSoup(html or "", "html.parser").find("script", id="__NEXT_DATA__")
+    if not tag or not tag.string:
+        return None
+    try:
+        rows = json.loads(tag.string)["props"]["pageProps"]["ipoData"].get("financials")
+    except (ValueError, KeyError, AttributeError, TypeError):
+        return None
+    series: Dict[str, Dict[str, float]] = {}
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get("yearly"), dict):
+            continue
+        series[str(row.get("title", "")).strip().lower()] = {
+            str(y): float(v) for y, v in row["yearly"].items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and str(y).isdigit()
+        }
+    revenue, profit = series.get("revenue", {}), series.get("profit", {})
+    years = sorted(set(revenue) & set(profit))[-2:]
+    if len(years) < 2:
+        return None
+    prev_rev, last_rev = revenue[years[0]], revenue[years[1]]
+    if prev_rev <= 0 or last_rev <= 0:
+        return None
+    facts = clean_facts({
+        "net_profit_cr": profit[years[1]],
+        "revenue_growth_pct": (last_rev / prev_rev - 1.0) * 100.0,
+        "net_margin_pct": profit[years[1]] / last_rev * 100.0,
+    })
+    if "net_profit_cr" not in facts or "revenue_growth_pct" not in facts:
+        return None
+    return {"facts": facts, "years": years}
+
+
+async def fetch_summary(slug: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict[str, Any]]:
+    """Fallback company facts for an IPO from its Groww page. Any problem means 'not found'."""
+    if not re.fullmatch(r"[a-z0-9-]{3,120}", slug or ""):
+        return None
+    own = client is None
+    client = client or httpx.AsyncClient(follow_redirects=True, timeout=20.0, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"})
+    try:
+        url = f"https://groww.in/ipo/{slug}"
+        resp = await client.get(url)
+        out = parse_groww_summary(resp.text) if resp.status_code == 200 else None
+        return {**out, "url": url} if out else None
+    except httpx.HTTPError:
+        return None
+    finally:
+        if own:
+            await client.aclose()
+
+
 async def fetch_document_link(slug: str, client: Optional[httpx.AsyncClient] = None) -> Optional[str]:
     """Look up an IPO's offer-document link on its Groww page. Any problem means 'not found'."""
     if not re.fullmatch(r"[a-z0-9-]{3,120}", slug or ""):

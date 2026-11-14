@@ -16,6 +16,9 @@ from app.utils.listing_gain import listing_gain_engine
 from app.utils.red_flags import detect_red_flags
 
 
+GROWW_SUMMARY = "groww_summary"
+
+
 def _get(ipo: Any, key: str):
     return ipo.get(key) if isinstance(ipo, dict) else getattr(ipo, key, None)
 
@@ -27,8 +30,9 @@ def rate(ipo: Any, facts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     facts = dict(facts or {})
     if facts and looks_like_lender(_get(ipo, "name") or ""):
         facts["is_lender"] = True       # back-up for the model's own flag
+    limited = facts.get("facts_basis") == GROWW_SUMMARY      # facts from a summary, not from the offer document
     flags = detect_red_flags(facts) if facts else []
-    company = company_score_from_facts(facts) if facts else None
+    company = company_score_from_facts(facts, limited=limited) if facts else None
     res = listing_gain_engine(
         gmp_percent=_get(ipo, "gmp_percent"),
         subscription_total=_get(ipo, "subscription_total"),
@@ -40,7 +44,8 @@ def rate(ipo: Any, facts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     )
     res["red_flags"] = flags
     res["facts"] = facts
-    res["documents_analysed"] = bool(facts)
+    res["facts_basis"] = GROWW_SUMMARY if limited else ("offer_document" if facts else None)
+    res["documents_analysed"] = bool(facts) and not limited
     return res
 
 

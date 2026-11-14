@@ -58,8 +58,10 @@ def _payload(ipo: Ipo, res: Optional[AnalysisResult], queued: bool) -> Dict[str,
     market data + the stored document facts), so they always equal the score shown on the IPO list."""
     facts = res.facts if res is not None else None
     r = rate(ipo, facts)
-    if res is not None:
-        state = "ready"                    # documents analysed
+    if res is not None and r["facts_basis"] == "offer_document":
+        state = "ready"                    # the offer document was read
+    elif res is not None and r["facts_basis"] == "groww_summary":
+        state = "summary_only"             # no readable document: company facts from Groww's financials summary
     elif r["score"] is not None:
         state = "market_only"              # scored from market data; documents not analysed yet
     else:
@@ -68,7 +70,7 @@ def _payload(ipo: Ipo, res: Optional[AnalysisResult], queued: bool) -> Dict[str,
             "verdict": r["verdict"] if r["score"] is not None else None, "confidence": r["confidence"] if r["score"] is not None else None,
             "signals": r["signals"], "components": r["components"], "red_flags": r["red_flags"], "facts": r["facts"],
             "as_of": res.created_at.isoformat() if res is not None and res.created_at else None, "queued": queued,
-            "documents_analysed": r["documents_analysed"]}
+            "documents_analysed": r["documents_analysed"], "facts_basis": r["facts_basis"]}
 
 
 def _insert_ignoring_conflicts(db: AsyncSession, model, values: Dict[str, Any], conflict_cols):
@@ -103,7 +105,8 @@ async def list_analysis_summaries(db: AsyncSession = Depends(get_db)):
         r = rate(ipo, facts.get(ipo.id))
         if r["score"] is not None:
             out.append({"ipo_id": ipo.id, "badge": badge_for(r["verdict"]), "score": r["score"],
-                        "confidence": r["confidence"], "documents_analysed": r["documents_analysed"]})
+                        "confidence": r["confidence"], "documents_analysed": r["documents_analysed"],
+                        "facts_basis": r["facts_basis"]})
     return out
 
 
