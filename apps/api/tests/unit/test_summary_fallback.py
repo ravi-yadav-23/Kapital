@@ -159,3 +159,77 @@ async def test_a_real_document_replaces_the_summary_and_the_summary_is_kept(db):
     assert len(rows) == 2                                               # history kept
     assert rows[0].facts["facts_basis"] == "groww_summary"
     assert "facts_basis" not in rows[-1].facts and rows[-1].facts["debt_to_equity"] == 0.5   # newest = document
+
+
+@pytest.mark.asyncio
+async def test_ipos_with_nothing_to_read_do_not_use_up_the_per_night_limit(db):
+    """Seen live: TEMP placeholder IPOs (no document, no financials anywhere) filled the 'max IPOs' limit every night,
+    so IPOs that could be analysed were never reached."""
+    d = date.today()
+    for i in range(4):                       # open, come first, but have no link and no summary
+        db.add(_ipo(f"FBKE{i}", issue_close_date=d + timedelta(days=1)))
+    db.add(_ipo("FBKGOOD", status="upcoming", issue_open_date=d + timedelta(days=5), issue_close_date=d + timedelta(days=7),
+                slug="fbkgood-ipo"))
+    await db.commit()
+
+    async def summary_finder(ipo):
+        return SUMMARY if ipo.symbol == "FBKGOOD" else None
+
+    out = await run_nightly(db, extractor=_noop_extractor, summary_finder=summary_finder, max_chunks=5, max_ipos=1)
+    got = {r.ipo_id for r in (await db.execute(select(AnalysisResult))).scalars().all()}
+    assert "id-FBKGOOD" in got and out["skipped_no_document"] >= 4
+
+
+@pytest.mark.asyncio
+async def test_upcoming_order_rotates_daily_but_open_ipos_stay_first(db):
+    from app.jobs.nightly import _candidates
+    d = date.today()
+    db.add_all([_ipo(f"FBKR{i}", status="upcoming", issue_open_date=d + timedelta(days=3), issue_close_date=d + timedelta(days=5))
+                for i in range(6)] + [_ipo("FBKOPEN")])
+    await db.commit()
+    first = [i.symbol for i in await _candidates(db, 80) if i.symbol.startswith("FBK")]
+    assert first[0] == "FBKOPEN"                                       # open before upcoming
+    assert sorted(first[1:]) == [f"FBKR{i}" for i in range(6)]
+
+
+@pytest.mark.asyncio
+async def test_a_deferred_document_gets_a_provisional_summary_score(db):
+    """The IPO has a document link, but tonight's chunk budget is already used: score it from the summary for now."""
+    db.add(_ipo("FBK4", rhp_url="https://www.sebi.gov.in/later.pdf"))
+    await db.commit()
+    fetched = []
+
+    async def fetcher(url):
+        fetched.append(url)
+        return make_pdf(["x"])
+
+    async def summary_finder(ipo):
+        return SUMMARY if ipo.symbol == "FBK4" else None
+
+    out = await run_nightly(db, extractor=_noop_extractor, fetcher=fetcher, summary_finder=summary_finder, max_chunks=0)
+    res = (await db.execute(select(AnalysisResult).where(AnalysisResult.ipo_id == "id-FBK4"))).scalar_one()
+    assert out["deferred"] >= 1 and out["summary_fallbacks"] >= 1 and fetched == []
+    assert res.facts["facts_basis"] == "groww_summary"
+
+
+@pytest.mark.asyncio
+async def test_a_summary_never_overwrites_a_document_based_result(db):
+    db.add(_ipo("FBK5", rhp_url="https://www.sebi.gov.in/done.pdf"))
+    await db.commit()
+
+    async def fetcher(url):
+        return make_pdf(["Net profit is 50 crore"])
+
+    async def extractor(text):
+        return {"net_profit_cr": 50.0, "revenue_growth_pct": 20.0, "debt_to_equity": 0.5, "promoter_holding_post_pct": 70.0}
+
+    async def summary_finder(ipo):
+        return SUMMARY if ipo.symbol == "FBK5" else None
+
+    await run_nightly(db, extractor=extractor, fetcher=fetcher, summary_finder=summary_finder, max_chunks=30,
+                      chunk_chars=40, chunk_overlap=0)
+    ipo = (await db.execute(select(Ipo).where(Ipo.symbol == "FBK5"))).scalar_one()
+    from app.jobs.nightly import _summary_fallback
+    assert await _summary_fallback(db, ipo, summary_finder) is False            # a document result exists
+    rows = (await db.execute(select(AnalysisResult).where(AnalysisResult.ipo_id == "id-FBK5"))).scalars().all()
+    assert len(rows) == 1 and "facts_basis" not in rows[0].facts

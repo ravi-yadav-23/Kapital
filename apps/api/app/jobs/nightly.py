@@ -6,6 +6,7 @@ saved at once, a rate limit stops the run cleanly, and the next night resumes. N
     python -m app.jobs.nightly
 """
 import asyncio
+from datetime import date
 import hashlib
 import json
 import logging
@@ -33,7 +34,7 @@ MAX_DISCOVERY = 10           # document-link look-ups per night
 BATCH = 4                    # analyse this many chunks, then check whether the core facts are already known
 
 
-async def _candidates(db: AsyncSession, max_ipos: int) -> List[Ipo]:
+async def _candidates(db: AsyncSession, limit: int = 80) -> List[Ipo]:
     requested = (await db.execute(
         select(Ipo).join(AuditRequest, AuditRequest.ipo_id == Ipo.id)
         .where(AuditRequest.status == "queued").order_by(AuditRequest.created_at.asc())
@@ -44,12 +45,15 @@ async def _candidates(db: AsyncSession, max_ipos: int) -> List[Ipo]:
     upcoming = (await db.execute(
         select(Ipo).where(Ipo.status == "upcoming").order_by(Ipo.issue_open_date.asc())
     )).scalars().all()
+    # upcoming IPOs rotate daily, so the same few with no document do not take every night's look-ups
+    day = date.today().isoformat()
+    upcoming = sorted(upcoming, key=lambda i: hashlib.md5(f"{i.slug}{day}".encode()).hexdigest())
     ordered, seen = [], set()
     for ipo in list(requested) + list(open_) + list(upcoming):  # guest-requested audits jump the queue
         if ipo.id not in seen:
             seen.add(ipo.id)
             ordered.append(ipo)
-    return ordered[:max_ipos]
+    return ordered[:limit]
 
 
 async def _latest_version(db: AsyncSession, ipo_id: str, kind: Optional[str] = None) -> Optional[AnalysisVersion]:
@@ -107,6 +111,10 @@ async def _summary_fallback(db: AsyncSession, ipo: Ipo, summary_finder) -> bool:
     The facts carry `facts_basis = groww_summary`, so the score is capped and the reader is told what it rests on."""
     if summary_finder is None:
         return False
+    latest = (await db.execute(select(AnalysisResult.facts).where(AnalysisResult.ipo_id == ipo.id)
+                               .order_by(AnalysisResult.created_at.desc(), AnalysisResult.id.desc()).limit(1))).first()
+    if latest is not None and latest[0] and "facts_basis" not in latest[0]:
+        return False        # a result from the real offer document exists: a summary must never replace it
     try:
         found = await summary_finder(ipo)
     except Exception as exc:   # a broken fallback must never stop the run
@@ -160,7 +168,10 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
                                "summary_fallbacks": 0, "details": []}
     summary["statuses_fixed"] = summary_statuses
     summary["scores_refreshed"] = scores_refreshed
-    for ipo in await _candidates(db, max_ipos):
+    processed = 0      # IPOs actually worked on; those with nothing to read do not use up the per-night limit
+    for ipo in await _candidates(db):
+        if processed >= max_ipos:
+            break
         kind, url = _choose(ipo)
         if url is None and link_finder is not None and discovered < MAX_DISCOVERY:
             discovered += 1
@@ -178,6 +189,7 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             if ver is None:
                 if not url:
                     if await _summary_fallback(db, ipo, summary_finder):
+                        processed += 1
                         summary["summary_fallbacks"] += 1
                         summary["analysed"] += 1
                         summary["details"].append(f"{ipo.symbol}: no offer document found; scored from Groww summary financials")
@@ -188,6 +200,8 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
                     continue
                 if summary["chunks_used"] >= max_chunks:
                     summary["deferred"] += 1
+                    if await _summary_fallback(db, ipo, summary_finder):   # provisional score until the document is read
+                        summary["summary_fallbacks"] += 1
                     continue
                 data = await fetcher(url)
                 chunks = chunk_pages(pdf_to_pages(data), max_chars=chunk_chars, overlap=chunk_overlap)
@@ -197,12 +211,14 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
         except DocumentError as exc:
             summary["document_errors"] += 1
             summary["details"].append(f"{ipo.symbol}: {exc}")
+            processed += 1
             if await _summary_fallback(db, ipo, summary_finder):   # the document could not be read: use the summary
                 summary["summary_fallbacks"] += 1
                 summary["analysed"] += 1
                 await _complete_requests(db, ipo.id)
             continue
 
+        processed += 1
         facts, done, pending = await _done_state(db, ver.id)
         rate_limited = False
         while not _enough(facts, done, pending):
@@ -233,6 +249,8 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             break
         if not _enough(facts, done, pending):
             summary["deferred" if summary["chunks_used"] >= max_chunks else "incomplete"] += 1
+            if await _summary_fallback(db, ipo, summary_finder):       # provisional score until the document is read
+                summary["summary_fallbacks"] += 1
             continue
         if await _write_result(db, ipo, ver):
             summary["analysed"] += 1
