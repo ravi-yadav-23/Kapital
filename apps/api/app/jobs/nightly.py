@@ -128,6 +128,42 @@ async def _summary_fallback(db: AsyncSession, ipo: Ipo, summary_finder) -> bool:
     return await _write_result(db, ipo, ver, facts)
 
 
+async def _web_fallback(db: AsyncSession, ipo: Ipo, web_finder) -> bool:
+    """Last resort, only for an IPO with no result at all: verified company facts found by web search (Gemini).
+    Facts carry `facts_basis = web_search` and their sources; the score is capped and the page says what it rests on."""
+    if web_finder is None:
+        return False
+    if (await db.execute(select(AnalysisResult.id).where(AnalysisResult.ipo_id == ipo.id).limit(1))).first() is not None:
+        return False        # something is already stored (a summary, an earlier web result or a document result)
+    try:
+        found = await web_finder(ipo)
+    except Exception as exc:   # a broken fallback must never stop the run
+        logger.warning(f"web research for {ipo.symbol} failed: {type(exc).__name__}: {exc}")
+        return False
+    if not found or not found.get("facts"):
+        return False
+    facts = dict(found["facts"], facts_basis="web_search", web_sources=found.get("sources") or [])
+    sha = hashlib.sha256(json.dumps(facts, sort_keys=True).encode("utf-8")).hexdigest()
+    ver = await store_document(db, ipo.id, "WEB", found["url"], sha, [], model=None)
+    return await _write_result(db, ipo, ver, facts)
+
+
+async def _fallbacks(db: AsyncSession, ipo: Ipo, summary: Dict[str, Any], summary_finder, web_finder,
+                     max_web_lookups: int, allow_web: bool) -> bool:
+    """Tier 2 (Groww financials) then, if allowed and within budget, tier 3 (verified web search)."""
+    if await _summary_fallback(db, ipo, summary_finder):
+        summary["summary_fallbacks"] += 1
+        return True
+    if allow_web and web_finder is not None and summary["web_lookups"] < max_web_lookups:
+        has_any = (await db.execute(select(AnalysisResult.id).where(AnalysisResult.ipo_id == ipo.id).limit(1))).first() is not None
+        if not has_any:
+            summary["web_lookups"] += 1
+            if await _web_fallback(db, ipo, web_finder):
+                summary["web_fallbacks"] += 1
+                return True
+    return False
+
+
 async def _complete_requests(db: AsyncSession, ipo_id: str) -> None:
     rows = (await db.execute(select(AuditRequest).where(
         AuditRequest.ipo_id == ipo_id, AuditRequest.status == "queued"))).scalars().all()
@@ -151,7 +187,9 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
                       max_ipos: int = 15, chunk_chars: int = 6000, chunk_overlap: int = 300,
                       model: Optional[str] = None, max_tokens: Optional[int] = None,
                       link_finder: Optional[Callable[[Ipo], Awaitable[Optional[str]]]] = None,
-                      summary_finder: Optional[Callable[[Ipo], Awaitable[Optional[Dict[str, Any]]]]] = None) -> Dict[str, Any]:
+                      summary_finder: Optional[Callable[[Ipo], Awaitable[Optional[Dict[str, Any]]]]] = None,
+                      web_finder: Optional[Callable[[Ipo], Awaitable[Optional[Dict[str, Any]]]]] = None,
+                      max_web_lookups: int = 8) -> Dict[str, Any]:
     if fetcher is None:
         from app.documents.fetch import fetch_document
 
@@ -165,7 +203,7 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
     scores_refreshed = await refresh_all_scores(db)  # rules or stored facts may have changed since the last run
     summary: Dict[str, Any] = {"analysed": 0, "skipped_no_document": 0, "document_errors": 0,
                                "incomplete": 0, "deferred": 0, "rate_limited": False, "token_budget_reached": False, "tokens_used": 0, "chunks_used": 0,
-                               "summary_fallbacks": 0, "details": []}
+                               "summary_fallbacks": 0, "web_fallbacks": 0, "web_lookups": 0, "details": []}
     summary["statuses_fixed"] = summary_statuses
     summary["scores_refreshed"] = scores_refreshed
     processed = 0      # IPOs actually worked on; those with nothing to read do not use up the per-night limit
@@ -188,11 +226,10 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
         try:
             if ver is None:
                 if not url:
-                    if await _summary_fallback(db, ipo, summary_finder):
+                    if await _fallbacks(db, ipo, summary, summary_finder, web_finder, max_web_lookups, allow_web=True):
                         processed += 1
-                        summary["summary_fallbacks"] += 1
                         summary["analysed"] += 1
-                        summary["details"].append(f"{ipo.symbol}: no offer document found; scored from Groww summary financials")
+                        summary["details"].append(f"{ipo.symbol}: no offer document found; scored from a fallback source")
                         await _complete_requests(db, ipo.id)
                         continue
                     summary["skipped_no_document"] += 1
@@ -200,9 +237,8 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
                     continue
                 if summary["chunks_used"] >= max_chunks:
                     summary["deferred"] += 1
-                    if await _summary_fallback(db, ipo, summary_finder):   # provisional score until the document is read
-                        summary["summary_fallbacks"] += 1
-                    continue
+                    await _fallbacks(db, ipo, summary, summary_finder, web_finder, max_web_lookups, allow_web=False)
+                    continue                                              # provisional score until the document is read
                 data = await fetcher(url)
                 chunks = chunk_pages(pdf_to_pages(data), max_chars=chunk_chars, overlap=chunk_overlap)
                 if not chunks:
@@ -212,8 +248,7 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             summary["document_errors"] += 1
             summary["details"].append(f"{ipo.symbol}: {exc}")
             processed += 1
-            if await _summary_fallback(db, ipo, summary_finder):   # the document could not be read: use the summary
-                summary["summary_fallbacks"] += 1
+            if await _fallbacks(db, ipo, summary, summary_finder, web_finder, max_web_lookups, allow_web=True):
                 summary["analysed"] += 1
                 await _complete_requests(db, ipo.id)
             continue
@@ -249,9 +284,8 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
             break
         if not _enough(facts, done, pending):
             summary["deferred" if summary["chunks_used"] >= max_chunks else "incomplete"] += 1
-            if await _summary_fallback(db, ipo, summary_finder):       # provisional score until the document is read
-                summary["summary_fallbacks"] += 1
-            continue
+            await _fallbacks(db, ipo, summary, summary_finder, web_finder, max_web_lookups, allow_web=False)
+            continue                                                  # provisional score until the document is read
         if await _write_result(db, ipo, ver):
             summary["analysed"] += 1
             await _complete_requests(db, ipo.id)
@@ -275,6 +309,13 @@ def _ipowatch_slugs(ipo) -> List[str]:
             if cand not in out:
                 out.append(cand)
     return out
+
+
+async def _web_finder(ipo: Ipo) -> Optional[Dict[str, Any]]:
+    """Verified company facts from a Gemini web search (see app.documents.webresearch). Only the name is sent."""
+    from app.config import settings
+    from app.documents.webresearch import research_company_facts
+    return await research_company_facts(ipo.name, api_key=settings.gemini_api_key, model=settings.gemini_search_model)
 
 
 async def _summary_finder(ipo: Ipo) -> Optional[Dict[str, Any]]:
@@ -317,12 +358,27 @@ def _env_int(name: str, default: int) -> int:
 async def main() -> int:
     from app.config import settings
     from app.db.database import AsyncSessionLocal
-    from app.jobs.groq_llm import make_groq_extractor
     from app.sources.runner import run_sources
 
-    if not settings.groq_api_key:
-        print("GROQ_API_KEY is not set; nothing to do")
+    extractors, names = [], []
+    if settings.groq_api_key:
+        from app.jobs.groq_llm import make_groq_extractor
+        extractors.append(make_groq_extractor(settings.groq_api_key, settings.default_ai_model))
+        names.append(f"groq:{settings.default_ai_model}")
+    if settings.gemini_api_key:
+        from app.documents.gemini import make_gemini_extractor
+        extractors.append(make_gemini_extractor(settings.gemini_api_key, settings.gemini_model))
+        names.append(f"gemini:{settings.gemini_model}")
+    if not extractors:
+        print("Neither GROQ_API_KEY nor GEMINI_API_KEY is set; nothing to do")
         return 2
+    if len(extractors) == 2:   # Groq first; Gemini carries on if Groq's daily limit is reached
+        from app.documents.gemini import chain_extractors
+        extractor = chain_extractors(extractors[0], extractors[1])
+    else:
+        extractor = extractors[0]
+    web_finder = _web_finder if (settings.gemini_api_key and settings.web_research_enabled) else None
+    print(f"models: {' -> '.join(names)}; web search tier: {'on' if web_finder else 'off'}")
     alerts: List[str] = []
     async with AsyncSessionLocal() as db:
         try:
@@ -333,9 +389,9 @@ async def main() -> int:
         except Exception as exc:  # documents can still be analysed from what is already stored
             await db.rollback()
             alerts = [f"ALERT source sync crashed: {type(exc).__name__}: {str(exc)[:200]}"]
-        extractor = make_groq_extractor(settings.groq_api_key, settings.default_ai_model)
         summary = await run_nightly(
-            db, extractor=extractor, model=settings.default_ai_model, link_finder=_link_finder, summary_finder=_summary_finder,
+            db, extractor=extractor, model=names[0], link_finder=_link_finder, summary_finder=_summary_finder,
+            web_finder=web_finder, max_web_lookups=_env_int("NIGHTLY_MAX_WEB_LOOKUPS", 8),
             max_chunks=_env_int("NIGHTLY_MAX_CHUNKS", 60), max_ipos=_env_int("NIGHTLY_MAX_IPOS", 15),
             max_tokens=_env_int("NIGHTLY_MAX_TOKENS", 150000))
     for k, v in summary.items():

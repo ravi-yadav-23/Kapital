@@ -62,6 +62,8 @@ def _payload(ipo: Ipo, res: Optional[AnalysisResult], queued: bool) -> Dict[str,
         state = "ready"                    # the offer document was read
     elif res is not None and r["facts_basis"] == "groww_summary":
         state = "summary_only"             # no readable document: company facts from Groww's financials summary
+    elif res is not None and r["facts_basis"] == "web_search":
+        state = "web_only"                 # last resort: facts found on the web and checked against the cited pages
     elif r["score"] is not None:
         state = "market_only"              # scored from market data; documents not analysed yet
     else:
@@ -70,7 +72,8 @@ def _payload(ipo: Ipo, res: Optional[AnalysisResult], queued: bool) -> Dict[str,
             "verdict": r["verdict"] if r["score"] is not None else None, "confidence": r["confidence"] if r["score"] is not None else None,
             "signals": r["signals"], "components": r["components"], "red_flags": r["red_flags"], "facts": r["facts"],
             "as_of": res.created_at.isoformat() if res is not None and res.created_at else None, "queued": queued,
-            "documents_analysed": r["documents_analysed"], "facts_basis": r["facts_basis"]}
+            "documents_analysed": r["documents_analysed"], "facts_basis": r["facts_basis"],
+            "sources": r["facts"].get("web_sources") or []}
 
 
 def _insert_ignoring_conflicts(db: AsyncSession, model, values: Dict[str, Any], conflict_cols):

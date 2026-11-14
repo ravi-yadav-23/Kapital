@@ -373,3 +373,8 @@ Found from the Actions page and the public run annotations; all three reproduced
 - **Not caught earlier:** I merged-checked only SQLite runs and never looked at the CI result of the pull request. A pull request should not be merged while its CI is red.
 - **Fallback for missing documents:** Groww's structured financials (two years of revenue and profit) are used when no offer document can be found or downloaded; the company score is capped at 70 and the basis is shown (`summary_only`). Available for about 2 of 14 pre-filing IPOs checked (the rest have no data anywhere yet).
 - **Nightly limit fix:** IPOs with nothing to read no longer use up the per-night IPO limit, and upcoming IPOs rotate daily.
+
+## Gemini (2026-11-14)
+- Added `app/documents/gemini.py` (REST client, backup fact extractor, Groq->Gemini chain when Groq is rate limited) and `app/documents/webresearch.py` (Gemini + Google Search grounding as the last-resort tier; facts accepted only if numeric, from a site the search returned, with a quote found on the page we download ourselves, number present in the quote; booleans never taken; score capped at 60; sources shown).
+- Key handling: header only, never in the URL; error text never echoes the response; only the company name is sent.
+- **Not verified against the real API** (no key yet). Tested with mocked HTTP only. Known risk: Google's current docs describe a newer "Interactions" API; this code uses `generateContent` + `tools: [{"google_search": {}}]`.

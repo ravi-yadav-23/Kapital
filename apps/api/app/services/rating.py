@@ -10,13 +10,14 @@ from typing import Any, Dict, Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.documents.facts import company_score_from_facts, looks_like_lender
+from app.documents.facts import SUMMARY_SCORE_CAP, WEB_SCORE_CAP, company_score_from_facts, looks_like_lender
 from app.models.analysis import AnalysisResult
 from app.utils.listing_gain import listing_gain_engine
 from app.utils.red_flags import detect_red_flags
 
 
 GROWW_SUMMARY = "groww_summary"
+WEB_SEARCH = "web_search"
 
 
 def _get(ipo: Any, key: str):
@@ -30,9 +31,11 @@ def rate(ipo: Any, facts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     facts = dict(facts or {})
     if facts and looks_like_lender(_get(ipo, "name") or ""):
         facts["is_lender"] = True       # back-up for the model's own flag
-    limited = facts.get("facts_basis") == GROWW_SUMMARY      # facts from a summary, not from the offer document
+    basis = facts.get("facts_basis")
+    limited = basis in (GROWW_SUMMARY, WEB_SEARCH)           # facts from a summary / the web, not from the offer document
+    cap = WEB_SCORE_CAP if basis == WEB_SEARCH else SUMMARY_SCORE_CAP
     flags = detect_red_flags(facts) if facts else []
-    company = company_score_from_facts(facts, limited=limited) if facts else None
+    company = company_score_from_facts(facts, limited=limited, cap=cap) if facts else None
     res = listing_gain_engine(
         gmp_percent=_get(ipo, "gmp_percent"),
         subscription_total=_get(ipo, "subscription_total"),
@@ -44,7 +47,7 @@ def rate(ipo: Any, facts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     )
     res["red_flags"] = flags
     res["facts"] = facts
-    res["facts_basis"] = GROWW_SUMMARY if limited else ("offer_document" if facts else None)
+    res["facts_basis"] = basis if limited else ("offer_document" if facts else None)
     res["documents_analysed"] = bool(facts) and not limited
     return res
 

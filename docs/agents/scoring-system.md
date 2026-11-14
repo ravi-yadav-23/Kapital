@@ -44,3 +44,12 @@ analysed, company quality and red flags are added and the score is recomputed wi
 The weights and bands are a reasoned starting point and are **not yet calibrated** against enough real listing
 results. The daily GMP and subscription snapshots and the listing outcomes (`ipo_outcomes`) are being collected so
 that `backtest()` in `listing_gain.py` can check them. See `docs/reports/` for the current list of open problems.
+
+## Where company facts come from (best source first)
+
+1. The official offer document (SEBI, NSE, BSE or the issuer's own PDF), read chunk by chunk by a model (Groq, with Gemini as a backup when Groq's daily limit is reached). Company quality, red flags and litigation are checked.
+2. Groww's structured financials (revenue and profit, two years), read without a model. Company score capped at 70.
+3. Last resort: a Gemini web search. Every fact must be numeric, come from a site the search returned, and be backed by a quote that is found on the page when we download it ourselves; booleans are never taken from the web. Company score capped at 60, sources listed.
+4. Market data only (grey-market premium and subscription).
+
+The basis is always shown next to the score. A lower-ranked source never overwrites a result from a higher one.

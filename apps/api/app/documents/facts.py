@@ -85,10 +85,11 @@ def merge_facts(chunks: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     return merged
 
 
-SUMMARY_SCORE_CAP = 70
+SUMMARY_SCORE_CAP = 70     # facts from Groww's financials summary
+WEB_SCORE_CAP = 60         # facts found by web search (verified, but the least complete source)
 
 
-def company_score_from_facts(facts: Dict[str, Any], limited: bool = False) -> Optional[int]:
+def company_score_from_facts(facts: Dict[str, Any], limited: bool = False, cap: Optional[int] = None) -> Optional[int]:
     """0..100 company-quality score from hard numbers, or None when too little is known.
 
     `limited` = the facts come from a short summary (revenue / profit only), not from reading the offer document:
@@ -121,7 +122,7 @@ def company_score_from_facts(facts: Dict[str, Any], limited: bool = False) -> Op
         p = f["promoter_holding_post_pct"]
         score += 5 if p >= 50 else -8 if p < 25 else 0
     if limited:
-        score = min(score, SUMMARY_SCORE_CAP)
+        score = min(score, cap if cap is not None else SUMMARY_SCORE_CAP)
     return max(0, min(100, int(round(score))))
 
 

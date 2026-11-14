@@ -123,7 +123,10 @@ Repository secrets (Settings > Secrets and variables > Actions):
 | `DATABASE_URL` | Supabase **session pooler** URL (port 5432). The port is part of the URL; the transaction pooler (6543) also works. |
 | `GROQ_API_KEY` | Groq free-tier key |
 | `IPOALERTS_API_KEY` | ipoalerts key (optional) |
+| `GEMINI_API_KEY` | Google Gemini key (optional). Backup model when Groq's limit is reached, and the last-resort web search. Optional environment variables `GEMINI_MODEL` and `GEMINI_SEARCH_MODEL` change the models (Google retires models, for example the 2.5-series Flash model is announced to be replaced on 2026-12-01). |
 
 Run it by hand from the Actions tab (Run workflow). The optional inputs `max_chunks`, `max_ipos` and `max_tokens` keep a test run small, for example 8 / 3 / 40000. The job exits with an error when a data source fails, so GitHub shows the run as failed and emails the repository owner.
 
 Apply database migrations (`alembic upgrade head`, after `python scripts/db_dry_run.py`) before the first run, otherwise the new tables do not exist.
+
+**Gemini web search and cost.** Web-search grounding is free of charge only on the Gemini 2.5 models (up to 500 requests a day, per Google's pricing page at the time of writing). Newer models need a paid account (the first 5,000 searches a month are free, then USD 14 per 1,000). If the search model stops working the web tier finds nothing and the job carries on. Set `WEB_RESEARCH_ENABLED=false` to turn the web tier off, and `NIGHTLY_MAX_WEB_LOOKUPS` (default 8) to limit searches per night.

@@ -159,8 +159,9 @@ export const DOC_PAGES: DocPage[] = [
       { type: 'h2', text: 'If the offer document is missing' },
       { type: 'p', text: 'Not every IPO has a document we can reach: the filing may not be published yet, or the exchange\u2019s server may be slow. The system then works down a ladder and always tells you which step the score rests on:' },
       { type: 'ol', items: [
-        'The official offer document from SEBI, NSE or BSE, or the company\u2019s own PDF, read by the model. Company quality, red flags and litigation are checked.',
+        'The official offer document from SEBI, NSE or BSE, or the company\u2019s own PDF, read by the model (Groq, with Gemini as a backup when Groq\u2019s daily limit is reached). Company quality, red flags and litigation are checked.',
         'Otherwise the company financials on Groww\u2019s IPO page (revenue and profit for the last two years). Debt, cash flow, promoter holding and litigation are not checked, so the company score is capped at 70 and the page says so.',
+        'Otherwise, as a last resort, a Gemini web search for a few numeric company facts (profit, debt-to-equity, promoter holding, P/E and similar). Nothing it says is trusted: each fact needs a quote that we find on the cited page ourselves, from a site the search really returned, and the number must be in the quote. Booleans such as regulatory action are never taken from the web. The score is capped at 60 and the sources are listed on the page.',
         'Otherwise market data only: grey-market premium and subscription. The page says the company has not been analysed.',
       ] },
       { type: 'p', text: 'When the offer document becomes available later, it replaces the summary. The earlier results stay in the history.' },
