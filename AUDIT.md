@@ -359,3 +359,8 @@ New findings during fixes:
 - Nightly job: token budget, stop check before each chunk, exit code 1 when a source fails (GitHub notifies the owner).
 - Test infrastructure: the pytest process did not exit after the tests passed (an aiosqlite connection opened through the application's own engine was never closed). Fixed in `tests/conftest.py`; CI would have hung on it.
 - Smoke check of the built web app: `/`, `/dashboard`, `/ipos`, `/reports`, `/settings` and all `/docs/*` pages return 200, unknown docs pages 404. Not looked at in a browser.
+
+## Single score, cleanup, guest data (2026-11-14)
+- **One score:** `app/services/rating.py` is the only place a score is computed (Listing-Gain Engine on live market data + stored document facts). `effective_rating`, the report endpoints, the optimizer input, the badges and the analysis endpoint all use it. An old audited AI report no longer decides the score (it keeps its factor breakdown). The nightly job recomputes every stored score. Several tests encoded the old rule ("an audited report wins", the old 60/40 formula) and were changed deliberately to the new decision; the contract test (same score on every endpoint, stale stored score ignored) still holds and now covers the new rule.
+- **Removed:** `.ai/`, `.cursor/rules/`, the 2026-11-01 production-readiness plan, `apps/api/run_live_pipeline_dryrun.py`, four empty placeholder docs. Valid rules moved to `CONTRIBUTING.md`; two stale docs rewritten.
+- **Guests:** IPO and report data is real for everyone; sample data only for accounts, funds, orders, allotments and P&L.

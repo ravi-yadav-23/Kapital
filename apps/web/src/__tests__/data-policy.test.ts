@@ -1,6 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mockAllowed, listOrMock, requireMutationOk } from '../lib/data-policy.ts';
+import { mockAllowed, ipoMockAllowed, listOrMock, requireMutationOk } from '../lib/data-policy.ts';
+
+describe('IPO data is always real for guests', () => {
+  test('sample IPOs only in an explicit mock build, never for a guest session', () => {
+    assert.equal(ipoMockAllowed({ useMockEnv: false }), false);
+    assert.equal(ipoMockAllowed({ useMockEnv: true }), true);
+    // personal data stays sample for guests (labelled), IPO data does not
+    assert.equal(mockAllowed({ useMockEnv: false, isGuest: true }), true);
+  });
+});
 
 describe('mock data policy (F16): real sessions never see mock data', () => {
   test('mock allowed only for guests or an explicit env flag', () => {

@@ -95,7 +95,7 @@ async def fetch_document(url: str, *, client: Optional[httpx.AsyncClient] = None
                          public_ok: bool = False, _depth: int = 0) -> bytes:
     """Return the PDF bytes behind `url` (a PDF, or a filing page that links to one)."""
     own = client is None
-    client = client or httpx.AsyncClient(timeout=60.0, follow_redirects=False)
+    client = client or httpx.AsyncClient(timeout=httpx.Timeout(40.0, connect=15.0), follow_redirects=False)  # a stalled host must not stretch the night
     try:
         for attempt in (1, 2):  # one retry: SEBI/NSE/issuer servers drop connections or time out now and then
             try:

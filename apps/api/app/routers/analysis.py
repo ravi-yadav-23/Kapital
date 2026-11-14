@@ -13,6 +13,7 @@ from app.models.analysis import AnalysisResult
 from app.models.audit_queue import AuditQuota, AuditRequest
 from app.models.base import get_utc_now
 from app.models.ipo import Ipo
+from app.services.rating import latest_facts_map, rate
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -53,14 +54,21 @@ async def _is_queued(db: AsyncSession, ipo_id: str) -> bool:
 
 
 def _payload(ipo: Ipo, res: Optional[AnalysisResult], queued: bool) -> Dict[str, Any]:
-    if res is None:
-        return {"ipo_id": ipo.id, "state": "not_analysed", "badge": None, "score": None, "verdict": None,
-                "confidence": None, "signals": [], "components": {}, "red_flags": [], "facts": {},
-                "as_of": None, "queued": queued}
-    return {"ipo_id": ipo.id, "state": "ready", "badge": badge_for(res.verdict), "score": res.score,
-            "verdict": res.verdict, "confidence": res.confidence, "signals": res.signals or [],
-            "components": res.components or {}, "red_flags": res.red_flags or [], "facts": res.facts or {},
-            "as_of": res.created_at.isoformat() if res.created_at else None, "queued": queued}
+    """The analysis as shown to everyone. The score, verdict and signals come from the one rating function (live
+    market data + the stored document facts), so they always equal the score shown on the IPO list."""
+    facts = res.facts if res is not None else None
+    r = rate(ipo, facts)
+    if res is not None:
+        state = "ready"                    # documents analysed
+    elif r["score"] is not None:
+        state = "market_only"              # scored from market data; documents not analysed yet
+    else:
+        state = "not_analysed"             # nothing to score from yet
+    return {"ipo_id": ipo.id, "state": state, "badge": badge_for(r["verdict"]), "score": r["score"],
+            "verdict": r["verdict"] if r["score"] is not None else None, "confidence": r["confidence"] if r["score"] is not None else None,
+            "signals": r["signals"], "components": r["components"], "red_flags": r["red_flags"], "facts": r["facts"],
+            "as_of": res.created_at.isoformat() if res is not None and res.created_at else None, "queued": queued,
+            "documents_analysed": r["documents_analysed"]}
 
 
 def _insert_ignoring_conflicts(db: AsyncSession, model, values: Dict[str, Any], conflict_cols):
@@ -87,15 +95,16 @@ async def _take_click(db: AsyncSession, cap: int) -> bool:
 
 @router.get("")
 async def list_analysis_summaries(db: AsyncSession = Depends(get_db)):
-    """Latest badge and score per analysed IPO (one row each), for list views."""
-    rows = (await db.execute(
-        select(AnalysisResult).order_by(AnalysisResult.created_at.desc(), AnalysisResult.id.desc())
-    )).scalars().all()
-    latest: Dict[str, AnalysisResult] = {}
-    for r in rows:
-        latest.setdefault(r.ipo_id, r)
-    return [{"ipo_id": r.ipo_id, "badge": badge_for(r.verdict), "score": r.score, "confidence": r.confidence,
-             "as_of": r.created_at.isoformat() if r.created_at else None} for r in latest.values()]
+    """Badge and score of every IPO that has a score (same rating function as everywhere), for list views."""
+    ipos = (await db.execute(select(Ipo))).scalars().all()
+    facts = await latest_facts_map(db, [i.id for i in ipos])
+    out = []
+    for ipo in ipos:
+        r = rate(ipo, facts.get(ipo.id))
+        if r["score"] is not None:
+            out.append({"ipo_id": ipo.id, "badge": badge_for(r["verdict"]), "score": r["score"],
+                        "confidence": r["confidence"], "documents_analysed": r["documents_analysed"]})
+    return out
 
 
 @router.get("/{ipo_id}")

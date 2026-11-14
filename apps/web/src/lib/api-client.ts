@@ -21,7 +21,7 @@ import {
   MOCK_REPORTS,
   MOCK_APP_SETTINGS,
 } from './mock-data'
-import { mockAllowed, listOrMock, requireMutationOk } from './data-policy'
+import { mockAllowed, ipoMockAllowed, listOrMock, requireMutationOk } from './data-policy'
 import type { Analysis, AnalysisBadge, AuditResponse } from './analysis-view'
 import { auditErrorMessage } from './analysis-view'
 
@@ -64,6 +64,11 @@ function isGuestSession(): boolean {
 /** Sample data is only ever shown to guest sessions or explicit mock builds - never to a real session. */
 export function canShowMockData(): boolean {
   return mockAllowed({ useMockEnv: USE_MOCK_DATA, isGuest: isGuestSession() })
+}
+
+/** Sample IPOs / reports only in an explicit mock build; guests see the real public IPO data. */
+export function canShowMockIpos(): boolean {
+  return ipoMockAllowed({ useMockEnv: USE_MOCK_DATA })
 }
 
 function unavailablePlan(): AllocationPlan {
@@ -281,13 +286,13 @@ export const apiClient = {
       }
     } catch {}
 
-    const result = listOrMock(cached, MOCK_IPOS, canShowMockData())
+    const result = listOrMock(cached, MOCK_IPOS, canShowMockIpos())
     setCached(cacheKey, result)
     return result
   },
 
   async getIpoById(id: string): Promise<Ipo | null> {
-    const mockFallback = !canShowMockData()
+    const mockFallback = !canShowMockIpos()
       ? null
       : MOCK_IPOS.find(
           (ipo) =>
@@ -790,14 +795,14 @@ export const apiClient = {
       const res = await authFetch(`${API_BASE_URL}/reports`)
       if (res.ok) {
         const data = await res.json()
-        if (Array.isArray(data)) return listOrMock(data, MOCK_REPORTS, canShowMockData())
+        if (Array.isArray(data)) return listOrMock(data, MOCK_REPORTS, canShowMockIpos())
       }
     } catch {}
-    return listOrMock(null, MOCK_REPORTS, canShowMockData())
+    return listOrMock(null, MOCK_REPORTS, canShowMockIpos())
   },
 
   async getReportById(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport | null> {
-    const mockRep = canShowMockData() ? MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null : null
+    const mockRep = canShowMockIpos() ? MOCK_REPORTS.find((r) => r.id === id || r.ipo_id === id) || null : null
     if (USE_MOCK_DATA) {
       return mockRep
     }

@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client'
 import {
   Analysis,
   badgeStyle,
+  basisNote,
   confidenceNote,
   orderSignals,
   requestMessage,
@@ -57,7 +58,9 @@ export function ListingGainPanel({ ipoId }: Props) {
   }
 
   const badge = badgeStyle(analysis?.badge)
+  const hasScore = analysis?.score !== null && analysis?.score !== undefined   // same score as the IPO list
   const ready = analysis?.state === 'ready'
+  const basis = basisNote(analysis)
   const note = confidenceNote(analysis?.confidence)
 
   return (
@@ -74,19 +77,21 @@ export function ListingGainPanel({ ipoId }: Props) {
         <h3 className="text-[13px] text-ink-3">Listing-gain analysis</h3>
         {loading ? (
           <p className="text-[13px] text-ink-3 mt-1">Loading…</p>
-        ) : ready ? (
+        ) : hasScore ? (
           <p className="text-[13px] text-ink-2 mt-1">
-            Score <span className="font-mono text-ink">{analysis?.score ?? '—'}</span>
-            {analysis?.as_of ? ` · updated ${new Date(analysis.as_of).toLocaleDateString()}` : ''}
+            Score <span className="font-mono text-ink">{analysis?.score}</span>
+            {ready && analysis?.as_of ? ` · document analysed ${new Date(analysis.as_of).toLocaleDateString()}` : ''}
           </p>
         ) : (
           <p className="text-[13px] text-ink-2 mt-1">
-            No analysis has been run for this IPO yet.
+            No score yet: there is no grey-market or subscription data for this IPO.
           </p>
         )}
       </div>
 
-      {ready && (
+      {basis && <p className="text-[12px] text-ink-3">{basis}</p>}
+
+      {hasScore && (
         <ul className="space-y-2">
           {orderSignals(analysis?.signals ?? []).map((s, i) => (
             <li key={`${s.code}-${i}`} className="flex gap-2 text-[13px] text-ink-2">
@@ -97,7 +102,7 @@ export function ListingGainPanel({ ipoId }: Props) {
         </ul>
       )}
 
-      {ready && note && <p className="text-[12px] text-amber-300/90">{note}</p>}
+      {hasScore && note && <p className="text-[12px] text-amber-300/90">{note}</p>}
 
       <div className="flex flex-wrap items-center gap-3">
         <button

@@ -46,12 +46,19 @@ def _ipo(symbol, status="open", **kw):
     return Ipo(**base)
 
 
-def _result(ipo_id, score=70, verdict="MODERATE_APPLY", day_offset=0):
+GOOD = dict(net_profit_cr=90.0, revenue_growth_pct=30.0, debt_to_equity=0.4, promoter_holding_post_pct=70.0)
+BAD = dict(net_profit_cr=-40.0, revenue_growth_pct=-5.0, debt_to_equity=4.0, promoter_holding_post_pct=15.0,
+           operating_cash_flow_cr=-30.0)
+QUOTE = "SEBI passed an order against our Promoter on 12 March 2024 imposing a penalty."
+VETO = dict(GOOD, regulatory_action_against_promoter=True, regulatory_action_evidence=QUOTE)
+
+
+def _result(ipo_id, facts=None, day_offset=0, score=1, verdict="WATCH"):
+    """A stored nightly result. Its facts matter; the score fields are history only (the shown score is live)."""
     from app.models.base import get_utc_now
     return AnalysisResult(ipo_id=ipo_id, version_id="v1", score=score, verdict=verdict, confidence="high",
-                          components={"demand": {"value": 80, "weight": 0.5}},
-                          signals=[{"code": "demand", "direction": "positive", "reason": "Subscription demand scores 80/100."}],
-                          red_flags=[], facts={"net_profit_cr": 10.0}, inputs={"gmp_percent": 20.0},
+                          components={}, signals=[], red_flags=[], facts=facts if facts is not None else GOOD,
+                          inputs={"gmp_percent": 20.0},
                           created_at=get_utc_now() - timedelta(days=day_offset))
 
 
@@ -65,25 +72,33 @@ async def _quota(db):
 
 
 @pytest.mark.asyncio
-async def test_guest_reads_precomputed_analysis_with_badge(db):
-    db.add_all([_ipo("AQ1"), _result("id-AQ1", 70, "MODERATE_APPLY")])
+async def test_guest_reads_the_analysis_with_the_same_score_as_the_ipo_list(db):
+    from app.services.rating import rate
+    db.add_all([_ipo("AQ1"), _result("id-AQ1", GOOD)])
     await db.commit()
     async with _client() as c:
-        r = await c.get("/api/analysis/id-AQ1")
-    body = r.json()
-    assert r.status_code == 200 and body["state"] == "ready" and body["badge"] == "APPLY"
-    assert body["score"] == 70 and body["signals"][0]["reason"] and body["confidence"] == "high"
+        body = (await c.get("/api/analysis/id-AQ1")).json()
+        listed = {i["id"]: i for i in (await c.get("/api/ipos?status=all")).json()}["id-AQ1"]
+    expected = rate(dict(gmp_percent=20.0, subscription_total=5.0, name="AQ1 Ltd"), GOOD)
+    assert body["state"] == "ready" and body["documents_analysed"] is True
+    assert body["score"] == expected["score"] == listed["score"]          # one score everywhere
+    assert body["badge"] == "APPLY" and body["signals"] and all(s["reason"] for s in body["signals"])
 
 
 @pytest.mark.asyncio
-async def test_badge_mapping_and_not_analysed_state(db):
-    db.add_all([_ipo("AQ2"), _ipo("AQ3"), _result("id-AQ2", 30, "AVOID")])
+async def test_verified_critical_flag_gives_avoid_and_market_only_state_is_reported(db):
+    db.add_all([_ipo("AQ2"), _ipo("AQ3"), _ipo("AQ3B", gmp_percent=0.0, subscription_total=0.0),
+                _result("id-AQ2", VETO)])
     await db.commit()
     async with _client() as c:
-        assert (await c.get("/api/analysis/id-AQ2")).json()["badge"] == "AVOID"
-        none = (await c.get("/api/analysis/id-AQ3")).json()
-        assert none["state"] == "not_analysed" and none["badge"] is None
+        veto = (await c.get("/api/analysis/id-AQ2")).json()
+        market = (await c.get("/api/analysis/id-AQ3")).json()
+        empty = (await c.get("/api/analysis/id-AQ3B")).json()
         assert (await c.get("/api/analysis/does-not-exist")).status_code == 404
+    assert veto["badge"] == "AVOID" and veto["score"] <= 35
+    assert any(QUOTE in f["reason"] for f in veto["red_flags"])            # the reader sees the quoted evidence
+    assert market["state"] == "market_only" and market["score"] is not None and market["documents_analysed"] is False
+    assert empty["state"] == "not_analysed" and empty["score"] is None and empty["badge"] is None
 
 
 @pytest.mark.asyncio
@@ -167,13 +182,14 @@ async def test_nightly_job_serves_requested_ipos_first_and_marks_them_done(db):
 
 
 @pytest.mark.asyncio
-async def test_summary_list_has_one_latest_row_per_ipo(db):
-    db.add_all([_ipo("AQL1"), _ipo("AQL2"), _result("id-AQL1", 30, "AVOID", day_offset=2),
-                _result("id-AQL1", 85, "STRONG_APPLY", day_offset=0), _result("id-AQL2", 50, "WATCH")])
+async def test_summary_list_uses_the_newest_stored_facts_and_the_live_score(db):
+    db.add_all([_ipo("AQL1"), _ipo("AQL2"), _ipo("AQL3", gmp_percent=0.0, subscription_total=0.0),
+                _result("id-AQL1", BAD, day_offset=2), _result("id-AQL1", GOOD, day_offset=0), _result("id-AQL2", VETO)])
     await db.commit()
     async with _client() as c:
         rows = (await c.get("/api/analysis")).json()
-    mine = {r["ipo_id"]: r for r in rows if r["ipo_id"] in ("id-AQL1", "id-AQL2")}
-    assert mine["id-AQL1"]["badge"] == "APPLY" and mine["id-AQL1"]["score"] == 85   # newest wins
-    assert mine["id-AQL2"]["badge"] == "WATCH"
+    mine = {r["ipo_id"]: r for r in rows}
+    assert mine["id-AQL1"]["badge"] == "APPLY"                 # the newest (good) facts win over the older bad ones
+    assert mine["id-AQL2"]["badge"] == "AVOID"
+    assert "id-AQL3" not in mine                              # no data at all -> no score, no badge
     assert len([r for r in rows if r["ipo_id"] == "id-AQL1"]) == 1

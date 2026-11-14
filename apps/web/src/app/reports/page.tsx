@@ -4,7 +4,7 @@ import { ListingGainPanel } from '@/components/reports/ListingGainPanel'
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { apiClient, canShowMockData } from '@/lib/api-client'
+import { apiClient, canShowMockIpos } from '@/lib/api-client'
 import { Ipo, AiReport } from '@/types'
 import { MOCK_IPOS, MOCK_REPORTS } from '@/lib/mock-data'
 import {
@@ -39,11 +39,11 @@ import { stripHtml } from '@/lib/utils'
 export default function ReportsPage() {
   const [ipos, setIpos] = useState<Ipo[]>(() => {
     const cached = apiClient.getCachedIpos()
-    return cached && cached.length > 0 ? cached : canShowMockData() ? MOCK_IPOS : []
+    return cached && cached.length > 0 ? cached : canShowMockIpos() ? MOCK_IPOS : []
   })
   const [reports, setReports] = useState<Record<string, AiReport>>(() => {
     const repMap: Record<string, AiReport> = {}
-    if (canShowMockData()) {
+    if (canShowMockIpos()) {
       MOCK_REPORTS.forEach((r) => {
         if (r.ipo_id) repMap[r.ipo_id] = r
       })

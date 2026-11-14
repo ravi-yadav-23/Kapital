@@ -29,6 +29,8 @@ async def list_ai_reports(db: AsyncSession = Depends(get_db)):
     )
     res = await db.execute(stmt)
     rows = res.all()
+    from app.services.rating import attach_facts
+    await attach_facts(db, [r[0] for r in rows])
 
     reports = []
     for ipo_row, report_row in rows:
@@ -85,6 +87,8 @@ async def get_ai_report(
 
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
+    from app.services.rating import attach_facts
+    await attach_facts(db, [ipo])
 
     stmt_rep = select(AiReport).where(AiReport.ipo_id == ipo.id)
     res_rep = await db.execute(stmt_rep)
@@ -144,6 +148,8 @@ async def trigger_ai_analysis(
 
     if not ipo:
         raise HTTPException(status_code=404, detail="IPO not found")
+    from app.services.rating import attach_facts
+    await attach_facts(db, [ipo])
 
     # Check if report already exists in database
     stmt_rep = select(AiReport).where(AiReport.ipo_id == ipo.id)

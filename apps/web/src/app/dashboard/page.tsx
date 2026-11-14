@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { apiClient, canShowMockData } from '@/lib/api-client'
+import { apiClient, canShowMockData, canShowMockIpos } from '@/lib/api-client'
 import { Ipo, FundSummary, PnlSummary, IpoOrder, Allotment } from '@/types'
 import { useAuth } from '@/lib/auth-context'
 import {
@@ -43,7 +43,7 @@ export default function DashboardPage() {
 
   const [ipos, setIpos] = useState<Ipo[]>(() => {
     const cached = apiClient.getCachedIpos()
-    return cached && cached.length > 0 ? cached : canShowMockData() ? MOCK_IPOS : []
+    return cached && cached.length > 0 ? cached : canShowMockIpos() ? MOCK_IPOS : []
   })
   const [fundSummary, setFundSummary] = useState<FundSummary | null>(() => apiClient.getCachedFundSummary() || (canShowMockData() ? MOCK_FUND_SUMMARY : null))
   const [pnlSummary, setPnlSummary] = useState<PnlSummary | null>(() => apiClient.getCachedPnlSummary() || (canShowMockData() ? MOCK_PNL_SUMMARY : null))

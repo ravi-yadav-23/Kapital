@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { badgeStyle, requestMessage, auditErrorMessage, orderSignals, confidenceNote } from '../lib/analysis-view.ts';
+import { badgeStyle, requestMessage, auditErrorMessage, orderSignals, confidenceNote, basisNote } from '../lib/analysis-view.ts';
 
 describe('listing-gain analysis view helpers (M9)', () => {
   test('badge is a small Apply / Watch / Avoid label, and absent when there is no verdict', () => {
@@ -32,6 +32,13 @@ describe('listing-gain analysis view helpers (M9)', () => {
       { code: 'c', direction: 'negative', reason: 'x' },
     ]);
     assert.deepEqual(out.map((s) => s.code), ['c', 'a', 'b']);
+  });
+
+  test('a market-only score says its basis; an analysed or missing score needs no caveat', () => {
+    assert.match(basisNote({ state: 'market_only', score: 55 }) ?? '', /market data only/i);
+    assert.equal(basisNote({ state: 'ready', score: 70 }), null);
+    assert.equal(basisNote({ state: 'market_only', score: null }), null);
+    assert.equal(basisNote(null), null);
   });
 
   test('low confidence is called out', () => {

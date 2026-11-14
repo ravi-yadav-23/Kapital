@@ -15,15 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.documents.errors import DocumentError
 from app.documents.extract import chunk_pages, pdf_to_pages
-from app.documents.facts import company_score_from_facts, facts_sufficient, looks_like_lender, merge_facts
+from app.documents.facts import facts_sufficient, merge_facts
 from app.documents.store import analyse_pending_chunks, store_document
-from app.services.ipo_service import _apply_document_url, refresh_statuses
+from app.services.ipo_service import _apply_document_url, refresh_all_scores, refresh_statuses, refresh_stored_score
+from app.services.rating import rate
 from app.models.analysis import AnalysisChunk, AnalysisResult, AnalysisVersion
 from app.models.audit_queue import AuditRequest
 from app.models.base import get_utc_now
 from app.models.ipo import Ipo
-from app.utils.listing_gain import listing_gain_engine
-from app.utils.red_flags import detect_red_flags
 
 logger = logging.getLogger("job.nightly")
 
@@ -82,17 +81,12 @@ async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> boo
     if not rows:
         return False
     facts = merge_facts([r.facts or {} for r in rows])
-    if looks_like_lender(ipo.name):   # back-up for the model's own is_lender flag
-        facts["is_lender"] = True
-    flags = detect_red_flags(facts)
+    res = rate(ipo, facts)           # the one rating function every endpoint uses
+    flags = res["red_flags"]
+    facts = res["facts"]
     inputs = {"gmp_percent": ipo.gmp_percent, "subscription_total": ipo.subscription_total,
               "subscription_qib": ipo.subscription_qib, "subscription_retail": ipo.subscription_retail,
               "issue_size_cr": ipo.issue_size_cr}
-    res = listing_gain_engine(
-        gmp_percent=ipo.gmp_percent, subscription_total=ipo.subscription_total,
-        subscription_qib=ipo.subscription_qib, subscription_retail=ipo.subscription_retail,
-        issue_size_cr=ipo.issue_size_cr, company_score=company_score_from_facts(facts), red_flags=flags,
-    )
     last = (await db.execute(select(AnalysisResult).where(AnalysisResult.ipo_id == ipo.id)
                              .order_by(AnalysisResult.created_at.desc(), AnalysisResult.id.desc()).limit(1))).scalar_one_or_none()
     if last and last.version_id == ver.id and last.score == res["score"] and last.verdict == res["verdict"] and last.inputs == inputs:
@@ -100,6 +94,8 @@ async def _write_result(db: AsyncSession, ipo: Ipo, ver: AnalysisVersion) -> boo
     db.add(AnalysisResult(ipo_id=ipo.id, version_id=ver.id, score=res["score"], verdict=res["verdict"],
                           confidence=res["confidence"], components=res["components"], signals=res["signals"],
                           red_flags=flags, facts=facts, inputs=inputs))
+    await db.commit()
+    await refresh_stored_score(db, ipo)   # the stored score follows the new analysis
     await db.commit()
     return True
 
@@ -137,10 +133,12 @@ async def run_nightly(db: AsyncSession, *, extractor: Callable[[str], Awaitable[
     def out_of_tokens() -> bool:
         return max_tokens is not None and getattr(extractor, "tokens_used", 0) >= max_tokens
     summary_statuses = await refresh_statuses(db)  # stale 'open'/'upcoming' rows must not be analysed first
+    scores_refreshed = await refresh_all_scores(db)  # rules or stored facts may have changed since the last run
     summary: Dict[str, Any] = {"analysed": 0, "skipped_no_document": 0, "document_errors": 0,
                                "incomplete": 0, "deferred": 0, "rate_limited": False, "token_budget_reached": False, "tokens_used": 0, "chunks_used": 0,
                                "details": []}
     summary["statuses_fixed"] = summary_statuses
+    summary["scores_refreshed"] = scores_refreshed
     for ipo in await _candidates(db, max_ipos):
         kind, url = _choose(ipo)
         if url is None and link_finder is not None and discovered < MAX_DISCOVERY:

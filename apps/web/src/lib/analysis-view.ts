@@ -11,7 +11,8 @@ export interface AnalysisSignal {
 
 export interface Analysis {
   ipo_id: string
-  state: 'ready' | 'not_analysed'
+  /** ready = offer document analysed; market_only = scored from market data, document not analysed yet */
+  state: 'ready' | 'market_only' | 'not_analysed'
   badge: AnalysisBadge
   score: number | null
   verdict: string | null
@@ -22,6 +23,7 @@ export interface Analysis {
   facts: Record<string, number | boolean>
   as_of: string | null
   queued: boolean
+  documents_analysed: boolean
 }
 
 /** Response to "Run audit": the analysis fields plus what happened to the request. */
@@ -63,6 +65,15 @@ const ORDER: Record<AnalysisSignal['direction'], number> = { negative: 0, positi
 /** Risks first so they are never buried under good news. */
 export function orderSignals(signals: AnalysisSignal[]): AnalysisSignal[] {
   return [...signals].sort((a, b) => ORDER[a.direction] - ORDER[b.direction])
+}
+
+/** One line saying what the score is based on. Null when documents were analysed (nothing to caveat). */
+export function basisNote(analysis: Pick<Analysis, 'state' | 'score'> | null | undefined): string | null {
+  if (!analysis || analysis.score === null || analysis.score === undefined) return null
+  if (analysis.state === 'market_only') {
+    return 'Based on market data only (grey-market premium and subscription). The company\u2019s offer document has not been analysed yet.'
+  }
+  return null
 }
 
 export function confidenceNote(confidence: Analysis['confidence'] | undefined): string | null {

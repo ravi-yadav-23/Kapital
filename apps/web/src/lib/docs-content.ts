@@ -73,6 +73,7 @@ export const DOC_PAGES: DocPage[] = [
     title: 'The listing-gain score',
     description: 'What goes into the 0 to 100 score and why grey-market premium is only a minor part.',
     blocks: [
+      { type: 'callout', tone: 'note', title: 'One score everywhere', text: 'The IPO list, the report page, the badges and the optimizer all show this same score. Before the offer document has been analysed it is built from market data only (grey-market premium and subscription), which the page says; once the document is analysed, company quality and red flags are added and the score is recomputed with the latest market numbers.' },
       { type: 'p', text: 'The goal is narrow: estimate how likely an IPO is to list above its issue price, for someone who sells on listing day. The score combines five inputs. Inputs that are unknown are left out and the others share the weight; nothing is replaced by an invented number.' },
       { type: 'table', head: ['Input', 'Weight', 'What it measures'], rows: [
         ['Company quality', '30%', 'Profit, growth, debt, cash flow, valuation and promoter holding read from the offer document.'],

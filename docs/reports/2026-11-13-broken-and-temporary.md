@@ -23,7 +23,7 @@ Written for: the project owner, to review before deciding what to continue. Ever
 | # | Problem | Why it matters | Suggested fix |
 | --- | --- | --- | --- |
 | 1 | **Analysis coverage is tiny.** In the last live run 1 IPO was analysed, 7 had no document link, 2 were deferred. A DRHP has hundreds of chunks (Truhome: 431) and only 14 were read. | Most IPOs will show "No analysis yet" for a while. The numbers for the one analysed IPO come from 14 chunks. | Raise the nightly budget once the real Groq daily limit is known; add a "read the financial-statements section" step instead of keyword ordering. |
-| 2 | **Two different scores are visible.** The IPO list still shows the old momentum score (GMP/subscription). The new engine score appears only in the analysis panel and as the corner badge. | The same IPO can show different numbers in different places. Earlier I built a test to prevent exactly this. | Decide which score is *the* score (I recommend the engine) and make the list use it. |
+| 2 | ~~**Two different scores are visible.**~~ **Fixed (decision taken 2026-11-14):** one engine score everywhere (`app/services/rating.py`). The list, report page, badges and optimizer read it. Before the offer document is analysed it uses market data only and says so; an old AI report no longer decides the score. | | |
 | 3 | **~~A single model-extracted yes/no can veto an IPO.~~ Fixed:** a critical flag now needs a quote that really appears in the text; otherwise it is shown as a high flag. Hero Fincorp's earlier veto (from one unchecked answer) is now WATCH 46. Still open: the page number of each quote is not stored, and nobody has checked the Hero flag against the document. | A genuine problem could still be missed if the model does not quote it. | Store page numbers; spot-check a sample of flags by hand. |
 | 3b | **Extracted numbers are unchecked against the source.** The model reads 14 chunks and returns figures (profit, debt, cash flow). Nothing verifies the fiscal year or the unit. | A wrong number gives a wrong red flag or score. The Truhome run showed one real misjudgement already (see section 4). | Store the page number and quote for each fact; show it in the panel; spot-check a sample by hand. |
 | 4 | **Placeholder rows.** 27 "upcoming" IPOs have no dates, and many use Groww's temporary symbols (`TEMPRZR`, `TEMPALLCHEM` ...). Older rows have source `bse` from the previous scraper. | They appear as upcoming with TBA fields and may duplicate real entries when real symbols arrive. | Hide or merge placeholder symbols; I did not delete anything. |
@@ -37,9 +37,9 @@ Written for: the project owner, to review before deciding what to continue. Ever
 
 | Item | Where | What to do |
 | --- | --- | --- |
-| Sample ("mock") data for guests | `apps/web/src/lib/mock-data.ts`, used on dashboard, IPOs, reports pages | Replace with real public data for guests, or label it clearly. |
+| Sample ("mock") data for guests | `apps/web/src/lib/mock-data.ts` | **Changed:** guests now see real IPO and report data. Sample data remains only for accounts, funds, orders, allotments and P&L (personal data), under the existing "Demo workspace" banner. |
 | Settings page controls that do nothing (thresholds, allocation cap, buffer, default UPI, notifications) | `apps/web/src/app/settings`, audit item F18 | Wire them or remove them. They are labelled as not active today. |
-| Committed scratch and AI-assistant files | `.ai/`, `.cursor/rules/`, `docs/plans/2026-11-01-production-readiness-remediation.md`, `apps/api/run_live_pipeline_dryrun.py` | Delete after you agree (I did not delete anything). |
+| ~~Committed scratch and AI-assistant files~~ | `.ai/`, `.cursor/rules/`, the old production-readiness plan, `apps/api/run_live_pipeline_dryrun.py`, four empty placeholder files in `docs/` | **Done:** deleted (still in git history). The valid architecture rules were rewritten into `CONTRIBUTING.md`; `docs/agents/scoring-system.md` and `docs/fund-logic/allocation-algorithm.md` were rewritten to match the code. |
 | Personal details in code | Google client ID default in `config.py` / `next.config.mjs`, personal GitHub URL in docs | Move to configuration. |
 | Legacy `ADMIN_PIN` and its start-up warning | `config.py` | Remove once nothing reads it. |
 | Every API route is mounted twice (`/api/...` and without the prefix) | `app/main.py` | Keep one. |
@@ -68,12 +68,12 @@ Written for: the project owner, to review before deciding what to continue. Ever
 - **Vercel:** your list is complete for what the code reads. `DATABASE_URL` there should be the transaction pooler (`:6543`). Nothing new is needed.
 - **Still to do by you:** rotate the keys that were exposed earlier (ipoalerts key in git history, Groq key, database password, Google client secret, TOTP secret).
 
-## 7. Decisions I need from you
+## 7. Decisions
 
-1. Which score is the single score shown everywhere: the old momentum score or the new engine score (recommended)?
-2. May I delete the committed scratch files listed in section 3?
-3. Should guests see real data instead of sample data, or keep the sample data labelled as sample?
-4. Do you want alerts when a data source fails (email or a GitHub issue)?
+1. **Single score: done.** Engine score everywhere.
+2. **Scratch files: done.** Deleted or rewritten as above.
+3. **Guests: done.** Real IPO data; sample data only for personal sections.
+4. Alerts: the job already exits with an error when a source fails (GitHub emails you). Anything beyond that is still open.
 
 ## 8. What changed in this pass
 

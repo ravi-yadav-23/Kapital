@@ -10,8 +10,8 @@ from app.config import settings
 from app.models.report import AiReport
 from app.models.ipo import Ipo
 from app.models.setting import SystemSetting
+from app.services.rating import rate
 from app.utils.scoring import (
-    momentum_score,
     recommendation_for,
     gmp_known,
     subscription_known,
@@ -223,7 +223,7 @@ class AiDueDiligenceService:
                 promoter_integrity=None,
             )
             if ipo is not None:
-                overall_score = momentum_score(ipo.gmp_percent, ipo.subscription_qib, ipo.subscription_total)
+                overall_score = rate(ipo)["score"]
             else:
                 overall_score = int(round((existing.score_gmp_strength or 0) * 0.60 + (existing.score_subscription_momentum or 0) * 0.40))
         else:
@@ -235,7 +235,8 @@ class AiDueDiligenceService:
                 gmp_strength=existing.score_gmp_strength,
                 promoter_integrity=existing.score_promoter_integrity,
             )
-            overall_score = existing.overall_score
+            # one score everywhere: an old AI report no longer decides it
+            overall_score = rate(ipo)["score"] if ipo is not None else existing.overall_score
 
         has_drhp = bool(ipo and (ipo.drhp_url or ipo.rhp_url))
         drhp_status = "FILED" if has_drhp else "NOT_FILED"
@@ -270,7 +271,7 @@ class AiDueDiligenceService:
             drhp_status=drhp_status,
             drhp_disclaimer=drhp_disclaimer,
             missing_fields=missing_fields,
-            recommendation=existing.recommendation if audited else recommendation_for(overall_score),
+            recommendation=recommendation_for(overall_score) if ipo is not None else existing.recommendation,
             score_breakdown=sb,
             executive_summary=existing.executive_summary or f"Due diligence analysis for {ipo_name}.",
             summary_source=getattr(existing, "summary_source", "ai_generated") or "ai_generated",
@@ -305,7 +306,7 @@ class AiDueDiligenceService:
         sub_total = float(ipo.subscription_total or 0.0)
 
         # Single formula (app.utils.scoring); None == "No score yet" when there is no market data.
-        score = momentum_score(ipo.gmp_percent, ipo.subscription_qib, ipo.subscription_total)
+        score = rate(ipo)["score"]
         gmp_strength = gmp_strength_fn(gmp) if gmp_known(ipo.gmp_percent) else None
         subscription_momentum = (
             subscription_momentum_fn(sub_total or float(ipo.subscription_qib or 0.0))
