@@ -89,3 +89,18 @@ Migrations applied to Supabase: `a8d4e6f20c13`, `b9e5f7a31d24`, `c2a7d9e45f61`, 
 | CI backend job, "Event loop is closed" | test pool reused across event loops on real Postgres | fixed; suite passes against Postgres (441 passed, 0 skipped) |
 | Scheduled jobs #6 (22:00 IST) timed out | the web webhook ran the AI model | fixed; web jobs never run the model |
 All three fixes are on `audit/claude-code` after the merge of PR #5. They reach `main` (and tonight's 22:00 IST job) only when a new pull request is merged.
+
+## 10. State on 2026-11-14 (after the fallback and the GitHub fixes)
+
+**Working, verified on the real database**
+- 9 IPOs have an analysis: 2 read from the offer document (Hero Fincorp, Truhome) and 7 from Groww's financials summary (Zepto, Kent RO, FabIndia, OYO, boAt, Arohan, Droom). The list and the analysis show the same score for every one.
+- The nightly GitHub run on 2026-11-14 at 06:26 IST succeeded (17 minutes). The web-server cron job that failed is fixed.
+- Thin evidence can no longer produce a harsh verdict: found live, three loss-making IPOs got 5/100 AVOID from one signal; one signal alone now stays in the Watch band.
+
+**Still open**
+1. **Fixes are not on `main` yet.** `main` still has the old workflow and the old 22:00 IST webhook. The 22:00 IST job on `main` will fail again, and CI on `main` stays red, until the new pull request from `audit/claude-code` is merged. Merge only after its CI is green.
+2. **Most upcoming IPOs have nothing to analyse.** 13 of the 29 open or upcoming IPOs are Groww placeholder rows ("TEMP...") that are pre-filing: no document, no financials anywhere. They show "No score yet" until real data exists.
+3. **Document downloads from NSE are slow or time out.** One retry and a 40 s timeout were added; those IPOs fall back to the summary.
+4. **Summary-based scores are weaker.** They cover revenue and profit for two years only, no debt, cash flow, promoter holding or litigation; capped at 70 and labelled. They have not been checked against reality.
+5. **No AI web search.** I did not add a model that searches the internet for missing facts: it can invent numbers and cannot be checked. Only structured sources are used.
+6. Items from sections 2 and 5 that were not touched: market-mood input, calibration, broker endpoints, NSE/BSE announcement pages as another source, quote page numbers, the deployed site not being looked at in a browser.

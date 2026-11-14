@@ -72,3 +72,22 @@ def test_backtest_reports_hit_rate_and_baseline():
     assert b["engine"]["apply_count"] == 2 and b["engine"]["apply_hit_rate"] == 1.0
     assert b["gmp_only"]["apply_count"] == 3 and b["gmp_only"]["apply_hit_rate"] < 1.0
     assert b["engine"]["avg_gain_if_applied"] > b["gmp_only"]["avg_gain_if_applied"]
+
+
+# ---- thin evidence can neither recommend nor reject (found on real data: loss-making IPOs got 5/100 AVOID from one signal) ----
+def test_one_poor_signal_alone_cannot_produce_avoid():
+    r = listing_gain_engine(company_score=15, red_flags=[_flag("high", "loss_making")])   # nothing else known
+    assert r["confidence"] == "low"
+    assert r["score"] == 45 and r["verdict"] == "WATCH"
+    assert any(s["code"] == "thin_evidence" for s in r["signals"])
+    assert "Watch" in next(s["reason"] for s in r["signals"] if s["code"] == "thin_evidence")
+
+
+def test_a_verified_critical_flag_still_vetoes_on_thin_evidence():
+    r = listing_gain_engine(company_score=80, red_flags=[_flag("critical", "promoter_regulatory_action")])
+    assert r["verdict"] == "AVOID" and r["score"] <= 35
+
+
+def test_enough_evidence_can_still_reject():
+    r = listing_gain_engine(company_score=15, subscription_total=0.5, subscription_qib=0.2, gmp_percent=-5.0)
+    assert r["confidence"] != "low" and r["verdict"] == "AVOID"

@@ -5,7 +5,7 @@ Pure functions, no I/O. Design rules (see docs/plans/2026-11-12-ai-reports-redes
     (GMP can be manipulated; subscription and company reality are harder to fake).
   * A critical red flag is a veto; high / medium flags subtract points.
   * Missing inputs are left out and the weights renormalised - never replaced by invented numbers.
-  * Thin evidence (fewer than two of company / demand / GMP) is capped below the "apply" tier.
+  * Thin evidence (fewer than two of company / demand / GMP) stays in the Watch band: it can neither recommend nor reject.
 """
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -16,6 +16,7 @@ from app.utils.scoring import (
 WEIGHTS = {"company": 0.30, "demand": 0.30, "gmp": 0.20, "float": 0.10, "market": 0.10}
 CORE = ("company", "demand", "gmp")
 THIN_EVIDENCE_CAP = 60
+THIN_EVIDENCE_FLOOR = 45   # one signal alone cannot reject an IPO (a verified critical flag still can)
 CRITICAL_CAP = 35
 HIGH_PENALTY, MEDIUM_PENALTY, MAX_PENALTY = 10, 4, 25
 GMP_DEMAND_TOLERANCE = 30   # GMP strength may exceed demand strength by this much before it is discounted
@@ -93,7 +94,8 @@ def listing_gain_engine(
     if core_count < 2:
         score = min(score, THIN_EVIDENCE_CAP)
         signals.append(_signal("thin_evidence", "neutral",
-                               "Only one of company quality / demand / grey market is known; score is capped."))
+                               "Only one of company quality / demand / grey market is known: the score is kept inside the Watch band "
+                               "(it can neither recommend nor reject) until more is known."))
 
     # explain the positive / negative drivers
     if raw["demand"] is not None:
@@ -126,6 +128,8 @@ def listing_gain_engine(
     score -= min(penalty, MAX_PENALTY)
     if critical:
         score = min(score, CRITICAL_CAP)
+    elif core_count < 2:
+        score = max(score, THIN_EVIDENCE_FLOOR)   # thin evidence cannot reject
 
     final = max(0, min(100, int(round(score))))
     return {"score": final, "verdict": recommendation_for(final), "confidence": confidence,

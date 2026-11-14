@@ -85,7 +85,7 @@ export const DOC_PAGES: DocPage[] = [
       { type: 'h2', text: 'Safeguards' },
       { type: 'ul', items: [
         'If the grey-market premium is far stronger than demand supports, it is pulled down to just above demand and the reason says so.',
-        'With fewer than two of company quality, demand and grey-market data, the score is capped at 60, so it cannot reach an Apply verdict on one signal.',
+        'With fewer than two of company quality, demand and grey-market data, the score stays between 45 and 60 (Watch): one signal alone can neither recommend an IPO nor reject it. Only a quote-backed critical red flag can still veto.',
         'A critical red flag caps the score at 35 (a veto). High flags subtract 10 points and medium flags 4 (at most 25 together).',
       ] },
       { type: 'h2', text: 'Verdict bands' },

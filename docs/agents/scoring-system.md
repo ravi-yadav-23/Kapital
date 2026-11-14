@@ -23,7 +23,7 @@ analysed, company quality and red flags are added and the score is recomputed wi
 
 ## Safeguards
 
-- With fewer than two of company quality, demand and GMP, the score is capped at 60.
+- With fewer than two of company quality, demand and GMP, the score stays between 45 and 60 (Watch): one signal alone can neither recommend nor reject. Only a quote-backed critical flag can still veto.
 - GMP far stronger than demand supports is pulled down to just above demand.
 - A critical red flag caps the score at 35. A critical flag needs a quote from the document that really appears in
   the text; without one it is a high flag (minus 10 points). Medium flags subtract 4. Together at most 25 points.

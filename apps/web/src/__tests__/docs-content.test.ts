@@ -50,7 +50,7 @@ describe('documentation content', () => {
 
   test('numbers quoted in the docs match the code (daily cap, bands, caps)', () => {
     const text = JSON.stringify(DOC_PAGES);
-    for (const fact of ['50 across all visitors', 'capped at 60', 'caps the score at 35', 'above 2.5', 'below 25%', '80 and above']) {
+    for (const fact of ['50 across all visitors', 'between 45 and 60', 'caps the score at 35', 'above 2.5', 'below 25%', '80 and above']) {
       assert.ok(text.includes(fact), `missing: ${fact}`);
     }
   });
