@@ -22,6 +22,7 @@ import {
   getStatusPillClass,
   getStatusLabel,
   getScoreBarColor,
+  getRecommendationLabel,
 } from '@/lib/formatters'
 import {
   ArrowLeft,
@@ -118,10 +119,9 @@ export default function IpoDetailPage() {
   )
 
   const breakdown = report?.score_breakdown || ipo.score_breakdown
-  const score: number | null = isAudited ? (report?.overall_score ?? ipo.score ?? null) : (ipo.score ?? null)
-  const recommendation = isAudited
-    ? (report?.recommendation || ipo.recommendation)
-    : ipo.recommendation
+  // One engine score everywhere: the IPO's own score, never an old report's number
+  const score: number | null = ipo.score ?? null
+  const recommendation = ipo.recommendation
   const avatar = getCompanyAvatarProps(ipo.name)
   const redFlagsList = (report?.red_flags && report.red_flags.length > 0) ? report.red_flags : ipo.red_flags || []
 
@@ -188,12 +188,10 @@ export default function IpoDetailPage() {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <span className="text-[11px] font-mono uppercase text-ink-3 block">
-                  AI Verdict
+                  Verdict
                 </span>
                 <span className="text-[13px] font-medium text-ink-2">
-                  {isAudited
-                    ? (recommendation?.replace('_', ' ') || 'UNDER REVIEW')
-                    : 'PRELIMINARY ESTIMATE'}
+                  {score === null ? 'Pending' : getRecommendationLabel(recommendation as never)}
                 </span>
               </div>
               <div className="text-right">
@@ -217,103 +215,8 @@ export default function IpoDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column (2 Spans): AI Due Diligence, Dimensions, Red Flags */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Dimension Breakdown */}
-            {breakdown && (
-              <div className="p-5 rounded-sm bg-surface border border-line space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[14px] font-medium text-ink">
-                    Scoring dimension breakdown
-                  </h3>
-                  <span className="text-[12px] text-ink-3">
-                    0–100 scale · {isAudited ? 'DRHP audit verified' : 'Live market weighted'}
-                  </span>
-                </div>
-
-                <div className="space-y-3 pt-1">
-                  {[
-                    { label: 'Financial quality & DRHP audit', score: breakdown.financial_quality, weight: '25%', maxPts: 25 },
-                    { label: 'Valuation safety & multiples', score: breakdown.valuation_safety, weight: '20%', maxPts: 20 },
-                    { label: 'Grey market premium (GMP)', score: breakdown.gmp_strength, weight: '20%', maxPts: 20 },
-                    { label: 'Promoter integrity & governance', score: breakdown.promoter_integrity, weight: '15%', maxPts: 15 },
-                    { label: 'Industry sector tailwinds', score: breakdown.industry_tailwinds, weight: '10%', maxPts: 10 },
-                    { label: 'Subscription & institutional demand', score: breakdown.subscription_momentum, weight: '10%', maxPts: 10 },
-                  ].map((dim, i) => {
-                    const earned =
-                      dim.score !== null && dim.score !== undefined
-                        ? Math.round(((dim.score * dim.maxPts) / 100) * 10) / 10
-                        : null
-
-                    return (
-                      <div key={i} className="space-y-1.5">
-                        <div className="flex justify-between items-center text-[13px]">
-                          <span className="text-ink font-sans">{dim.label}</span>
-                          <div className="flex items-center gap-2 font-mono">
-                            <span className="text-[12px] text-ink-3 font-sans">
-                              Weight: {dim.weight}
-                            </span>
-                            {earned !== null && (
-                              <span className="text-ink font-medium tabular-nums">
-                                {earned}/{dim.maxPts} pts
-                              </span>
-                            )}
-                            <span className="text-[12px] text-ink-3 tabular-nums font-mono">
-                              ({dim.score !== null && dim.score !== undefined ? `${dim.score}/100` : 'Not assessed'})
-                            </span>
-                          </div>
-                        </div>
-                        {dim.score !== null && dim.score !== undefined && (
-                          <div className="h-[6px] w-full bg-surface-raised rounded-full overflow-hidden border border-line">
-                            <div
-                              className={`h-full ${getScoreBarColor(dim.score)} transition-all duration-300`}
-                              style={{ width: `${Math.max(0, Math.min(100, dim.score))}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Red Flag Audit Report */}
-            {redFlagsList && redFlagsList.length > 0 ? (
-              <div className="p-5 rounded-sm bg-surface border border-line space-y-3">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
-                  <h3 className="text-[14px] font-medium text-ink">
-                    Forensic red flags ({redFlagsList.length})
-                  </h3>
-                </div>
-
-                <div className="space-y-2 pt-1">
-                  {redFlagsList.map((rf: any, i: number) => (
-                    <div
-                      key={i}
-                      className="p-3 rounded-sm border border-line bg-canvas text-[13px] text-ink-2 leading-relaxed"
-                    >
-                      {typeof rf === 'string' ? rf : rf.text || rf.title || rf.description}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : isAudited ? (
-              <div className="p-4 rounded-sm border border-line bg-surface flex items-center justify-between text-[13px] text-ink-2">
-                <span className="text-emerald-400 flex items-center gap-2">
-                  <span>✓</span> Clean DRHP Audit — Zero severe accounting anomalies or promoter litigation red flags detected.
-                </span>
-                <Link href="/reports" className="btn-secondary text-[13px] py-1 px-3">
-                  View Full Report →
-                </Link>
-              </div>
-            ) : (
-              <div className="p-4 rounded-sm border border-line bg-surface flex items-center justify-between text-[13px] text-ink-2">
-                <span>No audit has run, so red flags are unknown.</span>
-                <Link href="/reports" className="btn-secondary text-[13px] py-1 px-3">
-                  Open AI Reports →
-                </Link>
-              </div>
-            )}
+            {/* Listing-gain analysis: score, reasons, what it is built from, red flags, company facts, Run audit */}
+            <ListingGainPanel ipoId={ipo.id} detailed />
 
             {/* Business Overview */}
             <div className="card p-5 space-y-2">
@@ -321,7 +224,7 @@ export default function IpoDetailPage() {
                 Company Overview
               </h3>
               <p className="text-xs text-[var(--ink-2)] leading-relaxed">
-                {ipo.about || 'Business operations and DRHP draft prospectus information is synced from official exchange filings.'}
+                {ipo.about || 'No company description from the sources yet.'}
               </p>
             </div>
 
@@ -336,7 +239,7 @@ export default function IpoDetailPage() {
                     <li key={i} className="leading-snug">{s}</li>
                   ))}
                   {(!ipo.strengths || ipo.strengths.length === 0) && (
-                    <li className="list-none text-2xs text-[var(--ink-3)]">None documented in prospectus summary.</li>
+                    <li className="list-none text-2xs text-[var(--ink-3)]">None listed by the sources yet.</li>
                   )}
                 </ul>
               </div>
@@ -350,7 +253,7 @@ export default function IpoDetailPage() {
                     <li key={i} className="leading-snug">{r}</li>
                   ))}
                   {(!ipo.risks || ipo.risks.length === 0) && (
-                    <li className="list-none text-2xs text-[var(--ink-3)]">No critical risks flagged.</li>
+                    <li className="list-none text-2xs text-[var(--ink-3)]">None listed by the sources yet. See red flags above.</li>
                   )}
                 </ul>
               </div>
@@ -426,9 +329,6 @@ export default function IpoDetailPage() {
                 View Allocation in Fund Manager
               </Link>
             </div>
-
-            {/* Listing-gain analysis (signals + reasons, Apply/Watch/Avoid badge, Run audit) */}
-            <ListingGainPanel ipoId={ipo.id} />
 
             {/* Schedule */}
             {ipo.schedule && ipo.schedule.length > 0 && (

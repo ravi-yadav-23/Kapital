@@ -12,6 +12,9 @@ import {
   formatCompactINR,
   formatPercent,
   formatRelativeDate,
+  formatGmp,
+  isListedUnsold,
+  biddingWindowText,
   computeIpoStatus,
   getCompanyAvatarProps,
   getStatusDotClass,
@@ -82,7 +85,7 @@ export default function DashboardPage() {
     attentionItems.push({
       id: `closing-${ipo.id}`,
       status: 'closing_today',
-      sentence: `${ipo.name} closes today at 5:00 PM with GMP ${formatPercent(ipo.gmp_percent)}${ipo.score != null ? ` and market score ${ipo.score}/100` : ''}.`,
+      sentence: `${ipo.name} closes today at 5:00 PM${ipo.gmp_percent ? ` with GMP ${formatPercent(ipo.gmp_percent)}` : ''}${ipo.score != null ? ` and score ${ipo.score}/100` : ''}.`,
       dateText: 'Closes today',
       actionLabel: 'Review & bid',
       actionHref: `/ipos/${ipo.id}`,
@@ -93,12 +96,15 @@ export default function DashboardPage() {
   // Check active allotments awaiting listing execution (positive green dot)
   const activeAllotments = allotments.filter((a) => a.status === 'ACTIVE')
   activeAllotments.forEach((alt) => {
+    const listed = isListedUnsold(alt)
     attentionItems.push({
       id: `allot-${alt.id}`,
       status: 'allotted',
-      sentence: `${alt.allotted_shares} shares of ${alt.ipo_name} allotted to ${alt.account_name}. Pre-listing sell staged.`,
-      dateText: `Listing ${formatRelativeDate(alt.listing_date)}`,
-      actionLabel: 'Review order',
+      sentence: listed
+        ? `${alt.allotted_shares} shares of ${alt.ipo_name} (${alt.account_name}) have listed, but no sale is recorded.`
+        : `${alt.allotted_shares} shares of ${alt.ipo_name} allotted to ${alt.account_name}.`,
+      dateText: `${listed ? 'Listed' : 'Listing'} ${formatRelativeDate(alt.listing_date)}`,
+      actionLabel: listed ? 'Review holding' : 'Review order',
       actionHref: '/allotments',
       dotClass: 'bg-[#22c55e]', // Positive allotment dot
     })
@@ -113,7 +119,7 @@ export default function DashboardPage() {
       attentionItems.push({
         id: `open-${ipo.id}`,
         status: 'open',
-        sentence: `${ipo.name} open for bidding with GMP ${formatPercent(ipo.gmp_percent)}${ipo.score != null ? ` and market score ${ipo.score}/100` : ''}.`,
+        sentence: `${ipo.name} open for bidding${ipo.gmp_percent ? ` with GMP ${formatPercent(ipo.gmp_percent)}` : ''}${ipo.score != null ? ` and score ${ipo.score}/100` : ''}.`,
         dateText: formatRelativeDate(ipo.issue_close_date),
         actionLabel: 'Review & bid',
         actionHref: `/ipos/${ipo.id}`,
@@ -155,33 +161,23 @@ export default function DashboardPage() {
       }))
 
   // ── Capital Distribution Calculations ─────────────────────────────────────
-  const totalCorpus = (fundSummary?.total_family_balance && fundSummary.total_family_balance > 0)
-    ? fundSummary.total_family_balance
-    : 1400000
-  const availableDeploy = (fundSummary?.total_available && fundSummary.total_available > 0)
-    ? fundSummary.total_available
-    : 820000
-  const lockedAsba = (fundSummary?.total_locked_asba && fundSummary.total_locked_asba > 0)
-    ? fundSummary.total_locked_asba
-    : 580000
+  // Real figures only: an empty account shows 0, never sample numbers
+  const totalCorpus = fundSummary?.total_family_balance ?? 0
+  const availableDeploy = fundSummary?.total_available ?? 0
+  const lockedAsba = fundSummary?.total_locked_asba ?? 0
   const activeAllotmentsValue = allotments
     .filter((a) => a.status === 'ACTIVE')
-    .reduce((sum, a) => sum + (a.invested_amount || 0), 0) || 230866
+    .reduce((sum, a) => sum + (a.invested_amount || 0), 0)
 
-  const pctAvailable = totalCorpus > 0 ? Math.round((availableDeploy / totalCorpus) * 100) : 59
-  const pctAsba = totalCorpus > 0 ? Math.round((lockedAsba / totalCorpus) * 100) : 41
+  const pctAvailable = totalCorpus > 0 ? Math.round((availableDeploy / totalCorpus) * 100) : 0
+  const pctAsba = totalCorpus > 0 ? Math.round((lockedAsba / totalCorpus) * 100) : 0
 
-  const realizedPnlVal = (pnlSummary?.total_realized_pnl && pnlSummary.total_realized_pnl > 0)
-    ? pnlSummary.total_realized_pnl
-    : 159570
-  const winRateVal = (pnlSummary?.allotment_rate_percent && pnlSummary.allotment_rate_percent > 0)
-    ? pnlSummary.allotment_rate_percent
-    : 83.3
-  const accountsTotalVal = (fundSummary?.accounts_total && fundSummary.accounts_total > 0)
-    ? fundSummary.accounts_total
-    : 6
-  const activeBidsCount = appliedOrders.length > 0 ? appliedOrders.length : 3
-  const wonCount = pnlSummary?.total_allotments || 5
+  const realizedPnlVal = pnlSummary?.total_realized_pnl ?? 0
+  const decidedBids = pnlSummary?.bids_finalized ?? 0
+  const winRateText = decidedBids > 0 ? `${pnlSummary?.allotment_rate_percent ?? 0}% hit rate` : 'No allotment results yet'
+  const accountsTotalVal = fundSummary?.accounts_total ?? 0
+  const activeBidsCount = appliedOrders.length
+  const wonCount = pnlSummary?.bids_won ?? pnlSummary?.total_allotments ?? 0
 
   return (
     <div className="space-y-7 max-w-6xl mx-auto pb-10">
@@ -242,7 +238,7 @@ export default function DashboardPage() {
             {formatINR(totalCorpus)}
           </div>
           <div className="text-[13px] text-ink-3 mt-1.5 font-mono">
-            Across {accountsTotalVal} family demats
+            Across {accountsTotalVal} family {accountsTotalVal === 1 ? 'demat' : 'demats'}
           </div>
         </div>
 
@@ -264,18 +260,18 @@ export default function DashboardPage() {
             {formatINR(lockedAsba)}
           </div>
           <div className="text-[13px] text-ink-3 mt-1.5 font-mono">
-            {activeBidsCount} active mandate bids
+            {activeBidsCount} {activeBidsCount === 1 ? 'bid' : 'bids'} awaiting allotment
           </div>
         </div>
 
         {/* Realized P&L */}
         <div className="p-5 rounded-sm bg-surface border border-line">
           <div className="text-[13px] text-ink-2">Realized P&L</div>
-          <div className="text-[32px] font-mono font-medium text-emerald-400 leading-tight mt-2">
-            ↑ {formatINR(realizedPnlVal)}
+          <div className={`text-[32px] font-mono font-medium leading-tight mt-2 ${realizedPnlVal > 0 ? 'text-emerald-400' : realizedPnlVal < 0 ? 'text-red-400' : 'text-ink'}`}>
+            {realizedPnlVal > 0 ? '↑ ' : realizedPnlVal < 0 ? '↓ ' : ''}{formatINR(Math.abs(realizedPnlVal))}
           </div>
           <div className="text-[13px] text-ink-3 mt-1.5 font-mono">
-            {winRateVal}% hit rate · {wonCount} won
+            {winRateText}{decidedBids > 0 ? ` · ${wonCount} won` : ''}
           </div>
         </div>
       </section>
@@ -460,9 +456,7 @@ export default function DashboardPage() {
 
                       {/* Dates in font-mono */}
                       <td className="text-[13px] text-ink-2 font-mono">
-                        {status === 'open' || status === 'closing_today'
-                          ? formatRelativeDate(ipo.issue_close_date)
-                          : formatRelativeDate(ipo.issue_open_date)}
+                        {biddingWindowText(status, ipo.issue_open_date, ipo.issue_close_date)}
                       </td>
 
                       {/* Price Band */}
@@ -476,8 +470,8 @@ export default function DashboardPage() {
                       </td>
 
                       {/* GMP */}
-                      <td className={`td-num ${(ipo.gmp_percent || 0) > 0 ? 'text-emerald-400' : 'text-ink-3'}`}>
-                        {(ipo.gmp_percent || 0) > 0 ? `↑ ${formatPercent(ipo.gmp_percent)}` : '0.0%'}
+                      <td className={`td-num ${formatGmp(ipo.gmp_percent).className}`}>
+                        {formatGmp(ipo.gmp_percent).text}
                       </td>
 
                       {/* Score Bar (6px high, colored by verdict band, score number in ink) */}

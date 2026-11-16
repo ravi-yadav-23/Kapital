@@ -20,10 +20,18 @@ async def health_check():
     redis_status = "unconfigured"
     is_healthy = True
 
-    # 1. Database check
+    # 1. Database check (and when the IPO sources last refreshed successfully: public, no personal data)
+    data_updated_at = None
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
+            try:
+                from sqlalchemy import func, select
+                from app.models.source_health import SourceHealth
+                latest = (await db.execute(select(func.max(SourceHealth.last_success_at)))).scalar()
+                data_updated_at = latest.isoformat() if latest else None
+            except Exception:
+                data_updated_at = None
     except Exception as e:
         db_status = f"unhealthy: {e}"
         is_healthy = False
@@ -45,6 +53,7 @@ async def health_check():
         "version": "1.0.0",
         "database": db_status,
         "redis": redis_status,
+        "data_updated_at": data_updated_at,
     }
 
     if not is_healthy:

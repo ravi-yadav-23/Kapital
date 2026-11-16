@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
@@ -28,6 +28,16 @@ interface TopbarProps {
   className?: string
 }
 
+/** "just now", "5m ago", "3h ago", "2d ago" */
+function relativeAgo(ms: number): string {
+  const m = Math.floor(Math.max(0, ms) / 60_000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
 export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -40,23 +50,25 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [syncToast, setSyncToast] = useState<{ message: string; success: boolean } | null>(null)
-  const [lastSyncTime, setLastSyncTime] = useState<number>(() => Date.now() - 120_000)
-  const [syncLabel, setSyncLabel] = useState('Synced 2m ago')
+  // When the IPO data really last refreshed (from the API), not when this page loaded
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null)
+  const [syncLabel, setSyncLabel] = useState('Checking data…')
   const userMenuRef = useRef<HTMLDivElement>(null)
 
-  // Dynamic relative timestamp for sync button
+  const loadDataTime = useCallback(async () => {
+    const iso = await apiClient.getDataUpdatedAt()
+    const t = iso ? Date.parse(iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`) : NaN
+    setLastSyncTime(Number.isFinite(t) ? t : null)
+    if (!Number.isFinite(t)) setSyncLabel('Data time unknown')
+  }, [])
+
   useEffect(() => {
-    const updateLabel = () => {
-      const diff = Math.max(0, Date.now() - lastSyncTime)
-      if (diff < 60_000) {
-        setSyncLabel('Synced just now')
-      } else if (diff < 120_000) {
-        setSyncLabel('Synced 1m ago')
-      } else {
-        const mins = Math.floor(diff / 60_000)
-        setSyncLabel(`Synced ${mins}m ago`)
-      }
-    }
+    loadDataTime()
+  }, [loadDataTime])
+
+  useEffect(() => {
+    if (lastSyncTime === null) return
+    const updateLabel = () => setSyncLabel(`Data updated ${relativeAgo(Date.now() - lastSyncTime)}`)
     updateLabel()
     const timer = setInterval(updateLabel, 30_000)
     return () => clearInterval(timer)
@@ -127,7 +139,8 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
 
       // Trigger live sync or data fetch
       if (!isGuest) {
-        await apiClient.syncIpos().catch(() => null)
+        const done = await apiClient.syncIpos().catch(() => null)
+        if (!done) throw new Error('sync did not finish')
       } else {
         await apiClient.getIpos('all').catch(() => null)
       }
@@ -139,12 +152,11 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
         )
       }
 
-      setLastSyncTime(Date.now())
-      setSyncLabel('Synced just now')
-      setSyncToast({ message: 'Synced successfully', success: true })
+      await loadDataTime()
+      setSyncToast({ message: isGuest ? 'Refreshed' : 'Sources refreshed', success: true })
     } catch (err) {
       console.error('Failed to sync market data:', err)
-      setSyncToast({ message: 'Sync not succeeded', success: false })
+      setSyncToast({ message: 'Source refresh did not finish; the nightly job will still update the data', success: false })
     } finally {
       setIsRefreshing(false)
     }

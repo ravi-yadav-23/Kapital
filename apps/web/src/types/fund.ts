@@ -10,6 +10,9 @@ export interface PnlSummary {
 
   // Breakdown
   total_applied_ipos:     number
+  bids_won?:              number   // applications allotted
+  bids_finalized?:        number   // allotted + not allotted
+  bids_pending?:          number   // still awaiting allotment
   total_allotments:       number
   allotment_rate_percent: number
   total_sold:             number

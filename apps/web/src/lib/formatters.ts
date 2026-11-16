@@ -230,7 +230,7 @@ export function formatRelativeDate(targetDate: string | undefined | null): strin
     const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     const absDate = target.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
     
-    if (diffDays < 0) return `Closed · ${absDate}`
+    if (diffDays < 0) return `${absDate} · ${-diffDays}d ago`   // neutral: callers say what happened (closed, listed …)
     if (diffDays === 0) return `Today · ${absDate}`
     if (diffDays === 1) return `Tomorrow · ${absDate}`
     return `In ${diffDays} days · ${absDate}`
@@ -263,9 +263,10 @@ export function getScoreBadgeClass(score?: number): string {
 
 export function getScoreBarColor(score?: number): string {
   if (score === undefined || score === null) return 'bg-[#9ca3af]'
-  if (score >= 70) return 'bg-[#22c55e]' // Strong Apply -> green
-  if (score >= 55) return 'bg-[#6ea8fe]' // Moderate Apply -> blue
-  if (score >= 40) return 'bg-[#9ca3af]' // Watch -> grey
+  // Same bands as the backend (app/utils/scoring.py recommendation_for): 80 / 62 / 45
+  if (score >= 80) return 'bg-[#22c55e]' // Strong apply -> green
+  if (score >= 62) return 'bg-[#f5a623]' // Moderate apply -> amber
+  if (score >= 45) return 'bg-[#9ca3af]' // Watch -> grey
   return 'bg-[#ef4444]' // Avoid -> red
 }
 
@@ -403,4 +404,25 @@ export function hasKnownTerms(ipo: { price_band_max?: number | null; price_band_
 /** Amount text with "TBA" for an unknown (0) amount. */
 export function formatKnownAmount(n: number | null | undefined, format: (v: number) => string): string {
   return n && n > 0 ? format(n) : 'TBA'
+}
+
+/** Grey-market premium for display: "—" when there is no quote (0 / null means no quote), arrows for direction. */
+export function formatGmp(gmp: number | null | undefined): { text: string; className: string } {
+  if (gmp === null || gmp === undefined || !Number.isFinite(gmp) || gmp === 0) return { text: '—', className: 'text-ink-3' }
+  if (gmp > 0) return { text: `↑ +${gmp.toFixed(1)}%`, className: 'text-emerald-400' }
+  return { text: `↓ ${gmp.toFixed(1)}%`, className: 'text-red-400' }
+}
+
+/** Bidding-window text for a list row: "Dates TBA" instead of a bare dash when the dates are not known yet. */
+export function biddingWindowText(status: string, openDate?: string | null, closeDate?: string | null): string {
+  if (status === 'closed') return closeDate ? `Closed ${formatRelativeDate(closeDate)}` : 'Closed'
+  if (status === 'open' || status === 'closing_today') return closeDate ? `Closes ${formatRelativeDate(closeDate)}` : 'Open · close date TBA'
+  return openDate ? `Opens ${formatRelativeDate(openDate)}` : 'Dates TBA'
+}
+
+/** An ACTIVE holding whose listing date has passed: listed, but no sale has been recorded. */
+export function isListedUnsold(a: { status?: string | null; listing_date?: string | null }, today: Date = new Date()): boolean {
+  if (a.status !== 'ACTIVE' || !a.listing_date) return false
+  const d = new Date(String(a.listing_date).slice(0, 10) + 'T23:59:59')
+  return !isNaN(d.getTime()) && d < today
 }

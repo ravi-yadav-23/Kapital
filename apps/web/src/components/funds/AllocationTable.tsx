@@ -26,14 +26,15 @@ export function AllocationTable({ plan, onRefreshPlan, isRefreshing = false }: A
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium text-[var(--ink-1)]">
-              Mathematical Allocation Plan
+              Allocation plan
             </h3>
             <span className="font-mono text-2xs px-2 py-0.5 rounded text-[var(--ink-3)] bg-[var(--bg-subtle)] border border-[var(--border-default)]">
               PuLP MILP
             </span>
           </div>
           <p className="text-2xs text-[var(--ink-3)] mt-0.5 font-mono">
-            Optimized for maximum expected returns across {entries.length} demats · 12ms solve time
+            {entries.length} {entries.length === 1 ? 'bid' : 'bids'} across {new Set(entries.map((e) => e.account_id)).size} accounts ·{' '}
+            {plan?.status === 'OPTIMAL' ? 'best plan found by the solver' : 'heuristic plan'} · ranked by chance of allotment × expected gain
           </p>
         </div>
 

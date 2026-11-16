@@ -95,10 +95,12 @@ def test_t_plus_3_listing_date_calculation():
 
 def test_demo_data_whole_lots_and_asba_reconciliation():
     # Allotment whole lots check
-    tonbo_alt = next((a for a in DEMO_ALLOTMENTS if "tonbo" in a["ipo_id"].lower()), None)
-    assert tonbo_alt is not None
-    assert tonbo_alt["allotted_shares"] % 27 == 0, "Tonbo allotment must be a multiple of lot size 27"
-    assert tonbo_alt["allotted_shares"] == 27, "Kavita Yadav gets exactly 1 lot = 27 shares"
+    # Tonbo is still awaiting allotment: its live bids must be whole lots of 27
+    tonbo_bids = [o for o in DEMO_ORDERS if "tonbo" in o["ipo_id"].lower()]
+    assert tonbo_bids and all(o["shares"] % 27 == 0 for o in tonbo_bids)
+    assert not any("tonbo" in a["ipo_id"].lower() for a in DEMO_ALLOTMENTS), "Tonbo has not been allotted yet"
+    kavita = next(a for a in DEMO_ALLOTMENTS if a["account_id"] == "demo-acc-4")
+    assert kavita["allotted_shares"] == 25, "Kavita Yadav gets exactly 1 Bonfiglioli lot = 25 shares"
 
     bonfiglioli_alt = next((a for a in DEMO_ALLOTMENTS if "bonfiglioli" in a["ipo_id"].lower()), None)
     assert bonfiglioli_alt is not None
