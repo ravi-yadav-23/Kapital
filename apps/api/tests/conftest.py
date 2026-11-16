@@ -159,3 +159,16 @@ async def _dispose_app_engine_at_session_end():
     yield
     from app.db.database import engine as app_engine
     await app_engine.dispose()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _release_app_engine_connections_after_each_test():
+    """pytest-asyncio gives every test its own event loop, but the application's engine (and its connection pool)
+    is created once at import time. On PostgreSQL a pooled connection opened in an earlier test's (now closed) loop
+    is reused by the next test and fails with "Event loop is closed" - this is what failed GitHub Actions CI, where
+    DATABASE_URL is a real Postgres. Closing the pool after each test keeps every connection in the loop that made it.
+    (SQLite keeps its in-memory database in the pool, so it is left alone here; the session fixture above closes it.)"""
+    yield
+    from app.db.database import engine as app_engine
+    if app_engine.dialect.name != "sqlite":
+        await app_engine.dispose()

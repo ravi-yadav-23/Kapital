@@ -104,6 +104,20 @@ export function ListingGainPanel({ ipoId }: Props) {
 
       {hasScore && note && <p className="text-[12px] text-amber-300/90">{note}</p>}
 
+      {analysis?.state === 'web_only' && (analysis.sources?.length ?? 0) > 0 && (
+        <div className="space-y-1">
+          <p className="text-[12px] text-ink-3">Sources</p>
+          <ul className="space-y-1">
+            {analysis.sources!.map((src, i) => (
+              <li key={`${src.url}-${i}`} className="text-[12px] text-ink-2">
+                <a href={src.url} target="_blank" rel="noopener noreferrer nofollow" className="underline break-all">{src.url}</a>
+                <span className="block text-ink-3">&ldquo;{src.quote}&rdquo;</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"

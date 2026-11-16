@@ -116,3 +116,33 @@ async def fetch_document(url: str, *, client: Optional[httpx.AsyncClient] = None
     finally:
         if own:
             await client.aclose()
+
+
+async def fetch_text(url: str, *, client: Optional[httpx.AsyncClient] = None, max_bytes: int = 8 * 1024 * 1024,
+                     public_ok: bool = True) -> str:
+    """Readable text of a web page or PDF (same safety rules as fetch_document: https, public addresses, size limit).
+    Used to check that a quote a model gave us really is on the page it cites."""
+    from app.documents.extract import pdf_to_pages
+    own = client is None
+    client = client or httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=False)
+    try:
+        for attempt in (1, 2):
+            try:
+                _final, body, ctype = await _get(client, url, max_bytes, public_ok)
+                break
+            except httpx.TransportError:
+                if attempt == 2:
+                    raise
+        if body[:4] == b"%PDF":
+            return "\n".join(pdf_to_pages(body))
+        if "html" in ctype.lower() or "text" in ctype.lower():
+            soup = BeautifulSoup(body.decode("utf-8", errors="ignore"), "html.parser")
+            for tag in soup(["script", "style", "noscript"]):
+                tag.decompose()
+            return soup.get_text(" ")
+        raise DocumentError("page is neither text nor PDF")
+    except httpx.HTTPError as exc:
+        raise DocumentError(f"network error: {type(exc).__name__}") from exc
+    finally:
+        if own:
+            await client.aclose()

@@ -194,6 +194,11 @@ class Settings(BaseSettings):
     # AI
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
+    # Models are settings because Google retires them (Gemini 2.5 Flash is announced to be replaced on 2026-12-01):
+    # change GEMINI_MODEL / GEMINI_SEARCH_MODEL in the environment instead of the code.
+    gemini_model: str = "gemini-2.5-flash-lite"        # backup fact extractor for the nightly job
+    gemini_search_model: str = "gemini-2.5-flash"      # web-search grounding (free tier: 2.5 models only)
+    web_research_enabled: bool = True                  # last-resort verified web search (needs gemini_api_key)
     groq_api_key: str = ""
     default_ai_provider: str = "groq"
     default_ai_model: str = "openai/gpt-oss-120b"

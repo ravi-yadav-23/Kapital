@@ -11,8 +11,11 @@ export interface AnalysisSignal {
 
 export interface Analysis {
   ipo_id: string
-  /** ready = offer document analysed; market_only = scored from market data, document not analysed yet */
-  state: 'ready' | 'market_only' | 'not_analysed'
+  /**
+   * ready = the offer document was read; summary_only = no readable document, company facts from Groww's financials
+   * summary; market_only = scored from market data only; not_analysed = nothing to score from
+   */
+  state: 'ready' | 'summary_only' | 'web_only' | 'market_only' | 'not_analysed'
   badge: AnalysisBadge
   score: number | null
   verdict: string | null
@@ -24,6 +27,8 @@ export interface Analysis {
   as_of: string | null
   queued: boolean
   documents_analysed: boolean
+  facts_basis?: 'offer_document' | 'groww_summary' | 'web_search' | null
+  sources?: { key: string; url: string; quote: string }[]
 }
 
 /** Response to "Run audit": the analysis fields plus what happened to the request. */
@@ -70,6 +75,12 @@ export function orderSignals(signals: AnalysisSignal[]): AnalysisSignal[] {
 /** One line saying what the score is based on. Null when documents were analysed (nothing to caveat). */
 export function basisNote(analysis: Pick<Analysis, 'state' | 'score'> | null | undefined): string | null {
   if (!analysis || analysis.score === null || analysis.score === undefined) return null
+  if (analysis.state === 'web_only') {
+    return 'No offer document could be read, so a few company figures were found by web search and checked against the pages they came from (sources below). This is the least complete basis: the score is capped and only a few facts are known.'
+  }
+  if (analysis.state === 'summary_only') {
+    return 'The offer document could not be read, so company figures come from Groww\u2019s summary (revenue and profit for the last two years). Debt, cash flow, promoter holding and litigation are not checked, and the score is capped.'
+  }
   if (analysis.state === 'market_only') {
     return 'Based on market data only (grey-market premium and subscription). The company\u2019s offer document has not been analysed yet.'
   }

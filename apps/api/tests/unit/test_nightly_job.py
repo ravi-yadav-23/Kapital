@@ -154,7 +154,7 @@ def test_workflow_runs_at_2am_ist_with_secrets_only():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert re.search(r'cron:\s*"30 20 \* \* \*"', text)                      # 20:30 UTC == 02:00 IST
     assert "workflow_dispatch" in text and "python -m app.jobs.nightly" in text
-    for name in ("DATABASE_URL", "GROQ_API_KEY", "IPOALERTS_API_KEY"):
+    for name in ("DATABASE_URL", "GROQ_API_KEY", "IPOALERTS_API_KEY", "GEMINI_API_KEY"):
         assert f"secrets.{name}" in text
     assert not re.search(r"(echo|print)[^\n]*\$\{\{\s*secrets", text)          # secrets are never echoed
     assert "timeout-minutes" in text and "concurrency" in text

@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChevronRight, Clock } from 'lucide-react'
 import { DocBlocks } from '@/components/docs/DocBlocks'
 import { OnThisPage } from '@/components/docs/OnThisPage'
-import { DOC_PAGES, findPage, headingsOf, prevNext } from '@/lib/docs-content'
+import { DOC_PAGES, findPage, headingsOf, prevNext, readingMinutes } from '@/lib/docs-content'
 
 export function generateStaticParams() {
   return DOC_PAGES.map((p) => ({ slug: p.slug }))
@@ -24,10 +24,17 @@ export default function DocPage({ params }: { params: { slug: string } }) {
   return (
     <div className="flex gap-10">
       <main className="min-w-0 max-w-[720px] flex-1">
-        <p className="text-[13px] text-ink-3">{page.group}</p>
-        <h1 className="mt-1 text-[30px] font-semibold tracking-tight text-ink">{page.title}</h1>
-        <p className="mt-2 text-[16px] leading-7 text-ink-2">{page.description}</p>
-        <div className="mt-8">
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-[13px] text-ink-3">
+          <Link href="/docs" className="hover:text-ink">Docs</Link>
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+          <span className="text-[var(--accent-text,var(--accent))]">{page.group}</span>
+        </nav>
+        <h1 className="mt-2 text-[32px] font-semibold leading-tight tracking-tight text-ink">{page.title}</h1>
+        <p className="mt-3 text-[17px] leading-7 text-ink-2">{page.description}</p>
+        <p className="mt-3 inline-flex items-center gap-1.5 text-[12px] text-ink-3">
+          <Clock className="h-3.5 w-3.5" aria-hidden /> {readingMinutes(page)} min read
+        </p>
+        <div className="mt-8 border-t border-line pt-8">
           <DocBlocks blocks={page.blocks} />
         </div>
 
@@ -47,7 +54,7 @@ export default function DocPage({ params }: { params: { slug: string } }) {
         </nav>
       </main>
 
-      <aside className="sticky top-20 hidden h-fit w-56 shrink-0 xl:block">
+      <aside className="sticky top-[124px] hidden h-fit w-56 shrink-0 xl:block">
         <OnThisPage items={headings} />
       </aside>
     </div>

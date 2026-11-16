@@ -29,7 +29,7 @@ Written for: the project owner, to review before deciding what to continue. Ever
 | 4 | **Placeholder rows.** 27 "upcoming" IPOs have no dates, and many use Groww's temporary symbols (`TEMPRZR`, `TEMPALLCHEM` ...). Older rows have source `bse` from the previous scraper. | They appear as upcoming with TBA fields and may duplicate real entries when real symbols arrive. | Hide or merge placeholder symbols; I did not delete anything. |
 | 5 | **Grey-market premium has one unofficial source.** ipoalerts' free plan has no GMP; IPO Watch is the only source. | If IPO Watch changes its page, GMP disappears silently. | Alert when a source returns 0 records or fails twice. Today it only shows in `GET /api/sources/health` (admin). |
 | 5b | **Document downloads sometimes fail.** In the last runs NSE's archive timed out for Watrana (`ReadTimeout`) and one SEBI page dropped the connection. One retry was added; NSE may also be rate-limiting automated clients. | Those IPOs stay unanalysed. | Try again next night (automatic); if it persists, add a browser-like header set or another mirror. |
-| 6 | **Open IPOs often have no document.** Groww currently lists no open IPOs; for SME IPOs the filing comes only from IPO Watch's page when it links one. | The "open IPOs first" priority cannot help if there is no document. | Add the NSE/BSE announcement pages as another source. |
+| 6 | **Open IPOs often have no document.** *(Partly addressed 2026-11-14: Groww financial summary fallback, basis shown, score capped; pre-filing IPOs still have nothing to read anywhere.)* Groww currently lists no open IPOs; for SME IPOs the filing comes only from IPO Watch's page when it links one. | The "open IPOs first" priority cannot help if there is no document. | Add the NSE/BSE announcement pages as another source. |
 | 7 | **Market-mood input does not exist.** The engine reserves 10% weight for it and ignores it. | Weights are renormalised, so nothing breaks, but the model is less complete than the docs table suggests (the docs say it is reserved). | Add a simple index-trend input, or drop the row. |
 | 8 | **Engine thresholds are not calibrated.** Only 29 closed IPOs with subscription were checked, no GMP history. | The 62 and 45 bands are a starting point, not evidence. | Let the daily snapshots accumulate for a few weeks, then run the backtest. |
 
@@ -80,3 +80,27 @@ Written for: the project owner, to review before deciding what to continue. Ever
 Migrations applied to Supabase: `a8d4e6f20c13`, `b9e5f7a31d24`, `c2a7d9e45f61`, `d3b8e0f56a72`, `e4c9a1b73d58`. All code is pushed to `audit/claude-code`; open the pull request from
 `https://github.com/ravi-yadav-23/Kapital/compare/main...audit/claude-code?expand=1`
 (`gh` is not installed on this machine). The audit history is in `AUDIT.md`; the design and progress log in `docs/plans/2026-11-12-ai-reports-redesign.md`.
+
+
+## 9. GitHub Actions failures found on 2026-11-14
+| Failure | Cause | Status |
+| --- | --- | --- |
+| CI web job, "Setup pnpm" | workflow set `version: 9` and `package.json` has `packageManager` | fixed, regression test |
+| CI backend job, "Event loop is closed" | test pool reused across event loops on real Postgres | fixed; suite passes against Postgres (441 passed, 0 skipped) |
+| Scheduled jobs #6 (22:00 IST) timed out | the web webhook ran the AI model | fixed; web jobs never run the model |
+All three fixes are on `audit/claude-code` after the merge of PR #5. They reach `main` (and tonight's 22:00 IST job) only when a new pull request is merged.
+
+## 10. State on 2026-11-14 (after the fallback and the GitHub fixes)
+
+**Working, verified on the real database**
+- 9 IPOs have an analysis: 2 read from the offer document (Hero Fincorp, Truhome) and 7 from Groww's financials summary (Zepto, Kent RO, FabIndia, OYO, boAt, Arohan, Droom). The list and the analysis show the same score for every one.
+- The nightly GitHub run on 2026-11-14 at 06:26 IST succeeded (17 minutes). The web-server cron job that failed is fixed.
+- Thin evidence can no longer produce a harsh verdict: found live, three loss-making IPOs got 5/100 AVOID from one signal; one signal alone now stays in the Watch band.
+
+**Still open**
+1. **Fixes are not on `main` yet.** `main` still has the old workflow and the old 22:00 IST webhook. The 22:00 IST job on `main` will fail again, and CI on `main` stays red, until the new pull request from `audit/claude-code` is merged. Merge only after its CI is green.
+2. **Most upcoming IPOs have nothing to analyse.** 13 of the 29 open or upcoming IPOs are Groww placeholder rows ("TEMP...") that are pre-filing: no document, no financials anywhere. They show "No score yet" until real data exists.
+3. **Document downloads from NSE are slow or time out.** One retry and a 40 s timeout were added; those IPOs fall back to the summary.
+4. **Summary-based scores are weaker.** They cover revenue and profit for two years only, no debt, cash flow, promoter holding or litigation; capped at 70 and labelled. They have not been checked against reality.
+5. **Web search (Gemini) added as a verified last resort (2026-11-14).** Not tested against the real API yet: it needs `GEMINI_API_KEY` as a GitHub secret. Free web-search grounding exists only on Gemini 2.5 models (announced to be replaced on 2026-12-01); after that it needs a paid account or the tier simply finds nothing. The request/response shape follows Google's REST `generateContent` with the `google_search` tool, which their newest docs page no longer documents (it describes a new Interactions API), so the first live call may need an adjustment.
+6. Items from sections 2 and 5 that were not touched: market-mood input, calibration, broker endpoints, NSE/BSE announcement pages as another source, quote page numbers, the deployed site not being looked at in a browser.

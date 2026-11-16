@@ -8,6 +8,8 @@ name: Nightly IPO analysis
 #   DATABASE_URL        Supabase *session* pooler URL (port 5432), e.g. postgresql+asyncpg://...
 #   GROQ_API_KEY        Groq free-tier key
 #   IPOALERTS_API_KEY   ipoalerts key (optional; the other sources work without it)
+#   GEMINI_API_KEY      Google Gemini key (optional): backup model when Groq's limit is reached, and the
+#                       last-resort web search for IPOs with no readable offer document
 #
 # 20:30 UTC = 02:00 IST. GitHub schedules are best-effort and may start a few minutes late.
 
@@ -57,6 +59,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           IPOALERTS_API_KEY: ${{ secrets.IPOALERTS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SOURCE_IPOALERTS_ENABLED: "true"
           NIGHTLY_MAX_CHUNKS: ${{ inputs.max_chunks }}
           NIGHTLY_MAX_IPOS: ${{ inputs.max_ipos }}

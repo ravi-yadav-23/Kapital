@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { DOC_PAGES, DOC_GROUPS, findPage, pagesByGroup, prevNext, headingsOf, searchDocs, slugifyHeading } from '../lib/docs-content.ts';
+import { DOC_PAGES, DOC_GROUPS, DIAGRAM_NAMES, findPage, pagesByGroup, prevNext, headingsOf, readingMinutes, searchDocs, slugifyHeading } from '../lib/docs-content.ts';
 
 describe('documentation content', () => {
   test('slugs are unique, url-safe and every page is complete', () => {
@@ -50,7 +50,43 @@ describe('documentation content', () => {
 
   test('numbers quoted in the docs match the code (daily cap, bands, caps)', () => {
     const text = JSON.stringify(DOC_PAGES);
-    for (const fact of ['50 across all visitors', 'capped at 60', 'caps the score at 35', 'above 2.5', 'below 25%', '80 and above']) {
+    for (const fact of ['50 across all visitors', 'between 45 and 60', 'caps the score at 35', 'above 2.5', 'below 25%', '80 and above']) {
+      assert.ok(text.includes(fact), `missing: ${fact}`);
+    }
+  });
+
+  test('page order follows the navigation, so previous / next match the sidebar', () => {
+    const flat = pagesByGroup().flatMap((g) => g.pages.map((p) => p.slug));
+    assert.deepEqual(flat, DOC_PAGES.map((p) => p.slug));
+  });
+
+  test('every internal link points at a real page and every diagram is known', () => {
+    for (const p of DOC_PAGES) {
+      for (const b of p.blocks) {
+        if (b.type === 'cards') for (const c of b.items) if (c.href) assert.ok(findPage(c.href.replace('/docs/', '')), `${p.slug}: ${c.href}`);
+        if (b.type === 'diagram') assert.ok(DIAGRAM_NAMES.includes(b.name), `${p.slug}: ${b.name}`);
+      }
+    }
+  });
+
+  test('every diagram is used somewhere', () => {
+    const used = new Set(DOC_PAGES.flatMap((p) => p.blocks.flatMap((b) => (b.type === 'diagram' ? [b.name] : []))));
+    for (const d of DIAGRAM_NAMES) assert.ok(used.has(d), `unused diagram: ${d}`);
+  });
+
+  test('search reaches the new block types (glossary, faq, steps)', () => {
+    assert.ok(searchDocs('Application Supported by Blocked Amount').some((p) => p.slug === 'glossary'));
+    assert.ok(searchDocs('CRON_SECRET is not set').some((p) => p.slug === 'faq'));
+    assert.ok(searchDocs('authenticator').some((p) => p.slug === 'quickstart'));
+  });
+
+  test('reading time is at least a minute', () => {
+    for (const p of DOC_PAGES) assert.ok(readingMinutes(p) >= 1);
+  });
+
+  test('worked score example quotes the numbers the engine produces (see api tests/test_docs_examples.py)', () => {
+    const text = JSON.stringify(findPage('score-walkthrough'));
+    for (const fact of ['demand is their average, 95', 'maps to 66', '= 75.7', 'giving 71.7', 'Rounded: 72', 'cut to 44 + 15 = 59', '÷ 0.50 = 50']) {
       assert.ok(text.includes(fact), `missing: ${fact}`);
     }
   });
