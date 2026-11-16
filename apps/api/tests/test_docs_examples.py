@@ -30,3 +30,26 @@ def test_allotment_value_example():
     assert allotment_probability("RETAIL", hot)[0] == 0.02
     assert round(expected_value_per_rupee("RETAIL", hot) * 100, 1) == 1.2
     assert round(expected_value_per_rupee("RETAIL", quiet) * 100, 1) == 10.0
+
+
+def test_score_breakdown_points_and_steps_match_the_score():
+    cases = [
+        dict(gmp_percent=30, subscription_total=40, subscription_qib=80, issue_size_cr=600, company_score=68,
+             red_flags=[{"code": "mostly_ofs", "severity": "medium", "reason": "OFS"}]),
+        dict(gmp_percent=60, subscription_total=2, subscription_qib=1.5),
+        dict(company_score=91),                                   # thin evidence: held at 60
+        dict(subscription_total=0.5),                             # thin evidence: held at 45
+        dict(gmp_percent=9.9, company_score=80, red_flags=[{"code": "c", "severity": "critical", "reason": "x"}]),
+    ]
+    for kw in cases:
+        r = listing_gain_engine(**kw)
+        steps = r["steps"]
+        assert steps[0]["code"] == "weighted_average" and steps[-1]["code"] == "final"
+        assert steps[-1]["score"] == r["score"]
+        points = sum(c["points"] for c in r["components"].values())
+        assert abs(points - steps[0]["score"]) <= 0.3, kw          # per-line rounding only
+    ex1 = listing_gain_engine(**cases[0])["steps"]
+    assert [s["score"] for s in ex1] == [75.7, 71.7, 72.0]
+    assert [s["code"] for s in listing_gain_engine(**cases[2])["steps"]] == ["weighted_average", "thin_evidence_ceiling", "final"]
+    assert [s["code"] for s in listing_gain_engine(**cases[3])["steps"]] == ["weighted_average", "thin_evidence_floor", "final"]
+    assert listing_gain_engine(**cases[4])["steps"][-2]["code"] == "critical_cap"

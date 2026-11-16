@@ -70,7 +70,7 @@ def _payload(ipo: Ipo, res: Optional[AnalysisResult], queued: bool) -> Dict[str,
         state = "not_analysed"             # nothing to score from yet
     return {"ipo_id": ipo.id, "state": state, "badge": badge_for(r["verdict"]), "score": r["score"],
             "verdict": r["verdict"] if r["score"] is not None else None, "confidence": r["confidence"] if r["score"] is not None else None,
-            "signals": r["signals"], "components": r["components"], "red_flags": r["red_flags"], "facts": r["facts"],
+            "signals": r["signals"], "components": r["components"], "steps": r.get("steps", []), "red_flags": r["red_flags"], "facts": r["facts"],
             "as_of": res.created_at.isoformat() if res is not None and res.created_at else None, "queued": queued,
             "documents_analysed": r["documents_analysed"], "facts_basis": r["facts_basis"],
             "sources": r["facts"].get("web_sources") or []}

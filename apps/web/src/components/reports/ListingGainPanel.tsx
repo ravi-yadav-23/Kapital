@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ChevronDown, RefreshCw } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { getRecommendationLabel, getScoreBarColor } from '@/lib/formatters'
 import {
@@ -26,6 +26,15 @@ const DOT: Record<string, string> = {
   negative: 'bg-red-400',
   positive: 'bg-emerald-400',
   neutral: 'bg-ink-3',
+}
+
+/** One colour per score input, used in the breakdown bar and its legend. */
+const COMPONENT_COLOR: Record<string, string> = {
+  company: 'bg-emerald-500/80',
+  demand: 'bg-[#f5a623]',
+  gmp: 'bg-sky-400/80',
+  float: 'bg-violet-400/80',
+  market: 'bg-ink-3',
 }
 
 const SEVERITY: Record<string, string> = {
@@ -78,7 +87,9 @@ export function ListingGainPanel({ ipoId, detailed = false }: Props) {
   const flags = analysis?.red_flags ?? []
   const flagCodes = new Set(flags.map((f) => f.code))
   const signals = orderSignals(analysis?.signals ?? []).filter((s) => !detailed || !flagCodes.has(s.code))
-  const components = componentRows(analysis?.components)
+  const components = componentRows(analysis?.components, analysis?.state)
+  const steps = analysis?.steps ?? []
+  const [showCalc, setShowCalc] = useState(false)
   const facts = factRows(analysis?.facts)
   const docRead = analysis?.state === 'ready' || analysis?.state === 'summary_only' || analysis?.state === 'web_only'
 
@@ -138,22 +149,61 @@ export function ListingGainPanel({ ipoId, detailed = false }: Props) {
       {hasScore && note && <p className="text-[12px] text-amber-300/90">{note}</p>}
 
       {detailed && hasScore && components.length > 0 && (
-        <div className="space-y-2 border-t border-line pt-4">
-          <p className="text-[13px] font-medium text-ink-2">What the score is built from</p>
-          {components.map((c) => (
-            <div key={c.key} className="space-y-1">
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-ink-2">{c.label}</span>
-                <span className="font-mono text-ink">
-                  {c.value}/100 <span className="text-ink-3">· weight {c.weightPct}%</span>
+        <div className="space-y-3 border-t border-line pt-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[13px] font-medium text-ink-2">Score breakdown</p>
+            <span className="text-[11px] text-ink-3">points = input score × its share of the weight</span>
+          </div>
+
+          {/* Each input's points as one stacked bar out of 100 */}
+          <div className="flex h-3 w-full overflow-hidden rounded-full border border-line bg-surface" aria-hidden>
+            {components.map((c) => (
+              <div key={c.key} className={COMPONENT_COLOR[c.key] ?? 'bg-ink-3'} style={{ width: `${Math.max(0, c.points)}%` }} title={`${c.label}: ${c.points} pts`} />
+            ))}
+          </div>
+
+          <ul className="space-y-1.5">
+            {components.map((c) => (
+              <li key={c.key} className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 text-[12px]">
+                <span className={`h-2.5 w-2.5 rounded-sm ${COMPONENT_COLOR[c.key] ?? 'bg-ink-3'}`} aria-hidden />
+                <span className="min-w-0 truncate text-ink-2">{c.label}</span>
+                <span className="font-mono text-ink tabular-nums">
+                  <span className="text-ink-3">{c.value}/100 × {c.weightPct}% =</span> {c.points.toFixed(1)} pts
                 </span>
-              </div>
-              <div className="h-[5px] w-full overflow-hidden rounded-full border border-line bg-surface">
-                <div className={`h-full ${getScoreBarColor(c.value)}`} style={{ width: `${c.value}%` }} />
-              </div>
-            </div>
-          ))}
-          <p className="text-[11px] text-ink-3">Inputs that are not known are left out and the others share their weight. Red-flag penalties apply after the average.</p>
+              </li>
+            ))}
+          </ul>
+
+          <button
+            type="button"
+            onClick={() => setShowCalc((v) => !v)}
+            aria-expanded={showCalc}
+            className="inline-flex items-center gap-1 text-[12px] text-[var(--accent-text,var(--accent))] hover:underline"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showCalc ? 'rotate-180' : ''}`} aria-hidden />
+            {showCalc ? 'Hide the calculation' : 'Show the calculation, step by step'}
+          </button>
+
+          {showCalc && (
+            <ol className="space-y-1.5 rounded-sm border border-line bg-surface p-3 text-[12px]">
+              {(steps.length > 0 ? steps : [{ code: 'final', label: 'Final score', score: score! }]).map((st, i) => (
+                <li key={`${st.code}-${i}`} className="flex items-baseline justify-between gap-3">
+                  <span className={st.code === 'final' ? 'font-medium text-ink' : 'text-ink-2'}>
+                    {i + 1}. {st.label}
+                    {st.code === 'weighted_average' && (
+                      <span className="block text-[11px] text-ink-3">
+                        {components.map((c) => `${c.points.toFixed(1)}`).join(' + ')} (rounded per line)
+                      </span>
+                    )}
+                  </span>
+                  <span className={`shrink-0 font-mono tabular-nums ${st.code === 'final' ? 'text-ink' : st.delta ? 'text-red-300' : 'text-ink-2'}`}>
+                    {st.delta ? `${st.delta} → ` : ''}{Number.isInteger(st.score) ? st.score : st.score.toFixed(1)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="text-[11px] text-ink-3">Inputs that are not known are left out and the others share their weight.</p>
         </div>
       )}
 
