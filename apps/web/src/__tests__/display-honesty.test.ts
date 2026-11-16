@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatGmp, biddingWindowText, getScoreBarColor, getScoreRecommendation } from '../lib/formatters.ts';
+import { formatGmp, biddingWindowText, getScoreBarColor, getScoreRecommendation, isListedUnsold } from '../lib/formatters.ts';
 import { componentRows, factRows, basisLabel } from '../lib/analysis-view.ts';
 
 describe('display never invents numbers', () => {
@@ -43,5 +43,14 @@ describe('display never invents numbers', () => {
     ]);
     assert.deepEqual(factRows({}), []);
     assert.equal(basisLabel({ state: 'market_only' }), 'Market data only');
+  });
+
+  test('a holding past its listing date is "listed, sale not recorded", not "awaiting listing"', () => {
+    const today = new Date('2026-11-16T10:00:00');
+    assert.equal(isListedUnsold({ status: 'ACTIVE', listing_date: '2026-09-11' }, today), true);
+    assert.equal(isListedUnsold({ status: 'ACTIVE', listing_date: '2026-11-16' }, today), false);
+    assert.equal(isListedUnsold({ status: 'ACTIVE', listing_date: '2026-11-17' }, today), false);
+    assert.equal(isListedUnsold({ status: 'SOLD', listing_date: '2026-09-11' }, today), false);
+    assert.equal(isListedUnsold({ status: 'ACTIVE', listing_date: null }, today), false);
   });
 });

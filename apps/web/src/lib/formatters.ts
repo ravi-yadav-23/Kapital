@@ -419,3 +419,10 @@ export function biddingWindowText(status: string, openDate?: string | null, clos
   if (status === 'open' || status === 'closing_today') return closeDate ? `Closes ${formatRelativeDate(closeDate)}` : 'Open · close date TBA'
   return openDate ? `Opens ${formatRelativeDate(openDate)}` : 'Dates TBA'
 }
+
+/** An ACTIVE holding whose listing date has passed: listed, but no sale has been recorded. */
+export function isListedUnsold(a: { status?: string | null; listing_date?: string | null }, today: Date = new Date()): boolean {
+  if (a.status !== 'ACTIVE' || !a.listing_date) return false
+  const d = new Date(String(a.listing_date).slice(0, 10) + 'T23:59:59')
+  return !isNaN(d.getTime()) && d < today
+}

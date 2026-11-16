@@ -139,7 +139,8 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
 
       // Trigger live sync or data fetch
       if (!isGuest) {
-        await apiClient.syncIpos().catch(() => null)
+        const done = await apiClient.syncIpos().catch(() => null)
+        if (!done) throw new Error('sync did not finish')
       } else {
         await apiClient.getIpos('all').catch(() => null)
       }
@@ -155,7 +156,7 @@ export function Topbar({ onMenuClick, className = '' }: TopbarProps) {
       setSyncToast({ message: isGuest ? 'Refreshed' : 'Sources refreshed', success: true })
     } catch (err) {
       console.error('Failed to sync market data:', err)
-      setSyncToast({ message: 'Refresh failed', success: false })
+      setSyncToast({ message: 'Source refresh did not finish; the nightly job will still update the data', success: false })
     } finally {
       setIsRefreshing(false)
     }

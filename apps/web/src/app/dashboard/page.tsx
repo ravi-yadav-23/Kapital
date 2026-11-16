@@ -13,6 +13,7 @@ import {
   formatPercent,
   formatRelativeDate,
   formatGmp,
+  isListedUnsold,
   biddingWindowText,
   computeIpoStatus,
   getCompanyAvatarProps,
@@ -95,12 +96,15 @@ export default function DashboardPage() {
   // Check active allotments awaiting listing execution (positive green dot)
   const activeAllotments = allotments.filter((a) => a.status === 'ACTIVE')
   activeAllotments.forEach((alt) => {
+    const listed = isListedUnsold(alt)
     attentionItems.push({
       id: `allot-${alt.id}`,
       status: 'allotted',
-      sentence: `${alt.allotted_shares} shares of ${alt.ipo_name} allotted to ${alt.account_name}. Pre-listing sell staged.`,
-      dateText: `Listing ${formatRelativeDate(alt.listing_date)}`,
-      actionLabel: 'Review order',
+      sentence: listed
+        ? `${alt.allotted_shares} shares of ${alt.ipo_name} (${alt.account_name}) have listed, but no sale is recorded.`
+        : `${alt.allotted_shares} shares of ${alt.ipo_name} allotted to ${alt.account_name}.`,
+      dateText: `${listed ? 'Listed' : 'Listing'} ${formatRelativeDate(alt.listing_date)}`,
+      actionLabel: listed ? 'Review holding' : 'Review order',
       actionHref: '/allotments',
       dotClass: 'bg-[#22c55e]', // Positive allotment dot
     })

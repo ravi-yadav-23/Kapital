@@ -173,7 +173,8 @@ function getAuthHeaders(): HeadersInit {
   return headers
 }
 
-async function authFetch(url: string, init?: RequestInit, timeoutMs = 10000): Promise<Response> {
+// 25 s: a cold serverless start plus a database round trip can pass 10 s; heavier calls pass their own limit
+async function authFetch(url: string, init?: RequestInit, timeoutMs = 25000): Promise<Response> {
   const authHeaders = getAuthHeaders()
   const headers = {
     ...authHeaders,
@@ -346,7 +347,7 @@ export const apiClient = {
   async syncIpos(): Promise<{ success: boolean; message: string }> {
     const res = await authFetch(`${API_BASE_URL}/ipos/sync`, {
       method: 'POST',
-    }, 30000)
+    }, 120000)   // reads three public sources; can take over a minute
     return handleResponse(res, { success: true, message: 'Sync complete' })
   },
 
@@ -504,7 +505,7 @@ export const apiClient = {
     try {
       const res = await authFetch(`${API_BASE_URL}/funds/optimize`, {
         method: 'POST',
-      }, 20000)
+      }, 60000)   // the solver may take up to 15 s on top of a cold start
       let data = await handleResponse<any>(res, canShowMockData() ? MOCK_ALLOCATION_PLAN : unavailablePlan())
 
       // Handle async 202 background task pattern with polling
@@ -516,7 +517,7 @@ export const apiClient = {
         for (let i = 0; i < MAX_POLLS; i++) {
           await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
           try {
-            const pollRes = await authFetch(`${API_BASE_URL}/funds/optimize/status/${taskId}`, {}, 10000)
+            const pollRes = await authFetch(`${API_BASE_URL}/funds/optimize/status/${taskId}`, {}, 25000)
             if (pollRes.ok) {
               const pollData = await pollRes.json()
               if (pollData && pollData.status !== 'PENDING') {

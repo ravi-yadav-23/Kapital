@@ -6,7 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import { Allotment, PnlSummary } from '@/types'
 import { useWebSocketEvent } from '@/lib/hooks/useWebSocket'
 import { AllotmentGrid } from '@/components/allotments/AllotmentGrid'
-import { formatINR } from '@/lib/formatters'
+import { formatINR, isListedUnsold } from '@/lib/formatters'
 
 export default function AllotmentsPage() {
   const [allotments, setAllotments] = useState<Allotment[]>(() => apiClient.getCachedAllotments() || [])
@@ -57,7 +57,14 @@ export default function AllotmentsPage() {
               {formatINR(totalActiveInvested)}
             </div>
             <span className="text-2xs text-[var(--ink-3)] mt-1 block font-mono">
-              {activeAllotments.length} active holdings awaiting listing day
+              {(() => {
+                const listed = activeAllotments.filter((a) => isListedUnsold(a)).length
+                const waiting = activeAllotments.length - listed
+                const parts = []
+                if (waiting) parts.push(`${waiting} awaiting listing day`)
+                if (listed) parts.push(`${listed} listed, sale not recorded`)
+                return parts.join(' · ') || 'No holdings'
+              })()}
             </span>
           </div>
 

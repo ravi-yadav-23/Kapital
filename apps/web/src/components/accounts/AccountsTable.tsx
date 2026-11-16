@@ -28,7 +28,7 @@ export function AccountsTable({ accounts, onEditAccount, onCategoryChange }: Acc
           Accounts ({accounts.length})
         </h3>
         <span className="text-2xs text-[var(--ink-3)] font-mono">
-          Angel One SmartAPI · Seeded Demo
+          Angel One SmartAPI · balances refresh at 08:30 IST on weekdays
         </span>
       </div>
 

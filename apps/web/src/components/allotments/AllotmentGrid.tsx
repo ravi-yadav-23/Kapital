@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { Allotment } from '@/types'
 import { AllotmentCard } from './AllotmentCard'
 import { SellModal } from './SellModal'
-import { formatDate, formatINR, getStatusDotClass } from '@/lib/formatters'
+import { formatDate, formatINR, getStatusDotClass, isListedUnsold } from '@/lib/formatters'
 import { Search, LayoutGrid, List } from 'lucide-react'
 
 interface AllotmentGridProps {
@@ -184,7 +184,7 @@ export function AllotmentGrid({ allotments }: AllotmentGridProps) {
                       <td>
                         <div className="status-pill status-pill-neutral">
                           <span className={`status-dot ${getStatusDotClass(item.status)}`} />
-                          <span>{isActive ? 'Active' : isSold ? 'Sold' : item.status}</span>
+                          <span>{isListedUnsold(item) ? 'Listed · sale not recorded' : isActive ? 'Awaiting listing' : isSold ? 'Sold' : item.status}</span>
                         </div>
                       </td>
 
