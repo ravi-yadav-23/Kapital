@@ -92,3 +92,65 @@ export function confidenceNote(confidence: Analysis['confidence'] | undefined): 
   if (confidence === 'medium') return 'Moderate evidence: company documents are not fully analysed yet.'
   return null
 }
+
+/** Labels for the engine's score components, in display order. */
+export const COMPONENT_LABELS: [key: string, label: string][] = [
+  ['company', 'Company quality (offer document)'],
+  ['demand', 'Demand (subscription)'],
+  ['gmp', 'Grey-market premium'],
+  ['float', 'Issue size'],
+  ['market', 'Market mood'],
+]
+
+/** Components the engine used, with their share of the weight as a whole percent. Unknown inputs are omitted. */
+export function componentRows(components: Analysis['components'] | null | undefined): { key: string; label: string; value: number; weightPct: number }[] {
+  if (!components) return []
+  return COMPONENT_LABELS.filter(([k]) => components[k]).map(([k, label]) => ({
+    key: k,
+    label,
+    value: Math.round(components[k].value),
+    weightPct: Math.round(components[k].weight * 100),
+  }))
+}
+
+const FACT_FORMAT: [key: string, label: string, fmt: (v: number) => string][] = [
+  ['net_profit_cr', 'Net profit', (v) => `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })} cr`],
+  ['revenue_growth_pct', 'Revenue growth', (v) => `${v.toFixed(1)}%`],
+  ['net_margin_pct', 'Net margin', (v) => `${v.toFixed(1)}%`],
+  ['operating_cash_flow_cr', 'Operating cash flow', (v) => `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })} cr`],
+  ['debt_to_equity', 'Debt-to-equity', (v) => v.toFixed(2)],
+  ['pe_ratio', 'P/E', (v) => v.toFixed(1)],
+  ['sector_pe', 'Sector P/E', (v) => v.toFixed(1)],
+  ['promoter_holding_post_pct', 'Promoter holding after issue', (v) => `${v.toFixed(1)}%`],
+  ['ofs_share_pct', 'Offer for sale share', (v) => `${v.toFixed(0)}%`],
+]
+const BOOL_FACTS: [key: string, label: string][] = [
+  ['material_litigation', 'Material litigation disclosed'],
+  ['regulatory_action_against_promoter', 'Regulatory action against promoter / company'],
+  ['auditor_qualification', 'Auditor qualification'],
+  ['is_lender', 'Lender (bank / NBFC / housing finance)'],
+]
+
+/** The extracted company facts as label / value rows. Only facts that were actually found are listed. */
+export function factRows(facts: Analysis['facts'] | null | undefined): { label: string; value: string }[] {
+  if (!facts) return []
+  const rows: { label: string; value: string }[] = []
+  for (const [k, label, fmt] of FACT_FORMAT) {
+    const v = facts[k]
+    if (typeof v === 'number' && Number.isFinite(v)) rows.push({ label, value: fmt(v) })
+  }
+  for (const [k, label] of BOOL_FACTS) {
+    if (typeof facts[k] === 'boolean') rows.push({ label, value: facts[k] ? 'Yes' : 'No' })
+  }
+  return rows
+}
+
+export function basisLabel(analysis: Pick<Analysis, 'state'> | null | undefined): string {
+  switch (analysis?.state) {
+    case 'ready': return 'Offer document analysed'
+    case 'summary_only': return 'Company summary only'
+    case 'web_only': return 'Web search only'
+    case 'market_only': return 'Market data only'
+    default: return 'Not analysed yet'
+  }
+}

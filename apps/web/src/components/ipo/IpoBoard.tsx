@@ -12,6 +12,8 @@ import {
   formatKnownAmount,
   formatPercent,
   formatRelativeDate,
+  formatGmp,
+  biddingWindowText,
   computeIpoStatus,
   getCompanyAvatarProps,
   getStatusDotClass,
@@ -322,8 +324,8 @@ export function IpoBoard({
           ) : null}
         </div>
       ) : viewMode === 'table' ? (
-        <div className="rounded-sm border border-line bg-surface overflow-hidden">
-          <table className="data-table">
+        <div className="rounded-sm border border-line bg-surface overflow-x-auto">
+          <table className="data-table min-w-[1080px]">
             <thead>
               <tr>
                 <th>Issue</th>
@@ -345,12 +347,7 @@ export function IpoBoard({
                 const rec = getScoreRecommendation(score)
                 const recLabel = getRecommendationLabel(rec)
                 const avatar = getCompanyAvatarProps(ipo.name)
-                const windowText =
-                  ipo.status === 'closed'
-                    ? formatRelativeDate(ipo.issue_close_date)
-                    : ipo.status === 'open' || ipo.status === 'closing_today'
-                      ? `Closes ${formatRelativeDate(ipo.issue_close_date)}`
-                      : `Opens ${formatRelativeDate(ipo.issue_open_date)}`
+                const windowText = biddingWindowText(ipo.status, ipo.issue_open_date, ipo.issue_close_date)
 
                 return (
                   <tr key={ipo.id} className="cursor-pointer h-[52px]" onClick={() => (window.location.href = `/ipos/${ipo.id}`)}>
@@ -395,8 +392,8 @@ export function IpoBoard({
                     <td className="td-num whitespace-nowrap" suppressHydrationWarning>
                       {formatKnownAmount(ipo.min_investment, formatINR)}
                     </td>
-                    <td className={`td-num whitespace-nowrap ${(ipo.gmp_percent || 0) > 0 ? 'text-emerald-400' : 'text-ink-3'}`}>
-                      {(ipo.gmp_percent || 0) > 0 ? `↑ ${formatPercent(ipo.gmp_percent)}` : '0.0%'}
+                    <td className={`td-num whitespace-nowrap ${formatGmp(ipo.gmp_percent).className}`}>
+                      {formatGmp(ipo.gmp_percent).text}
                     </td>
                     <td>
                       <div className="flex items-center gap-2">

@@ -18,6 +18,9 @@ class PnlSummaryResponse(BaseModel):
     total_allotments: int
     total_holding: int
     allotment_rate_percent: float
+    bids_won: int = 0          # applications allotted
+    bids_finalized: int = 0    # allotted + not allotted
+    bids_pending: int = 0      # still awaiting allotment
 
 
 # UPI-based IPO bids are capped at Rs 5,00,000 per application; larger bids must use net-banking ASBA.

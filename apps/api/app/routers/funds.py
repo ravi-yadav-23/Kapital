@@ -86,9 +86,11 @@ async def get_pnl_summary(
     active_holding = len([alt for alt in allotments if alt.status == "ACTIVE"])
     total_allot    = len([alt for alt in allotments if alt.status in ["ACTIVE", "SOLD"]])
 
-    total_bids = sum(a.total_applied_ipos or 0 for a in accounts)
-    total_wins = sum(a.total_allotments or 0 for a in accounts)
-    allotment_rate = (total_wins / total_bids * 100.0) if total_bids > 0 else 0.0
+    from app.models.order import IpoOrder
+    from app.services.demo_dataset import bid_counts
+    order_status = (await db.execute(select(IpoOrder.status))).scalars().all()
+    counts = bid_counts([{"status": st} for st in order_status])
+    allotment_rate = (counts["bids_won"] / counts["bids_finalized"] * 100.0) if counts["bids_finalized"] else 0.0
 
     return PnlSummaryResponse(
         total_realized_pnl=total_pnl,
@@ -96,6 +98,7 @@ async def get_pnl_summary(
         total_allotments=total_allot,
         total_holding=active_holding,
         allotment_rate_percent=round(allotment_rate, 1),
+        **counts,
     )
 
 
@@ -257,25 +260,6 @@ async def run_pulp_optimization(
             refund_str = (datetime.now(timezone.utc) + timedelta(days=5)).strftime("%Y-%m-%d")
             demo_active_ipos = [
                 {
-                    "id": "ipo-tonbo-imaging",
-                    "name": "Tonbo Imaging India Ltd",
-                    "symbol": "TONBO",
-                    "status": "open",
-                    "type": "EQ",
-                    "issue_type": "EQ",
-                    "issue_open_date": today_str,
-                    "issue_close_date": tomorrow_str,
-                    "allotment_date": allot_str,
-                    "refund_date": refund_str,
-                    "listing_date": None,
-                    "lot_size": 18,
-                    "price_band_min": 815.0,
-                    "price_band_max": 815.0,
-                    "min_investment": 14670.0,
-                    "gmp_percent": 41.8,
-                    "score": 92,
-                },
-                {
                     "id": "ipo-jio-platforms",
                     "name": "Jio Platforms Limited",
                     "symbol": "JIOPLAT",
@@ -318,11 +302,22 @@ async def run_pulp_optimization(
 
         task_id = f"plan-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
 
-        # Execute PuLP MILP optimization in background thread (~12ms)
+        # Accounts that already have a live application for an IPO are not offered it again
+        existing_bids = set()
+        if not using_demo:
+            from app.models.order import IpoOrder
+            rows = (await db.execute(
+                select(IpoOrder.account_id, IpoOrder.ipo_id)
+                .where(IpoOrder.status.in_(["PENDING", "SUBMITTED", "CONFIRMED", "APPLIED", "ALLOTTED"]))
+            )).all()
+            existing_bids = {(str(a), str(i)) for a, i in rows}
+
+        # Execute the PuLP MILP optimization in a background thread
         plan = await asyncio.to_thread(
             AllocationOptimizer.solve_allocation,
             accounts=accounts_data,
             ipos=ipos_data,
+            existing_bids=existing_bids,
         )
         plan_dict = plan.model_dump()
         if using_demo:

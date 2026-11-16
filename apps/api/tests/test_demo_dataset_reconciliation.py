@@ -70,12 +70,33 @@ def test_demo_allotments_and_pnl_reconciliation():
     assert pnl.total_realized_pnl == expected_realized_pnl
     assert pnl.total_realized_pnl == 159570.0
 
-    # Hit rate = allotted orders / applied orders
-    total_bids = sum(a.total_applied_ipos for a in demo_dataset.get_accounts())
-    total_won = len(allotments)
-    expected_hit_rate = round((total_won / total_bids) * 100.0, 1)
-    assert pnl.allotment_rate_percent == expected_hit_rate
-    assert pnl.allotment_rate_percent == 83.3
+    # Hit rate = allotted / finalized applications (bids still awaiting allotment are not counted)
+    orders = demo_dataset.get_orders()
+    won = sum(1 for o in orders if o.status == "ALLOTTED")
+    finalized = won + sum(1 for o in orders if o.status == "NOT_ALLOTTED")
+    pending = sum(1 for o in orders if o.status in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED"))
+    assert (pnl.bids_won, pnl.bids_finalized, pnl.bids_pending) == (won, finalized, pending) == (5, 6, 3)
+    assert pnl.allotment_rate_percent == round(won / finalized * 100.0, 1) == 83.3
+    assert won == len(allotments), "every allotted order has an allotment row"
+    # per-account counters agree with the orders
+    for acc in demo_dataset.get_accounts():
+        mine = [o for o in orders if o.account_id == acc.id]
+        assert acc.total_applied_ipos == len(mine), acc.name
+        assert acc.total_allotments == sum(1 for o in mine if o.status == "ALLOTTED"), acc.name
+
+
+def test_demo_story_is_consistent_and_never_stale():
+    """No IPO is both allotted and still awaiting allotment, and holdings awaiting listing list in the future."""
+    from datetime import date
+    orders = demo_dataset.get_orders()
+    live = {o.ipo_id for o in orders if o.status in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED")}
+    decided = {o.ipo_id for o in orders if o.status in ("ALLOTTED", "NOT_ALLOTTED")}
+    assert not (live & decided)
+    for alt in demo_dataset.get_allotments():
+        if alt.status == "ACTIVE":
+            assert alt.listing_date and str(alt.listing_date)[:10] > date.today().isoformat(), alt.ipo_name
+    for lock in demo_dataset.get_asba_locks():
+        assert str(lock.release_date)[:10] >= date.today().isoformat()
 
 
 def test_cross_module_account_and_order_integrity():

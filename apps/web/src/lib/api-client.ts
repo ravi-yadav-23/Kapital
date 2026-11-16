@@ -831,6 +831,15 @@ export const apiClient = {
   },
 
   // ── Listing-gain analysis (precomputed nightly; "Run audit" only queues, it never calls a model) ──
+  /** When the IPO sources last refreshed successfully (ISO time), or null if unknown. */
+  async getDataUpdatedAt(): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/health`, { cache: 'no-store' })
+      if (res.ok) return ((await res.json())?.data_updated_at as string | null) ?? null
+    } catch {}
+    return null
+  },
+
   async getAnalysis(ipoId: string): Promise<Analysis | null> {
     try {
       const res = await authFetch(`${API_BASE_URL}/analysis/${encodeURIComponent(ipoId)}`)

@@ -14,7 +14,7 @@ Key capabilities:
 """
 
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Optional, Set, Tuple
 from datetime import datetime, timedelta, timezone, date as DateType
 
 from app.utils.allotment_odds import expected_value_per_rupee
@@ -85,7 +85,10 @@ class AllocationOptimizer:
         accounts: List[Dict[str, Any]],
         ipos: List[Dict[str, Any]],
         max_exposure_pct: float = 80.0,
+        existing_bids: Optional[Set[Tuple[str, str]]] = None,
     ) -> AllocationPlanResponse:
+        """`existing_bids`: (account_id, ipo_id) pairs that already have a live application. They are never
+        suggested again (one application per PAN per IPO)."""
         today = datetime.now(timezone.utc).date()
 
         # ── 1. Filter active open issues with date guard ───────────────────────
@@ -128,6 +131,7 @@ class AllocationOptimizer:
 
         for acc in accounts:
             acc_copy = dict(acc)
+            acc_copy["_skip_ipos"] = {i for (a, i) in (existing_bids or set()) if a == acc.get("id")}
             raw_balance = acc.get("available_liquid_balance", 0) or 0
             reservation = 0.0
             conflict_ipos: List[str] = []
@@ -332,6 +336,8 @@ class AllocationOptimizer:
                     decision_vars[(a_id, i_id, cat)] = pulp.LpVariable(
                         f"x_{a_id}_{i_id}_{cat}", cat="Binary"
                     )
+                    if i_id in acc.get("_skip_ipos", ()):   # already has a live application for this IPO
+                        prob += decision_vars[(a_id, i_id, cat)] == 0
 
         objective_terms = []
         for acc in active_accounts:
@@ -506,7 +512,7 @@ class AllocationOptimizer:
             generated_at=datetime.now(timezone.utc).isoformat(),
             total_capital_deployed=total_deployed,
             entries=entries,
-            status="OPTIMAL",
+            status="OPTIMAL",  # proven optimum from the MILP solver
             asba_lock_overlaps_detected=0,  # overwritten by caller
             warnings=[],
         )
@@ -542,6 +548,8 @@ class AllocationOptimizer:
                 ipo_id = target_ipo["id"]
                 if acc_pan and (acc_pan, ipo_id) in allocated_pan_ipos:
                     continue  # SEBI rule: 1 application per PAN per IPO
+                if ipo_id in acc.get("_skip_ipos", ()):
+                    continue  # this account already has a live application for this IPO
                 lot_cost, min_inv, shni_lots, bhni_lots = cls._compute_lot_cost_and_lots(target_ipo)
                 retail_lots = max(1, int(round(min_inv / lot_cost)))
                 lot_sz = int(target_ipo.get("lot_size") or (1000 if "SME" in str(target_ipo.get("name", "")).upper() else 1))
@@ -611,7 +619,7 @@ class AllocationOptimizer:
             generated_at=datetime.now(timezone.utc).isoformat(),
             total_capital_deployed=total_deployed,
             entries=entries,
-            status="OPTIMAL",
+            status="HEURISTIC",   # greedy fallback: a good plan, not a proven optimum
             asba_lock_overlaps_detected=0,  # overwritten by caller
             warnings=[],
         )

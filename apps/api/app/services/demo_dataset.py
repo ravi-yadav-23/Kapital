@@ -8,10 +8,11 @@ Reconciliation Invariants (strictly verified by unit tests):
 3. total_available == total_family_balance - total_locked_asba
 4. active_allotments == [alt for alt in allotments if alt.status == "ACTIVE"]
 5. total_realized_pnl == sum(alt.realized_pnl for alt in allotments if alt.status == "SOLD")
-6. allotment_rate == (total_allotments / total_bids) * 100
+6. allotment_rate == won / finalized applications * 100 (applications awaiting allotment are not counted)
 7. sum(lock.amount for lock in asba_locks) == total_locked_asba
 """
 
+from datetime import date, timedelta
 from typing import List, Dict, Any, Optional
 from app.schemas.fund import FundSummaryResponse, PnlSummaryResponse
 from app.schemas.account import AccountResponse
@@ -28,7 +29,7 @@ DEMO_ACCOUNTS: List[Dict[str, Any]] = [
         "total_balance": 700000.0,
         "available_balance": 287224.0,
         "locked_balance": 412776.0,
-        "total_applied_ipos": 2,
+        "total_applied_ipos": 3,
         "total_allotments": 2,
         "total_realized_pnl": 141750.0,
         "allotment_rate": 100.0,
@@ -46,7 +47,7 @@ DEMO_ACCOUNTS: List[Dict[str, Any]] = [
         "total_applied_ipos": 2,
         "total_allotments": 1,
         "total_realized_pnl": 17820.0,
-        "allotment_rate": 50.0,
+        "allotment_rate": 100.0,
         "preferred_category": "RETAIL",
         "is_active": True,
     },
@@ -58,7 +59,7 @@ DEMO_ACCOUNTS: List[Dict[str, Any]] = [
         "total_balance": 100000.0,
         "available_balance": 85258.0,
         "locked_balance": 14742.0,
-        "total_applied_ipos": 1,
+        "total_applied_ipos": 2,
         "total_allotments": 1,
         "total_realized_pnl": 0.0,
         "allotment_rate": 100.0,
@@ -88,7 +89,7 @@ DEMO_ACCOUNTS: List[Dict[str, Any]] = [
         "total_balance": 100000.0,
         "available_balance": 100000.0,
         "locked_balance": 0.0,
-        "total_applied_ipos": 0,
+        "total_applied_ipos": 1,
         "total_allotments": 0,
         "total_realized_pnl": 0.0,
         "allotment_rate": 0.0,
@@ -112,7 +113,7 @@ DEMO_ACCOUNTS: List[Dict[str, Any]] = [
     },
 ]
 
-# Orders (3 Active locked in APPLIED/CONFIRMED + 3 Historical won/allotted + 1 Unallocated)
+# Orders: 3 live (Tonbo, awaiting allotment) + 5 allotted + 1 not allotted. Recent dates are set relative to today.
 DEMO_ORDERS: List[Dict[str, Any]] = [
     {
         "id": "ord-demo-1",
@@ -185,14 +186,14 @@ DEMO_ORDERS: List[Dict[str, Any]] = [
     {
         "id": "ord-demo-5",
         "account_id": "demo-acc-4",
-        "ipo_id": "ipo-tonbo-imaging",
+        "ipo_id": "ipo-bonfiglioli",
         "account_name": "Kavita Yadav",
-        "ipo_name": "Tonbo Imaging India Ltd",
+        "ipo_name": "Bonfiglioli Transmissions Ltd",
         "category": "RETAIL",
         "lots": 1,
-        "shares": 27,
-        "bid_price": 546.0,
-        "amount": 14742.0,
+        "shares": 25,
+        "bid_price": 586.0,
+        "amount": 14650.0,
         "upi_vpa": "kavita.yadav@okicici",
         "angel_order_id": "ANG_IPO_77402",
         "status": "ALLOTTED",
@@ -249,6 +250,23 @@ DEMO_ORDERS: List[Dict[str, Any]] = [
         "status": "ALLOTTED",
         "reject_reason": None,
         "placed_at": "2024-08-30 10:00:00",
+    },
+    {
+        "id": "ord-demo-9",
+        "account_id": "demo-acc-5",
+        "ipo_id": "ipo-krn-heat",
+        "account_name": "Om Prakash Yadav",
+        "ipo_name": "KRN Heat Exchanger Ltd",
+        "category": "RETAIL",
+        "lots": 1,
+        "shares": 65,
+        "bid_price": 220.0,
+        "amount": 14300.0,
+        "upi_vpa": "omprakash.yadav@okhdfcbank",
+        "angel_order_id": "ANG_IPO_77404",
+        "status": "NOT_ALLOTTED",
+        "reject_reason": None,
+        "placed_at": "2026-10-20 10:05:00",
     },
 ]
 
@@ -318,23 +336,23 @@ DEMO_ALLOTMENTS: List[Dict[str, Any]] = [
     {
         "id": "alt-demo-2",
         "account_id": "demo-acc-4",
-        "ipo_id": "ipo-tonbo-imaging",
+        "ipo_id": "ipo-bonfiglioli",
         "account_name": "Kavita Yadav",
         "angel_client_id": "DEMO_04",
-        "ipo_name": "Tonbo Imaging India Ltd",
-        "ipo_symbol": "TONBO",
-        "allotted_shares": 27,
-        "issue_price": 546.0,
-        "invested_amount": 14742.0,
+        "ipo_name": "Bonfiglioli Transmissions Ltd",
+        "ipo_symbol": "BONFIGLIOL",
+        "allotted_shares": 25,
+        "issue_price": 586.0,
+        "invested_amount": 14650.0,
         "status": "ACTIVE",
-        "current_price": 955.0,
-        "listing_date": "2026-11-07",
-        "staged_sell_limit_price": 955.0,
+        "current_price": 716.0,
+        "listing_date": "2026-11-06",
+        "staged_sell_limit_price": 716.0,
         "sell_order_id": None,
         "sell_price": None,
         "sell_date": None,
         "realized_pnl": None,
-        "roi_percent": 74.9,
+        "roi_percent": 22.2,
     },
     {
         "id": "alt-demo-3",
@@ -402,6 +420,40 @@ DEMO_ALLOTMENTS: List[Dict[str, Any]] = [
 ]
 
 
+# Recent events are placed relative to today (days offset, time) so a "coming" listing is never in the past.
+_ORDER_DAYS = {"ord-demo-1": (-1, "13:20:00"), "ord-demo-2": (-1, "14:14:00"), "ord-demo-3": (-1, "15:20:00"),
+               "ord-demo-4": (-8, "10:30:00"), "ord-demo-5": (-8, "11:15:00"), "ord-demo-6": (-9, "09:45:00"),
+               "ord-demo-9": (-9, "10:05:00")}
+_LISTING_DAYS = {"alt-demo-1": 1, "alt-demo-2": 1, "alt-demo-3": 2}
+_LOCK_DAYS = (-1, 4)   # Tonbo bids: blocked yesterday, released after allotment
+
+
+def _refresh_dates() -> None:
+    today = date.today()
+    for o in DEMO_ORDERS:
+        if o["id"] in _ORDER_DAYS:
+            d, t = _ORDER_DAYS[o["id"]]
+            o["placed_at"] = f"{(today + timedelta(days=d)).isoformat()} {t}"
+    for a in DEMO_ALLOTMENTS:
+        if a["id"] in _LISTING_DAYS:
+            a["listing_date"] = (today + timedelta(days=_LISTING_DAYS[a["id"]])).isoformat()
+    for lock in DEMO_ASBA_LOCKS:
+        lock["lock_date"] = (today + timedelta(days=_LOCK_DAYS[0])).isoformat()
+        lock["release_date"] = (today + timedelta(days=_LOCK_DAYS[1])).isoformat()
+
+
+def bid_counts(orders) -> Dict[str, int]:
+    """Won / finalized / pending applications from order statuses (dicts or response objects)."""
+    status = [(o["status"] if isinstance(o, dict) else o.status) for o in orders]
+    won = sum(1 for x in status if x == "ALLOTTED")
+    lost = sum(1 for x in status if x == "NOT_ALLOTTED")
+    pending = sum(1 for x in status if x in ("PENDING", "SUBMITTED", "CONFIRMED", "APPLIED"))
+    return {"bids_won": won, "bids_finalized": won + lost, "bids_pending": pending}
+
+
+_refresh_dates()
+
+
 class DemoDatasetService:
     DEMO_ACCOUNTS = DEMO_ACCOUNTS
     DEMO_ORDERS = DEMO_ORDERS
@@ -424,14 +476,17 @@ class DemoDatasetService:
 
     @staticmethod
     def get_orders() -> List[OrderResponse]:
+        _refresh_dates()
         return [OrderResponse(**ord) for ord in DEMO_ORDERS]
 
     @staticmethod
     def get_asba_locks() -> List[AsbaLockResponse]:
+        _refresh_dates()
         return [AsbaLockResponse(**lock) for lock in DEMO_ASBA_LOCKS]
 
     @staticmethod
     def get_allotments() -> List[AllotmentResponse]:
+        _refresh_dates()
         return [AllotmentResponse(**alt) for alt in DEMO_ALLOTMENTS]
 
     @staticmethod
@@ -462,10 +517,9 @@ class DemoDatasetService:
         total_invested_sold = sum(alt["invested_amount"] or 0.0 for alt in sold_allotments)
         overall_roi = (total_realized_pnl / total_invested_sold * 100.0) if total_invested_sold > 0 else 0.0
 
-        # Total bids across all family accounts: 2+2+1+1+0+0 = 6
-        total_bids = sum(a["total_applied_ipos"] for a in DEMO_ACCOUNTS)
-        total_allotments = len(allotments) # 5 won
-        allotment_rate = (total_allotments / total_bids * 100.0) if total_bids > 0 else 0.0
+        counts = bid_counts(DEMO_ORDERS)   # 5 won of 6 finalized, 3 still awaiting allotment
+        total_allotments = len(allotments)
+        allotment_rate = (counts["bids_won"] / counts["bids_finalized"] * 100.0) if counts["bids_finalized"] else 0.0
 
         return PnlSummaryResponse(
             total_realized_pnl=total_realized_pnl,
@@ -473,6 +527,7 @@ class DemoDatasetService:
             total_allotments=total_allotments,
             total_holding=len(active_allotments),
             allotment_rate_percent=round(allotment_rate, 1),
+            **counts,
         )
 
 

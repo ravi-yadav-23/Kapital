@@ -54,7 +54,7 @@ export default function AllotmentsPage() {
               Active Holdings
             </span>
             <div className="text-2xl font-mono font-medium text-[var(--ink-1)] tracking-tight tabular-nums mt-1">
-              {formatINR(totalActiveInvested || 230866)}
+              {formatINR(totalActiveInvested)}
             </div>
             <span className="text-2xs text-[var(--ink-3)] mt-1 block font-mono">
               {activeAllotments.length} active holdings awaiting listing day
@@ -66,10 +66,10 @@ export default function AllotmentsPage() {
               Realized P&L
             </span>
             <div className="text-2xl font-mono font-medium text-[var(--positive)] tracking-tight tabular-nums mt-1">
-              +{formatINR(totalSoldRealized || 159570)}
+              {totalSoldRealized >= 0 ? '+' : ''}{formatINR(totalSoldRealized)}
             </div>
             <span className="text-2xs text-[var(--ink-3)] mt-1 block font-mono">
-              Across {soldAllotments.length} liquidated listings (+{pnlSummary?.overall_roi_percent ?? 65.4}% ROI)
+              {soldAllotments.length === 0 ? 'No listings sold yet' : `Across ${soldAllotments.length} sold ${soldAllotments.length === 1 ? 'listing' : 'listings'} (${(pnlSummary?.overall_roi_percent ?? 0) >= 0 ? '+' : ''}${pnlSummary?.overall_roi_percent ?? 0}% ROI)`}
             </span>
           </div>
 
@@ -78,10 +78,13 @@ export default function AllotmentsPage() {
               Allotment Rate
             </span>
             <div className="text-2xl font-mono font-medium text-[var(--ink-1)] tracking-tight tabular-nums mt-1">
-              {pnlSummary?.allotment_rate_percent ?? 83.3}%
+              {pnlSummary?.bids_finalized ? `${pnlSummary.allotment_rate_percent}%` : '—'}
             </div>
             <span className="text-2xs text-[var(--ink-3)] mt-1 block font-mono">
-              {pnlSummary?.total_allotments ?? 5} won of {pnlSummary?.total_applied_ipos ?? 6} finalized bids (2 pending ASBA)
+              {pnlSummary?.bids_finalized
+                ? `${pnlSummary.bids_won ?? 0} won of ${pnlSummary.bids_finalized} decided ${pnlSummary.bids_finalized === 1 ? 'bid' : 'bids'}`
+                : 'No allotment results yet'}
+              {pnlSummary?.bids_pending ? ` · ${pnlSummary.bids_pending} awaiting allotment` : ''}
             </span>
           </div>
         </div>

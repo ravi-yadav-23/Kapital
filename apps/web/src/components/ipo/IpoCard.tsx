@@ -9,6 +9,8 @@ import {
   formatKnownAmount,
   formatPercent,
   formatRelativeDate,
+  formatGmp,
+  biddingWindowText,
   getStatusDotClass,
   getStatusLabel,
   getScoreRecommendation,
@@ -35,12 +37,8 @@ export function IpoCard({ ipo, analysisBadge }: IpoCardProps) {
   const barColor = isHigh ? 'bg-accent' : isMed ? 'bg-ink-2' : 'bg-ink-3'
   const textColor = isHigh ? 'text-accent' : isMed ? 'text-ink-2' : 'text-ink-3'
 
-  const dateText =
-    ipo.status === 'closed'
-      ? formatRelativeDate(ipo.issue_close_date)
-      : ipo.status === 'open' || ipo.status === 'closing_today'
-        ? `Closes ${formatRelativeDate(ipo.issue_close_date)}`
-        : `Opens ${formatRelativeDate(ipo.issue_open_date)}`
+  const dateText = biddingWindowText(ipo.status, ipo.issue_open_date, ipo.issue_close_date)
+  const gmp = formatGmp(ipo.gmp_percent)
 
   return (
     <Link
@@ -64,13 +62,9 @@ export function IpoCard({ ipo, analysisBadge }: IpoCardProps) {
             </span>
           )}
         </div>
-        {(ipo.gmp_percent || 0) > 0 ? (
-          <span className="val-positive text-xs font-mono font-medium">
-            ↑ {formatPercent(ipo.gmp_percent)} GMP
-          </span>
-        ) : (
-          <span className="text-2xs text-ink-3 font-mono">0.0% GMP</span>
-        )}
+        <span className={`text-xs font-mono font-medium ${gmp.className}`}>
+          {gmp.text === '—' ? 'No GMP quote' : `${gmp.text} GMP`}
+        </span>
       </div>
 
       {/* Company Name & Symbol */}
