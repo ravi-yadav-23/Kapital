@@ -260,84 +260,18 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* AI Engine Configuration */}
-            <div className="pt-3 border-t border-[var(--border-default)] space-y-3">
-              <h3 className="text-sm font-medium text-[var(--ink-1)]">
-                AI Due Diligence Configuration
-              </h3>
-
-              <div className="space-y-2 text-xs">
-                <div>
-                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">Provider</label>
-                  <select
-                    value={aiProvider}
-                    onChange={(e) => {
-                      const p = e.target.value as 'groq' | 'gemini' | 'anthropic'
-                      setAiProvider(p)
-                      if (p === 'groq') setAiModel('openai/gpt-oss-120b')
-                      if (p === 'gemini') setAiModel('gemini-1.5-flash')
-                      if (p === 'anthropic') setAiModel('claude-3-5-haiku-20241022')
-                    }}
-                    className="w-full text-xs"
-                  >
-                    <option value="groq">Groq Cloud (Fast Inference)</option>
-                    <option value="gemini">Google Gemini (AI Studio)</option>
-                    <option value="anthropic">Anthropic Claude (Production)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">Model</label>
-                  <select
-                    value={aiModel}
-                    onChange={(e) => setAiModel(e.target.value)}
-                    className="w-full text-xs"
-                  >
-                    {aiProvider === 'groq' && (
-                      <>
-                        <option value="openai/gpt-oss-120b">GPT-OSS 120B (Deep Due Diligence)</option>
-                        <option value="openai/gpt-oss-20b">GPT-OSS 20B (Fast Screening)</option>
-                        <option value="qwen/qwen3.6-27b">Qwen 3.6 27B</option>
-                      </>
-                    )}
-                    {aiProvider === 'gemini' && (
-                      <>
-                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Default)</option>
-                        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                      </>
-                    )}
-                    {aiProvider === 'anthropic' && (
-                      <>
-                        <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Default)</option>
-                        <option value="claude-3-5-sonnet-20241022">Anthropic · claude-3-5-sonnet-20241022</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-2xs font-mono uppercase text-[var(--ink-3)] block mb-1">
-                    API Key Override
-                  </label>
-                  <input
-                    type="password"
-                    placeholder={`Enter ${aiProvider} API key (optional)`}
-                    value={
-                      aiProvider === 'groq'
-                        ? groqApiKey
-                        : aiProvider === 'gemini'
-                        ? geminiApiKey
-                        : anthropicApiKey
-                    }
-                    onChange={(e) => {
-                      if (aiProvider === 'groq') setGroqApiKey(e.target.value)
-                      if (aiProvider === 'gemini') setGeminiApiKey(e.target.value)
-                      if (aiProvider === 'anthropic') setAnthropicApiKey(e.target.value)
-                    }}
-                    className="w-full text-xs font-mono"
-                  />
-                </div>
-              </div>
+            {/* Document analysis: read-only. The model is set in the server environment, not here. */}
+            <div className="pt-3 border-t border-[var(--border-default)] space-y-2">
+              <h3 className="text-sm font-medium text-[var(--ink-1)]">Document analysis</h3>
+              <p className="text-xs text-[var(--ink-2)] leading-relaxed">
+                Offer documents are read by the nightly job at about 02:00 IST, never from this page. It uses the model set in the
+                server environment: Groq (<span className="font-mono">DEFAULT_AI_MODEL</span>, default{' '}
+                <span className="font-mono">openai/gpt-oss-120b</span>), with Gemini as a backup when{' '}
+                <span className="font-mono">GEMINI_API_KEY</span> is set.
+              </p>
+              <a href="/docs/reading-documents" className="text-xs text-[var(--accent-text,var(--accent))] hover:underline">
+                How documents are read →
+              </a>
             </div>
           </div>
 

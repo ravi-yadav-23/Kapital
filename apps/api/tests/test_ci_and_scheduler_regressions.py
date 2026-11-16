@@ -37,8 +37,8 @@ async def test_nightly_maintenance_never_runs_the_ai_model():
     from app.tasks import scheduler
 
     boom = AsyncMock(side_effect=AssertionError("the web-server job must not generate AI reports"))
-    with patch("app.agents.orchestrator.orchestrator.run_full_due_diligence", new=boom), \
-         patch("app.tasks.report_tasks.generate_nightly_ipo_dossiers", new=boom), \
+    # the old report generators are gone; no HTTP call to a model provider may happen from this job
+    with patch("httpx.AsyncClient.post", new=boom), \
          patch("app.tasks.order_tasks.sync_expired_asba_locks", new=AsyncMock(return_value=0)) as sweep, \
          patch("app.services.allotment_service.allotment_service.auto_detect_allotments",
                new=AsyncMock(return_value={})) as scan:

@@ -59,7 +59,7 @@ Please refer to [SETUP.md](./SETUP.md) for step-by-step local development setup 
 - **History is append-only.** Score history, snapshots, outcomes, document versions and analysis results are never deleted or overwritten.
 - **Migrations** are idempotent Alembic revisions. Rehearse with `python scripts/db_dry_run.py` before `alembic upgrade head`. Tests never use the hosted database.
 - **Tests mock live services** (AI provider, broker, data sources). Use a throw-away database for Postgres tests.
-- **Prompts** live in `apps/api/app/agents/prompts.py` and `apps/api/app/documents/facts.py`, not inline in routers.
+- **Prompts** live in `apps/api/app/documents/facts.py` (extraction) and `apps/api/app/documents/webresearch.py` (web-search tier), not inline in routers. No web request may call a model: model work belongs to the nightly job.
 
 ---
 

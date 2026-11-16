@@ -1,15 +1,9 @@
-import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Optional
 from datetime import datetime, timezone
-import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.config import settings
 from app.models.report import AiReport
 from app.models.ipo import Ipo
-from app.models.setting import SystemSetting
 from app.services.rating import rate
 from app.utils.scoring import (
     recommendation_for,
@@ -24,170 +18,11 @@ logger = logging.getLogger("report_service")
 
 
 class AiDueDiligenceService:
+    """Formats stored AI reports for the API, and builds the plain market-data view when there is no report.
+
+    No language model runs here: all model work happens in the nightly job (app.jobs.nightly), and every score
+    comes from app.services.rating.rate().
     """
-    Orchestrates real-time AI due diligence using dynamically selectable LLM providers:
-    - Groq (LLaMA 3.3 70B / LLaMA 3.1 8B)
-    - Google Gemini (Gemini 1.5 Flash / Pro)
-    - Anthropic Claude (Claude 3.5 Haiku / Sonnet)
-    Persists audit findings, 6-dimension scores, and red flags into PostgreSQL.
-    """
-
-    @staticmethod
-    def compute_weighted_score(
-        financial_quality: int,
-        industry_tailwinds: int,
-        subscription_momentum: int,
-        valuation_safety: int,
-        gmp_strength: int,
-        promoter_integrity: int,
-        penalties: int = 0,
-    ) -> int:
-        raw_score = (
-            (financial_quality * 0.25)
-            + (valuation_safety * 0.20)
-            + (gmp_strength * 0.20)
-            + (promoter_integrity * 0.15)
-            + (industry_tailwinds * 0.10)
-            + (subscription_momentum * 0.10)
-            - penalties
-        )
-        return max(0, min(100, int(round(raw_score))))
-
-    @staticmethod
-    def get_recommendation(score: int) -> str:
-        if score >= 80:
-            return "STRONG_APPLY"
-        elif score >= 60:
-            return "MODERATE_APPLY"
-        elif score >= 45:
-            return "WATCH"
-        else:
-            return "AVOID"
-
-    async def _get_active_ai_config(self, db: AsyncSession) -> Dict[str, str]:
-        """Fetch selected AI provider, model, and active API key from PostgreSQL settings or .env."""
-        stmt = select(SystemSetting).where(SystemSetting.key == "app_preferences")
-        res = await db.execute(stmt)
-        row = res.scalar_one_or_none()
-        prefs = row.value if row else {}
-
-        from app.agents.base import get_default_model_for_provider
-        provider = prefs.get("ai_provider") or settings.default_ai_provider or "groq"
-        raw_model = prefs.get("ai_model") or settings.default_ai_model or ""
-        if not raw_model or "gpt-oss-120b" in raw_model:
-            model = get_default_model_for_provider(provider)
-        else:
-            model = raw_model
-
-        # Determine active API key
-        if provider == "groq":
-            api_key = prefs.get("groq_api_key") or settings.groq_api_key or ""
-        elif provider == "gemini":
-            api_key = prefs.get("gemini_api_key") or settings.gemini_api_key or ""
-        elif provider == "anthropic":
-            api_key = prefs.get("anthropic_api_key") or settings.anthropic_api_key or ""
-        else:
-            api_key = ""
-
-        return {
-            "provider": provider.lower(),
-            "model": model,
-            "api_key": api_key,
-        }
-
-    async def _call_llm(self, prompt: str, ai_cfg: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Call Groq, Gemini, or Claude with structured JSON output."""
-        provider = ai_cfg["provider"]
-        model = ai_cfg["model"]
-        api_key = ai_cfg["api_key"]
-
-        if not api_key:
-            logger.info(f"No API key provided for {provider}. Using algorithmic heuristic fallback.")
-            return None
-
-        system_instruction = (
-            "You are a seasoned institutional Indian IPO research analyst. "
-            "Analyze the given IPO data and return ONLY a valid JSON object with the requested keys."
-        )
-
-        try:
-            if provider == "groq":
-                from groq import AsyncGroq
-                client = AsyncGroq(api_key=api_key)
-                response = await client.chat.completions.create(
-                    model=model or "llama-3.3-70b-versatile",
-                    messages=[
-                        {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.2,
-                )
-                text = response.choices[0].message.content
-                s = text.strip()
-                if s.startswith("```"):
-                    parts = s.split("```")
-                    if len(parts) >= 2:
-                        s = parts[1]
-                        if s.startswith("json"):
-                            s = s[4:]
-                return json.loads(s.strip())
-
-            elif provider == "gemini":
-                raw_text = ""
-                try:
-                    import google.generativeai as genai
-                    genai.configure(api_key=api_key)
-                    model_obj = genai.GenerativeModel(
-                        model or "gemini-1.5-flash",
-                        generation_config={"response_mime_type": "application/json"},
-                    )
-                    response = await model_obj.generate_content_async(
-                        f"{system_instruction}\n\n{prompt}"
-                    )
-                    raw_text = response.text or ""
-                except (ImportError, AttributeError):
-                    from google import genai
-                    from google.genai import types
-                    client = genai.Client(api_key=api_key)
-                    response = await client.aio.models.generate_content(
-                        model=model or "gemini-1.5-flash",
-                        contents=f"{system_instruction}\n\n{prompt}",
-                        config=types.GenerateContentConfig(response_mime_type="application/json"),
-                    )
-                    raw_text = response.text or ""
-
-                s = raw_text.strip()
-                if s.startswith("```"):
-                    parts = s.split("```")
-                    if len(parts) >= 2:
-                        s = parts[1]
-                        if s.startswith("json"):
-                            s = s[4:]
-                return json.loads(s.strip())
-
-            elif provider == "anthropic":
-                import anthropic
-                client = anthropic.AsyncAnthropic(api_key=api_key)
-                response = await client.messages.create(
-                    model=model or "claude-3-5-haiku-20241022",
-                    max_tokens=1500,
-                    system=system_instruction,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                text = response.content[0].text
-                s = text.strip()
-                if s.startswith("```"):
-                    parts = s.split("```")
-                    if len(parts) >= 2:
-                        s = parts[1]
-                        if s.startswith("json"):
-                            s = s[4:]
-                return json.loads(s.strip())
-
-        except Exception as e:
-            logger.error(f"Error calling {provider} ({model}): {e}")
-            return None
 
     def format_report_response(self, existing: AiReport, ipo: Optional[Ipo] = None) -> AiReportResponse:
         """Helper to format an AiReport ORM model and associated Ipo into an AiReportResponse schema."""
@@ -463,20 +298,6 @@ class AiDueDiligenceService:
             estimated_listing_price=est_price if ipo.price_band_max else None,
             scored_at=datetime.now(timezone.utc).strftime("%d %b %Y"),
         )
-
-    async def get_or_generate_report(self, db: AsyncSession, ipo: Ipo, force_refresh: bool = False) -> AiReportResponse:
-        """Fetch existing report from DB or generate a fresh analysis via the configured AI model."""
-        if not force_refresh:
-            stmt = select(AiReport).where(AiReport.ipo_id == ipo.id)
-            res = await db.execute(stmt)
-            existing = res.scalar_one_or_none()
-
-            if existing:
-                return self.format_report_response(existing, ipo)
-
-        # Delegate to autonomous multi-agent orchestrator (Analysis, News, Allocation agents)
-        from app.agents.orchestrator import orchestrator
-        return await orchestrator.run_full_due_diligence(db, ipo.id)
 
 
 report_service = AiDueDiligenceService()

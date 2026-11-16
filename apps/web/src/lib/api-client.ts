@@ -870,30 +870,6 @@ export const apiClient = {
     throw new Error(auditErrorMessage(res.status, detail))
   },
 
-  async generateReport(id: string, slug?: string, symbol?: string, name?: string): Promise<AiReport> {
-    const params = new URLSearchParams()
-    if (slug) params.set('slug', slug)
-    if (symbol) params.set('symbol', symbol)
-    if (name) params.set('name', name)
-    const qs = params.toString() ? `?${params.toString()}` : ''
-
-    const postGen = async (target: string) => {
-      return await authFetch(`${API_BASE_URL}/reports/${encodeURIComponent(target)}/generate${qs}`, {
-        method: 'POST',
-      }, 45000)
-    }
-
-    let res = await postGen(id)
-    if (res.status === 404 && slug && slug !== id) {
-      res = await postGen(slug)
-    }
-    if (res.status === 404 && symbol && symbol !== id && symbol !== slug) {
-      res = await postGen(symbol)
-    }
-
-    return handleMutationResponse<AiReport>(res)
-  },
-
   // ── Settings ──────────────────────────────────────────────────────────────
   async getSettings(): Promise<AppSettings> {
     if (USE_MOCK_DATA) {

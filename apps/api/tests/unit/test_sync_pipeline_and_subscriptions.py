@@ -61,7 +61,7 @@ async def db(test_engine):
 @pytest.mark.asyncio
 async def test_sync_never_calls_the_llm(db):
     boom = AsyncMock(side_effect=AssertionError("the sync must not spend LLM tokens"))
-    with patch("app.services.report_service.report_service.get_or_generate_report", new=boom):
+    with patch("httpx.AsyncClient.post", new=boom):   # no model provider call during a sync
         n = await sync_ipos_pipeline(db, sources=[OneShot([_rec("SYNA")])])
     assert n == 1
     boom.assert_not_awaited()

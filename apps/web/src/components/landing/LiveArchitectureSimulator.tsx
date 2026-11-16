@@ -35,15 +35,15 @@ export interface SimulationStep {
 const STEPS: SimulationStep[] = [
   {
     id: 1,
-    title: 'Multi-Agent DRHP Analysis',
-    subtitle: 'An LLM summarises listed highlights, GMP and subscription data (no prospectus or peer data).',
-    detail: 'Evaluated 6 dimensions: Financial Quality (82/100), Valuation Multiple (78/100), GMP Surge (+27.8%).',
+    title: 'Offer-Document Analysis',
+    subtitle: 'Nightly: an LLM extracts a few checked facts from the SEBI offer document; the score itself is calculated in code.',
+    detail: 'Example: company 68, demand 95, grey market 66, issue size 60, one medium red flag → 72/100.',
     icon: BrainCircuit,
     tag: 'STEP 1: AI SCORING',
     tagColor: 'text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10',
-    badgeText: 'SCORE 74/100 • APPLY',
+    badgeText: 'SCORE 72/100 • APPLY',
     statLabel: 'Verdict',
-    statValue: 'Strong Apply (GMP +27.8%)',
+    statValue: 'Moderate apply (example)',
     activeComponent: 'agents',
   },
   {
@@ -249,7 +249,7 @@ export function LiveArchitectureSimulator() {
               <div className="space-y-3 animate-fade-in">
                 <div className="flex items-center justify-between text-xs pb-2 border-b border-[#2d2520]">
                   <span className="font-bold text-[#fafaf9] flex items-center gap-1.5">
-                    <BrainCircuit className="w-4 h-4 text-[#f59e0b]" /> Autonomous DRHP Audit
+                    <BrainCircuit className="w-4 h-4 text-[#f59e0b]" /> Offer-Document Check
                   </span>
                   <span className="text-xs font-mono text-[#22c55e] font-bold">Passed 0 Red Flags</span>
                 </div>

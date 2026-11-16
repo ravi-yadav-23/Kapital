@@ -64,36 +64,14 @@ async def _seed_ipo(maker):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer junk"}])
-async def test_anonymous_generate_never_calls_the_llm(empty_db, headers):
+@pytest.mark.parametrize("role", [None, "GUEST", "ADMIN"])
+async def test_the_old_ai_report_generator_is_gone_for_everyone(empty_db, role):
+    """All model work runs in the nightly job; no web request can start one (the old /generate route was removed)."""
     await _seed_ipo(empty_db)
-    llm = AsyncMock(side_effect=AssertionError("LLM called for a non-admin caller"))
-    with patch("app.routers.reports.report_service.get_or_generate_report", new=llm):
-        async with _client() as c:
-            resp = await c.post("/api/reports/rp-ipo/generate", headers=headers)
-    assert resp.status_code == 200
-    assert resp.json()["is_audited"] is False
-    llm.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_guest_generate_never_calls_the_llm(empty_db):
-    await _seed_ipo(empty_db)
-    tok = create_access_token({"sub": "g", "role": "GUEST", "is_guest": True})
-    llm = AsyncMock(side_effect=AssertionError("LLM called for a guest"))
-    with patch("app.routers.reports.report_service.get_or_generate_report", new=llm):
-        async with _client() as c:
-            resp = await c.post("/api/reports/rp-ipo/generate", headers={"Authorization": f"Bearer {tok}"})
-    assert resp.status_code == 200
-    llm.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_admin_generate_does_call_the_pipeline(empty_db):
-    await _seed_ipo(empty_db)
-    tok = create_access_token({"sub": "admin-1", "role": "ADMIN", "is_guest": False})
-    sentinel = AsyncMock(side_effect=RuntimeError("reached"))
-    with patch("app.routers.reports.report_service.get_or_generate_report", new=sentinel):
-        async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as c:
-            await c.post("/api/reports/rp-ipo/generate", headers={"Authorization": f"Bearer {tok}"})
-    sentinel.assert_awaited()
+    headers = {}
+    if role:
+        tok = create_access_token({"sub": "u", "role": role, "is_guest": role == "GUEST"})
+        headers = {"Authorization": f"Bearer {tok}"}
+    async with _client() as c:
+        resp = await c.post("/api/reports/rp-ipo/generate", headers=headers)
+    assert resp.status_code in (404, 405)

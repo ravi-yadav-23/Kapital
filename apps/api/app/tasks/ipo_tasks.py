@@ -152,13 +152,6 @@ async def sync_ipos_pipeline(db: AsyncSession, sources=None) -> int:
     return synced_count
 
 
-async def sync_ipos_task() -> int:
-    """Wrapper to run sync_ipos_pipeline in a self-managed DB session."""
-    from app.db.database import AsyncSessionLocal
-    async with AsyncSessionLocal() as db:
-        return await sync_ipos_pipeline(db)
-
-
 async def sync_open_ipo_subscriptions(db: AsyncSession, source=None) -> int:
     """
     Refresh the live subscription multiple for currently OPEN IPOs from ipoalerts (official NSE figure).

@@ -287,7 +287,7 @@ export const DOC_PAGES: DocPage[] = [
       { type: 'table', head: ['Section', 'What it holds'], rows: [
         ['ASBA UPI and bidding guardrails', 'The UPI ID used for mandate requests and limits that applications must respect.'],
         ['Broker session', 'The Angel One SmartAPI session used for balances, allotment checks and listing-day sells.'],
-        ['AI engine', 'A provider and model preference shown in the app. The nightly analysis uses the keys and model set in the server environment.'],
+        ['Document analysis', 'Read-only: which model the nightly job uses. It is set in the server environment (DEFAULT_AI_MODEL, GEMINI_API_KEY), not on this page.'],
         ['Notification channels', 'Where alerts go, with a Test Notification button.'],
       ] },
     ],

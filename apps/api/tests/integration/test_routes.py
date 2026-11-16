@@ -96,7 +96,7 @@ async def test_funds_optimize_requires_admin(client: AsyncClient, seed_data):
 
 
 @pytest.mark.asyncio
-async def test_guest_can_access_and_generate_ai_reports(client: AsyncClient, seed_data):
+async def test_guest_can_read_ai_reports_but_not_generate_them(client: AsyncClient, seed_data):
     # 1. Guest login returns valid guest token
     guest_res = await client.post("/api/auth/guest-login")
     assert guest_res.status_code == 200
@@ -117,11 +117,9 @@ async def test_guest_can_access_and_generate_ai_reports(client: AsyncClient, see
     assert rep_data["ipo_id"] == first_ipo_id
     assert "score_breakdown" in rep_data
 
-    # 4. Guest can trigger generate report and gets cached report with 0 error
+    # 4. There is no on-demand report generation any more (model work runs only in the nightly job)
     gen_res = await client.post(f"/api/reports/{first_ipo_id}/generate", headers=headers)
-    assert gen_res.status_code == 200
-    cached_rep = gen_res.json()
-    assert cached_rep["ipo_id"] == first_ipo_id
+    assert gen_res.status_code in (404, 405)
 
 
 @pytest.mark.asyncio

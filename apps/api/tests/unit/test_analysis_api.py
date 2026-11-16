@@ -154,7 +154,9 @@ async def test_cap_holds_across_many_distinct_ipos(db, monkeypatch):
 async def test_request_never_calls_an_llm(db):
     db.add(_ipo("AQ9"))
     await db.commit()
-    with patch("app.agents.base.BaseAgent.call_llm", new=AsyncMock(side_effect=AssertionError("LLM must not run"))):
+    # every model call goes through one of these two; neither may be reached from a web request
+    with patch("app.documents.gemini.generate", new=AsyncMock(side_effect=AssertionError("no model call may happen here"))), \
+         patch("app.jobs.groq_llm.make_groq_extractor", side_effect=AssertionError("no model call may happen here")):
         async with _client() as c:
             assert (await c.post("/api/analysis/id-AQ9/request")).status_code == 200
 

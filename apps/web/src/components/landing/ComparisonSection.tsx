@@ -45,10 +45,10 @@ export function ComparisonSection() {
             Competitive Benchmark
           </span>
           <h2 className="text-2xl sm:text-3xl font-medium tracking-tight text-[var(--ink-1)]">
-            Manual Broker Bidding vs. Kapitl Autonomous System
+            Manual Broker Bidding vs. Kapitl
           </h2>
           <p className="mt-3 text-sm text-[var(--ink-2)] leading-relaxed">
-            Why algorithmic multi-agent due diligence and mathematical lot allocation capture higher risk-adjusted listing returns than manual clicking on consumer broker apps.
+            What a rules-based score with visible reasons and an allotment-odds optimizer add over picking IPOs by hand in a broker app.
           </p>
         </div>
 
@@ -68,7 +68,7 @@ export function ComparisonSection() {
                   <th className="p-3.5 sm:p-4 font-medium text-[var(--positive)] w-3/8">
                     <span className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Kapitl Autonomous System</span>
+                      <span>Kapitl</span>
                     </span>
                   </th>
                 </tr>

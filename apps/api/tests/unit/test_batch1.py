@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.middleware.auth import _get_secret_key
 from app.services.allotment_service import allotment_service
-from app.tasks.order_tasks import clean_expired_asba_locks, sync_expired_asba_locks
+from app.tasks.order_tasks import sync_expired_asba_locks
 from app.services.account_service import account_service
 from app.models.account import FamilyAccount
 
@@ -31,16 +31,6 @@ async def test_auto_detect_allotments_executes_without_import_error(db_session: 
     assert "allotted" in result
     assert "not_allotted" in result
     assert "pending" in result
-
-
-@pytest.mark.asyncio
-async def test_clean_expired_asba_locks_celery_wrapper():
-    """Test that clean_expired_asba_locks is exported and manages its own session."""
-    with patch("app.tasks.order_tasks.sync_expired_asba_locks", new_callable=AsyncMock) as mock_sync:
-        mock_sync.return_value = 0
-        res = await clean_expired_asba_locks()
-        assert res == 0
-        mock_sync.assert_called_once()
 
 
 @pytest.mark.asyncio

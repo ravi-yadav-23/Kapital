@@ -52,11 +52,3 @@ async def sync_expired_asba_locks(db: AsyncSession) -> int:
     return released_count
 
 
-async def clean_expired_asba_locks() -> int:
-    """
-    Self-managed DB session wrapper for the Celery worker task asba_sweep_celery.
-    """
-    from app.db.database import AsyncSessionLocal
-    async with AsyncSessionLocal() as db:
-        return await sync_expired_asba_locks(db)
-

@@ -6,10 +6,6 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-try:
-    from celery.result import AsyncResult
-except ImportError:
-    AsyncResult = None
 
 from app.db.database import get_db
 from app.schemas.fund import FundSummaryResponse, PnlSummaryResponse, AllocationPlanResponse, UpcomingConflictSchema
@@ -20,7 +16,6 @@ from app.services.ipo_service import ipo_service
 from app.services.allotment_service import allotment_service
 from app.services.optimizer_service import AllocationOptimizer
 from app.services.demo_dataset import demo_dataset, DEMO_ACCOUNTS
-from app.tasks.celery_app import celery, run_optimizer_celery
 
 from app.middleware.auth import get_viewer, require_admin
 
@@ -28,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/funds", tags=["funds"])
 
-# In-memory fallback store for optimizer results when Celery workers are not running
+# In-memory store for optimizer results, so a plan can be fetched again by its id
 _optimizer_task_store: Dict[str, Dict[str, Any]] = {}
 
 
@@ -78,7 +73,6 @@ async def get_pnl_summary(
         return demo_dataset.get_pnl_summary()
 
     allotments = await allotment_service.get_allotments(db)
-    accounts   = await account_service.get_all_accounts(db)
 
     total_pnl      = sum(alt.realized_pnl or 0.0 for alt in allotments if alt.status == "SOLD")
     total_invested = sum(alt.invested_amount or 0.0 for alt in allotments if alt.status == "SOLD")
@@ -383,38 +377,6 @@ async def get_optimization_status(
             )
         elif record.get("status") == "SUCCESS":
             return AllocationPlanResponse(**record["result"])
-
-    # 2. Check Celery AsyncResult
-    if AsyncResult is not None:
-        try:
-            task_res = AsyncResult(task_id, app=celery)
-            if not task_res.ready():
-                return AllocationPlanResponse(
-                    plan_id=task_id,
-                    generated_at=datetime.now(timezone.utc).isoformat(),
-                    total_capital_deployed=0.0,
-                    entries=[],
-                    status="PENDING",
-                    asba_lock_overlaps_detected=0,
-                    warnings=["Optimizer calculation in progress..."],
-                )
-
-            if task_res.failed():
-                return AllocationPlanResponse(
-                    plan_id=task_id,
-                    generated_at=datetime.now(timezone.utc).isoformat(),
-                    total_capital_deployed=0.0,
-                    entries=[],
-                    status="ERROR",
-                    asba_lock_overlaps_detected=0,
-                    warnings=[f"Optimizer failed: {str(task_res.result)}"],
-                )
-
-            val = task_res.result
-            if isinstance(val, dict):
-                return AllocationPlanResponse(**val)
-        except Exception as e:
-            logger.warning(f"Error checking Celery task {task_id}: {e}")
 
     raise HTTPException(status_code=404, detail="Optimizer task not found")
 

@@ -23,7 +23,7 @@
   <a href="#-executive-summary">The Edge</a> •
   <a href="#-system-architecture">Architecture</a> •
   <a href="#-algorithmic-breakdown-operations-research-milp">Operations Research</a> •
-  <a href="#-multi-agent-ai-due-diligence">AI Due Diligence</a> •
+  <a href="#-reading-offer-documents-safely">Document Analysis</a> •
   <a href="#-core-engineering-highlights">Engineering Highlights</a> •
   <a href="#-rest-api-specification">API Specs</a> •
   <a href="#-quick-local-setup--tests">Setup & Tests</a>
@@ -40,8 +40,8 @@ Every year, millions of Indian retail investors participate in IPOs using manual
 ```
 ┌─────────────────────────┐    ┌──────────────────────────┐    ┌─────────────────────────┐
 │ Structured Data & Feeds │    │  MILP Capital Optimizer  │    │  SmartAPI Execution Bot │
-│ Multi-Agent Due Diligence│───▶│  PuLP Family Allocator   │───▶│  09:00:00 AM Listing    │
-│ 6-Factor Radar Score    │    │  Max Lot Lottery Odds    │    │  Pre-Market Limit Exit  │
+│ Offer-Document Facts    │───▶│  PuLP Family Allocator   │───▶│  09:00:00 AM Listing    │
+│ Listing-Gain Score      │    │  Max Lot Lottery Odds    │    │  Pre-Market Limit Exit  │
 └─────────────────────────┘    └──────────────────────────┘    └─────────────────────────┘
 ```
 
@@ -63,12 +63,12 @@ graph TD
         A3[ipowatch.in Scraper] -->|Live GMP Signals| B
     end
 
-    subgraph Quantitative & Multi-Agent AI Pipeline
-        B --> C[(PostgreSQL 15 / Async SQLAlchemy)]
-        C --> D[6-Factor Financial Multiplier Engine]
-        D --> E1[Equity Research Agent: Financials & Valuations]
-        D --> E2[Market Intelligence Agent: Promoter & Sentiment]
-        E1 & E2 -->|Composite 0-100 Score & Radar Vector| C
+    subgraph Nightly Analysis (GitHub Actions, ~02:00 IST)
+        B --> C[(PostgreSQL / Async SQLAlchemy)]
+        C --> D[Offer document: chunk, rank, extract facts with an LLM]
+        D --> E1[Validation: fixed fields, range checks, quotes verified in the text]
+        E1 --> E2[Listing-Gain Engine + red-flag rules, one rate function]
+        E2 -->|Score, reasons, step-by-step breakdown| C
     end
 
     subgraph Operations Research & Capital Optimizer
@@ -116,19 +116,19 @@ The solver runs the COIN-OR CBC algorithm; if it cannot finish, the plan falls b
 
 ---
 
-## 🧠 Multi-Agent AI Due Diligence
+## 🧠 Reading Offer Documents Safely
 
-Kapitl avoids hallucination by feeding verified primary market attributes through specialized LLM agents with strict schema enforcement:
+All model work runs in one nightly job (`python -m app.jobs.nightly`); no web request ever calls a model.
 
-| Agent Role | Model Architecture | Responsibility & Metrics Extracted |
+| Step | Where | What happens |
 | :--- | :--- | :--- |
-| **Equity Research Agent** | Configured provider (default Groq `openai/gpt-oss-120b`) | Reads price band, lot size, issue size, listed strengths and risks. Financial series, P/E, OFS split and litigation are **not** supplied and are reported as not assessed. |
-| **Market Intelligence Agent** | Configured provider (default Groq `openai/gpt-oss-120b`) | Reads subscription multiples (Retail, sHNI, bHNI, QIB) and the grey market premium. No news or promoter data is supplied, so promoter/industry scores are null unless the model can justify them from the input. |
-| **Composite Arbiter** | Deterministic Python Engine | Computes the 6-factor vector (Financial Quality, Valuation Safety, Promoter Integrity, Industry Tailwinds, Subscription Velocity, GMP Strength) and applies red-flag penalty deductions. |
+| **Find the document** | `app/documents/fetch.py` | The SEBI / NSE / BSE (or issuer) PDF, https only, public hosts only, size capped. |
+| **Chunk and rank** | `app/documents/extract.py`, `facts.py` | ~6,000-character chunks; financials, promoter holding and litigation are read first. |
+| **Extract facts** | `app/jobs/groq_llm.py`, `app/documents/gemini.py` | Groq `openai/gpt-oss-120b` by default, Gemini as backup. The excerpt is treated as untrusted data. |
+| **Validate** | `app/documents/facts.py` | Only a fixed list of fields is kept, each range-checked; regulatory and auditor claims need a quote that really appears in the text. |
+| **Score** | `app/utils/listing_gain.py`, `red_flags.py`, `app/services/rating.py` | Deterministic code: the model never sets a score. One `rate()` function serves every screen. |
 
-**Anti-Hallucination & Transparency Policy**:
-- When financial series (revenue, PAT, CFO) are not available in structured primary feeds, fields are strictly returned as `null` rather than fabricated.
-- Every report generated from preliminary disclosures is labeled with `data_sufficiency: partial` and a prominent disclosure: `[AI summary from limited inputs]`.
+If no document can be read, the score steps down a ladder (Groww company summary, capped at 70; verified web search, capped at 60; market data only) and the page says which step it rests on. Unknown values stay unknown, never guessed.
 
 ---
 

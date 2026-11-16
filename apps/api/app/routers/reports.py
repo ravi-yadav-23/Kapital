@@ -9,8 +9,7 @@ from app.models.report import AiReport
 from app.schemas.report import AiReportResponse
 from app.services.report_service import report_service
 from app.services.pnl_service import pnl_service
-from app.middleware.auth import get_current_user_optional, get_viewer
-from app.utils.date_utils import compute_ipo_status
+from app.middleware.auth import get_viewer
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -97,118 +96,6 @@ async def get_ai_report(
         return report_service.format_report_response(existing, ipo)
 
     return report_service.build_fallback_report_response(ipo)
-
-
-@router.post("/{ipo_id}/generate", response_model=AiReportResponse)
-async def trigger_ai_analysis(
-    ipo_id: str,
-    force: bool = Query(False, description="Force re-run even if report exists (admin only)"),
-    symbol: Optional[str] = Query(None),
-    slug: Optional[str] = Query(None),
-    name: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user_optional),
-):
-    """
-    Trigger or view AI due diligence analysis for an IPO.
-    - If a report already exists in the DB and force=False, returns cached report at 0 LLM cost.
-    - Uses a Redis distributed lock to prevent concurrent redundant generation for the same issue.
-    - Only authenticated administrators can force a fresh LLM re-run with force=True.
-    """
-    stmt = select(Ipo).where((Ipo.id == ipo_id) | (Ipo.slug == ipo_id) | (Ipo.symbol == ipo_id.upper()))
-    res = await db.execute(stmt)
-    ipo = res.scalar_one_or_none()
-
-    if not ipo and symbol:
-        ipo = (await db.execute(select(Ipo).where(Ipo.symbol == symbol.upper()))).scalar_one_or_none()
-
-    if not ipo and slug:
-        ipo = (await db.execute(select(Ipo).where(Ipo.slug == slug.lower()))).scalar_one_or_none()
-
-    if not ipo and name:
-        from app.services.ipo_service import normalize_entity_name
-        stmt_name = select(Ipo).where(
-            (Ipo.name.ilike(f"%{name}%")) | (func.lower(Ipo.name) == name.lower())
-        )
-        ipo = (await db.execute(stmt_name)).scalars().first()
-
-    if not ipo:
-        try:
-            from app.models.ipo import IpoAlias
-            from app.services.ipo_service import normalize_entity_name
-            stmt_alias = (
-                select(Ipo)
-                .join(IpoAlias, Ipo.id == IpoAlias.ipo_id)
-                .where((IpoAlias.alias.ilike(f"%{ipo_id}%")) | (IpoAlias.normalized_alias == normalize_entity_name(ipo_id)))
-            )
-            res_alias = await db.execute(stmt_alias)
-            ipo = res_alias.scalars().first()
-        except Exception:
-            pass
-
-    if not ipo:
-        raise HTTPException(status_code=404, detail="IPO not found")
-    from app.services.rating import attach_facts
-    await attach_facts(db, [ipo])
-
-    # Check if report already exists in database
-    stmt_rep = select(AiReport).where(AiReport.ipo_id == ipo.id)
-    res_rep = await db.execute(stmt_rep)
-    existing = res_rep.scalar_one_or_none()
-
-    # 1. Return cached report if present and force is False
-    if existing and not force:
-        cached = report_service.format_report_response(existing, ipo)
-        cached.audit_state = "CACHED"
-        cached.audit_note = (
-            f"Showing the latest stored report (scored {existing.scored_at or 'earlier'}). No new analysis was run."
-        )
-        return cached
-
-    is_admin = bool(user and user.get("role") == "ADMIN" and not user.get("is_guest"))
-
-    # 2. Only administrators may spend LLM budget. Others get the cached report (above) or the
-    #    honest preliminary report, never a fresh generation.
-    if force and not is_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Force re-running AI audit requires Administrator privileges. Viewing cached report.",
-        )
-    if not is_admin:
-        fallback = report_service.build_fallback_report_response(ipo)
-        fallback.audit_state = "NOT_RUN"
-        fallback.audit_note = (
-            "No AI analysis was run. Analyses are produced by the scheduled job or an administrator; "
-            "this is the preliminary market-signal view."
-        )
-        return fallback
-
-    # 3. Distributed Redis lock per IPO to serialize concurrent audits
-    import uuid
-    from app.db.redis import get_redis_pool
-
-    redis = await get_redis_pool()
-    lock_key = f"audit_lock:{ipo.id}"
-    lock_token = str(uuid.uuid4())
-
-    if redis:
-        acquired = await redis.set(lock_key, lock_token, nx=True, px=90000)  # 90s safety TTL
-        if not acquired:
-            # Another request is actively generating this report — return existing or fallback
-            if existing:
-                return report_service.format_report_response(existing, ipo)
-            return report_service.build_fallback_report_response(ipo)
-
-    try:
-        return await report_service.get_or_generate_report(db, ipo, force_refresh=bool(force))
-    finally:
-        if redis:
-            lua = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"
-            try:
-                await redis.eval(lua, 1, lock_key, lock_token)
-            except Exception:
-                pass
-
 
 
 @router.get("/pnl/summary")
