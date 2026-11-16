@@ -427,13 +427,30 @@ class OrderService:
         if existing_lock:
             await db.delete(existing_lock)
 
+        # An allotted order owns an allotment row: remove it too (unless already sold, which is real P&L history),
+        # otherwise a deleted test order keeps showing as a holding.
+        removed_allotments = 0
+        if order_obj.status == "ALLOTTED":
+            alts = (await db.execute(select(Allotment).where(
+                (Allotment.account_id == order_obj.account_id) & (Allotment.ipo_id == order_obj.ipo_id)
+            ))).scalars().all()
+            for alt in alts:
+                if (alt.status or "").upper() != "SOLD":
+                    await db.delete(alt)
+                    removed_allotments += 1
+            if removed_allotments:
+                acc_res = await db.execute(select(FamilyAccount).where(FamilyAccount.id == order_obj.account_id))
+                acc = acc_res.scalar_one_or_none()
+                if acc and (acc.total_allotments_won or 0) > 0:
+                    acc.total_allotments_won = acc.total_allotments_won - 1
+
         await db.delete(order_obj)
         await db.commit()
 
         from app.services.account_service import _invalidate_accounts_cache
         _invalidate_accounts_cache()
 
-        return {"success": True, "deleted_order_id": order_id}
+        return {"success": True, "deleted_order_id": order_id, "removed_allotments": removed_allotments}
 
     @staticmethod
     async def process_allotment_result(

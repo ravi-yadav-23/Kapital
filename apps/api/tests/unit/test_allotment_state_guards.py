@@ -88,3 +88,28 @@ async def test_not_allotted_twice_does_not_double_release(db):
     assert again.get("already_processed") is True
     await db.refresh(acc)
     assert acc.available_liquid_balance == avail
+
+
+@pytest.mark.asyncio
+async def test_deleting_an_allotted_test_order_also_removes_its_unsold_allotment(db):
+    oid = await _order(db, "SUBMITTED")
+    await order_service.process_allotment_result(db, oid, "ALLOTTED", 100)
+    assert len(await _allotments(db)) == 1
+    out = await order_service.delete_order(db, oid)
+    assert out["removed_allotments"] == 1
+    assert await _allotments(db) == []
+    acc = await db.get(FamilyAccount, "g-acc")
+    await db.refresh(acc)
+    assert (acc.total_allotments_won or 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_deleting_an_order_keeps_a_sold_allotment(db):
+    oid = await _order(db, "SUBMITTED")
+    await order_service.process_allotment_result(db, oid, "ALLOTTED", 100)
+    alt = (await _allotments(db))[0]
+    alt.status = "SOLD"
+    await db.commit()
+    out = await order_service.delete_order(db, oid)
+    assert out["removed_allotments"] == 0
+    assert len(await _allotments(db)) == 1   # realized P&L history is never deleted this way

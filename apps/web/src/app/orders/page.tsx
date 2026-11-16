@@ -439,7 +439,7 @@ export default function OrdersPage() {
                                     orderId: ord.id,
                                     action: 'delete',
                                     title: 'Delete Order Record',
-                                    message: `Permanently delete this order record for ${ord.ipo_name}? This cannot be undone.`,
+                                    message: `Permanently delete this order record for ${ord.ipo_name}?${ord.status === 'ALLOTTED' ? ' Its holding in Allotments is removed too (unless already sold).' : ''} This cannot be undone.`,
                                   })
                                 }}
                                 className="w-full px-3 py-1.5 text-left text-[var(--negative)] hover:bg-[var(--bg-subtle)]"
