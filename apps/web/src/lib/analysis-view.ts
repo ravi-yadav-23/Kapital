@@ -21,7 +21,9 @@ export interface Analysis {
   verdict: string | null
   confidence: 'high' | 'medium' | 'low' | 'none' | null
   signals: AnalysisSignal[]
-  components: Record<string, { value: number; weight: number }>
+  components: Record<string, { value: number; weight: number; points?: number }>
+  /** Every step from the weighted average to the final score (from the engine). */
+  steps?: { code: string; label: string; score: number; delta?: number }[]
   red_flags: { code: string; severity: string; reason: string }[]
   facts: Record<string, number | boolean>
   as_of: string | null
@@ -103,13 +105,19 @@ export const COMPONENT_LABELS: [key: string, label: string][] = [
 ]
 
 /** Components the engine used, with their share of the weight as a whole percent. Unknown inputs are omitted. */
-export function componentRows(components: Analysis['components'] | null | undefined): { key: string; label: string; value: number; weightPct: number }[] {
+export function componentRows(
+  components: Analysis['components'] | null | undefined,
+  state?: Analysis['state'],
+): { key: string; label: string; value: number; weightPct: number; points: number }[] {
   if (!components) return []
+  const companySource = state === 'summary_only' ? 'company summary' : state === 'web_only' ? 'web search' : 'offer document'
   return COMPONENT_LABELS.filter(([k]) => components[k]).map(([k, label]) => ({
     key: k,
-    label,
+    label: k === 'company' ? `Company quality (${companySource})` : label,
     value: Math.round(components[k].value),
     weightPct: Math.round(components[k].weight * 100),
+    // points = value x share of weight; older stored results have no points, so work them out
+    points: Math.round((components[k].points ?? components[k].value * components[k].weight) * 10) / 10,
   }))
 }
 

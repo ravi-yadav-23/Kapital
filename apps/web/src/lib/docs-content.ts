@@ -212,7 +212,7 @@ export const DOC_PAGES: DocPage[] = [
       { type: 'steps', items: [
         { title: 'Header', text: 'Name, status, the score and a thin bar coloured by verdict band.' },
         { title: 'Listing-gain score', text: 'The score, verdict, confidence and badge (Apply, Watch or Avoid), with a label saying what it rests on: offer document, company summary, web search or market data only. Then every signal with its direction and reason.' },
-        { title: 'What the score is built from', text: 'Each input the engine used, its 0–100 value and its share of the weight. Inputs that are not known are simply not listed.' },
+        { title: 'Score breakdown', text: 'How many points each input adds: its 0–100 value times its share of the weight, shown as one coloured bar out of 100 with a line per input. “Show the calculation, step by step” lists the weighted average, any red-flag penalty, any cap, and the final rounded score. Inputs that are not known are simply not listed.' },
         { title: 'Red flags and company facts', text: 'Each red flag with its severity, and the facts found in the document (profit, growth, debt, promoter holding and so on). If no document has been read, the page says red flags are unknown rather than “none”. The Run audit button sits at the bottom of this panel.' },
         { title: 'Business overview, strengths and risks', text: 'Context taken from the stored report.' },
         { title: 'Specs and schedule', text: 'Price band, lot size, minimum retail investment, open, close and listing dates.' },

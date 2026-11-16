@@ -83,15 +83,22 @@ def listing_gain_engine(
 
     available = {k: v for k, v in raw.items() if v is not None}
     if not available:
-        return {"score": None, "verdict": "PENDING", "confidence": "none", "components": {}, "signals": signals}
+        return {"score": None, "verdict": "PENDING", "confidence": "none", "components": {}, "signals": signals, "steps": []}
 
     total_weight = sum(WEIGHTS[k] for k in available)
-    components = {k: {"value": round(v, 1), "weight": round(WEIGHTS[k] / total_weight, 3)} for k, v in available.items()}
+    components = {k: {"value": round(v, 1), "weight": round(WEIGHTS[k] / total_weight, 3),
+                      "points": round(v * WEIGHTS[k] / total_weight, 1)} for k, v in available.items()}
     score = sum(v * WEIGHTS[k] for k, v in available.items()) / total_weight
+    # Every step from the weighted average to the final number, so a page can show the whole calculation.
+    steps: List[Dict[str, Any]] = [{"code": "weighted_average", "label": "Weighted average of the known inputs",
+                                    "score": round(score, 1)}]
 
     core_count = sum(1 for k in CORE if k in available)
     confidence = "high" if core_count >= 3 else "medium" if core_count == 2 else "low"
     if core_count < 2:
+        if score > THIN_EVIDENCE_CAP:
+            steps.append({"code": "thin_evidence_ceiling", "label": f"Only one core signal known: held at the Watch ceiling ({THIN_EVIDENCE_CAP})",
+                          "score": float(THIN_EVIDENCE_CAP)})
         score = min(score, THIN_EVIDENCE_CAP)
         signals.append(_signal("thin_evidence", "neutral",
                                "Only one of company quality / demand / grey market is known: the score is kept inside the Watch band "
@@ -125,15 +132,25 @@ def listing_gain_engine(
             penalty += MEDIUM_PENALTY
         if sev in ("high", "medium"):
             signals.append(_signal(f.get("code", "red_flag"), "negative", f"{sev.title()} red flag: {f.get('reason', '')}".strip()))
-    score -= min(penalty, MAX_PENALTY)
+    applied = min(penalty, MAX_PENALTY)
+    score -= applied
+    if applied:
+        steps.append({"code": "red_flag_penalty", "label": f"Red-flag penalty (high −{HIGH_PENALTY} each, medium −{MEDIUM_PENALTY} each, at most −{MAX_PENALTY})",
+                      "delta": -applied, "score": round(score, 1)})
     if critical:
+        if score > CRITICAL_CAP:
+            steps.append({"code": "critical_cap", "label": f"Critical red flag: capped at {CRITICAL_CAP}", "score": float(CRITICAL_CAP)})
         score = min(score, CRITICAL_CAP)
     elif core_count < 2:
+        if score < THIN_EVIDENCE_FLOOR:
+            steps.append({"code": "thin_evidence_floor", "label": f"Only one core signal known: held at the Watch floor ({THIN_EVIDENCE_FLOOR})",
+                          "score": float(THIN_EVIDENCE_FLOOR)})
         score = max(score, THIN_EVIDENCE_FLOOR)   # thin evidence cannot reject
 
     final = max(0, min(100, int(round(score))))
+    steps.append({"code": "final", "label": "Final score (rounded)", "score": float(final)})
     return {"score": final, "verdict": recommendation_for(final), "confidence": confidence,
-            "components": components, "signals": signals}
+            "components": components, "signals": signals, "steps": steps}
 
 
 def _stats(picks: List[float]) -> Dict[str, Any]:

@@ -30,7 +30,11 @@ describe('display never invents numbers', () => {
 
   test('score components list only the inputs the engine used, with whole-percent weights', () => {
     const rows = componentRows({ demand: { value: 44, weight: 0.6 }, gmp: { value: 59, weight: 0.4 } });
-    assert.deepEqual(rows.map((r) => [r.key, r.value, r.weightPct]), [['demand', 44, 60], ['gmp', 59, 40]]);
+    assert.deepEqual(rows.map((r) => [r.key, r.value, r.weightPct, r.points]), [['demand', 44, 60, 26.4], ['gmp', 59, 40, 23.6]]);
+    // points add up to the weighted average (50 here, Example 2 in the docs)
+    assert.equal(Math.round(rows.reduce((t, r) => t + r.points, 0)), 50);
+    // the company label names where the facts came from
+    assert.equal(componentRows({ company: { value: 70, weight: 1, points: 70 } }, 'summary_only')[0].label, 'Company quality (company summary)');
     assert.deepEqual(componentRows(null), []);
   });
 
